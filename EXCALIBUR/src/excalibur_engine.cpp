@@ -1,4 +1,8 @@
+#include "renderer/vulkan/vk_types.h"
+#include "renderer/vulkan/vk_instance.h"
+
 #include <windows.h>
+#include <stdio.h>
 
 struct window_info {
 	int screen_width;
@@ -21,7 +25,7 @@ int main() {
 	info.screen_height = 1080 / 2;
 	info.title = "EXCALIBUR";
 
-	window_state state;
+	window_state state = {};
 	state.instance = GetModuleHandleA(0);
 
 	WNDCLASSA wc = {};
@@ -37,6 +41,7 @@ int main() {
 	wc.lpszClassName = "EXCALIBUR_WINDOW_CLASS";
 
 	if (!RegisterClassA(&wc)) {
+		printf("FAILED TO REGISTER WINDOW CLASS.");
 		MessageBoxA(0, "FAILED TO REGISTER WINDOW CLASS.", "ERROR", MB_ICONEXCLAMATION | MB_OK);
 		return -1;
 	}
@@ -68,6 +73,7 @@ int main() {
 		window_style, xpos, ypos, screen_width, screen_height,
 		0, 0, state.instance, 0);
 	if (!hwnd) {
+		printf("FAILED TO CREATE WINDOW.");
 		MessageBoxA(NULL, "FAILED TO CREATE WINDOW", "ERROR", MB_ICONEXCLAMATION | MB_OK);
 		return false;
 	} else {
@@ -76,6 +82,13 @@ int main() {
 
 	ShowWindow(state.hwnd, SW_SHOW);
 
+	//
+	//
+	vulkan_context context = {};
+	context.allocator = 0;
+
+	vk_instance::create(&context);
+
 	while (!quit) {
 		MSG message = {};
 		while (PeekMessage(&message, 0, 0, 0, PM_REMOVE)) {
@@ -83,6 +96,8 @@ int main() {
 			DispatchMessage(&message);
 		}
 	}
+
+	vk_instance::destroy(&context);
 
 	if (state.hwnd) {
 		DestroyWindow(state.hwnd);
