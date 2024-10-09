@@ -107,9 +107,9 @@ bool vk_device::create(vulkan_context *context) {
 }
 
 void vk_device::destroy(vulkan_context *context) {
-	context->device.graphics_queue = 0;
-	context->device.present_queue = 0;
-	context->device.transfer_queue = 0;
+	//context->device.graphics_queue = 0;
+	//context->device.present_queue = 0;
+	//context->device.transfer_queue = 0;
 
 	SXDEBUG("DESTROYING LOGICAL DEVICE");
 	if (context->device.logical_device) {
@@ -170,7 +170,8 @@ void vk_device::query_swapchain_support(
 }
 
 bool select_physical_device(vulkan_context *context) {
-	unsigned int physical_device_count = 0;
+	SXDEBUG("SELECTING PHYSICAL DEVICE");
+	uint32_t physical_device_count = 0;
 	VKCHECK(vkEnumeratePhysicalDevices(context->instance, &physical_device_count, 0));
 	if (physical_device_count == 0) {
 		printf("FAILED TO FIND DEVICES WHICH SUPPORT VULKAN\n");
@@ -178,7 +179,7 @@ bool select_physical_device(vulkan_context *context) {
 	}
 	std::vector<VkPhysicalDevice> physical_devices(physical_device_count);
 	VKCHECK(vkEnumeratePhysicalDevices(context->instance, &physical_device_count, physical_devices.data()));
-	for (unsigned int i = 0; i < physical_device_count; ++i) {
+	for (uint32_t i = 0; i < physical_device_count; ++i) {
 		VkPhysicalDeviceProperties properties;
 		vkGetPhysicalDeviceProperties(physical_devices[i], &properties);
 
@@ -192,7 +193,7 @@ bool select_physical_device(vulkan_context *context) {
 		vulkan_physical_device_requirements requirements = {};
 		requirements.graphics = true;
 		requirements.present = true;
-		//requirements.compute = true;
+		requirements.compute = false;
 		requirements.transfer = true;
 		requirements.discrete_gpu = true;
 		requirements.sampler_anisotrophy = true;
@@ -208,42 +209,43 @@ bool select_physical_device(vulkan_context *context) {
 			&queue_info,
 			&context->device.swapchain_support);
 		if (result) {
-			printf("SELECTED DEVICE: '%s'\n", properties.deviceName);
+			SXDEBUG("PHYSICAL DEVICE SELECTED");
+			SXINFO("SELECTED DEVICE: %s", properties.deviceName);
 			switch (properties.deviceType) {
 				default:
 				case VK_PHYSICAL_DEVICE_TYPE_OTHER:
-					printf("GPU TYPE: UNKNOWN\n");
+					SXINFO("GPU TYPE: UNKNOWN");
 					break;
 				case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU:
-					printf("GPU TYPE: INTEGRATED\n");
+					SXINFO("GPU TYPE: INTEGRATED");
 					break;
 				case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU:
-					printf("GPU TYPE: DISCRETE\n");
+					SXINFO("GPU TYPE: DISCRETE");
 					break;
 				case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU:
-					printf("GPU TYPE: VIRTUAL\n");
+					SXINFO("GPU TYPE: VIRTUAL");
 					break;
 				case VK_PHYSICAL_DEVICE_TYPE_CPU:
-					printf("GPU TYPE: CPU\n");
+					SXINFO("GPU TYPE: CPU");
 					break;
 			}
-			printf(
-				"GPU DRIVER VERSION: %d.%d.%d\n",
+			SXINFO(
+				"GPU DRIVER VERSION: %d.%d.%d",
 				VK_VERSION_MAJOR(properties.driverVersion),
 				VK_VERSION_MINOR(properties.driverVersion),
 				VK_VERSION_PATCH(properties.driverVersion));
-			printf(
-				"VULKAN API VERSION: %d.%d.%d\n",
+			SXINFO(
+				"VULKAN API VERSION: %d.%d.%d",
 				VK_VERSION_MAJOR(properties.apiVersion),
 				VK_VERSION_MINOR(properties.apiVersion),
 				VK_VERSION_PATCH(properties.apiVersion));
 
-			for (unsigned int j = 0; j < memory.memoryHeapCount; ++j) {
+			for (uint32_t j = 0; j < memory.memoryHeapCount; ++j) {
 				float memory_size_gib = (((float)memory.memoryHeaps[j].size) / 1024.0f / 1024.0f / 1024.0f);
 				if (memory.memoryHeaps[j].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
-					printf("LOCAL GPU MEMORY: %.2f GiB\n", memory_size_gib);
+					SXINFO("LOCAL GPU MEMORY: %.2f GiB", memory_size_gib);
 				} else {
-					printf("SHARED GPU MEMORY: %.2f GiB\n", memory_size_gib);
+					SXINFO("SHARED GPU MEMORY: %.2f GiB", memory_size_gib);
 				}
 			}
 
@@ -259,7 +261,7 @@ bool select_physical_device(vulkan_context *context) {
 		}
 	}
 	if (!context->device.physical_device) {
-		printf("NO PHYSICAL DEVICE MEET THE REQUIREMENTS\n");
+		SXERROR("NO PHYSICAL DEVICE MEET THE REQUIREMENTS");
 		return false;
 	}
 	return true;
@@ -280,29 +282,30 @@ bool physical_device_meets_requirements(
 
 	if (requirements->discrete_gpu) {
 		if (properties->deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
-			printf("DEVICE IS NOT A DISCRETE GPU\n");
+			SXERROR("DEVICE IS NOT A DISCRETE GPU");
 			return false;
 		}
 	}
 
-	unsigned int queue_family_count = 0;
+	uint32_t queue_family_count = 0;
 	vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, 0);
 	std::vector<VkQueueFamilyProperties> queue_families(queue_family_count);
 	vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_families.data());
 
-	unsigned short min_transfer_score = 255;
-	for (unsigned int i = 0; i < queue_family_count; ++i) {
-		unsigned short current_transfer_score = 0;
+	uint8_t min_transfer_score = 255;
+	for (uint32_t i = 0; i < queue_family_count; ++i) {
+		uint8_t current_transfer_score = 0;
 
 		if (queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
 			out_queue_info->graphics_family_index = i;
 			++current_transfer_score;
 		}
 
+		/*
 		if (queue_families[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
 			out_queue_info->compute_family_index = i;
 			++current_transfer_score;
-		}
+		}*/
 
 		if (queue_families[i].queueFlags & VK_QUEUE_TRANSFER_BIT) {
 			if (current_transfer_score <= min_transfer_score) {
@@ -318,25 +321,25 @@ bool physical_device_meets_requirements(
 		}
 	}
 
-	printf("GRAPHICS: %d\n", out_queue_info->graphics_family_index != -1);
-	printf("PRESENT: %d\n", out_queue_info->present_family_index != -1);
-	printf("COMPUTE: %d\n", out_queue_info->compute_family_index != -1);
-	printf("TRANSFER: %d\n", out_queue_info->transfer_family_index != -1);
-	printf("NAME: %s\n", properties->deviceName);
+	SXTRACE("GRAPHICS: %d", out_queue_info->graphics_family_index != -1);
+	SXTRACE("PRESENT: %d", out_queue_info->present_family_index != -1);
+	SXTRACE("COMPUTE: %d", out_queue_info->compute_family_index != -1);
+	SXTRACE("TRANSFER: %d", out_queue_info->transfer_family_index != -1);
+	SXTRACE("NAME: %s", properties->deviceName);
 
 	if (
 		(!requirements->graphics || (requirements->graphics && out_queue_info->graphics_family_index != -1)) &&
 		(!requirements->present || (requirements->present && out_queue_info->present_family_index != -1)) &&
-		(!requirements->compute || (requirements->compute && out_queue_info->compute_family_index != -1)) &&
+		//(!requirements->compute || (requirements->compute && out_queue_info->compute_family_index != -1)) &&
 		(!requirements->transfer || (requirements->transfer && out_queue_info->transfer_family_index != -1))) {
-		printf("DEVICE MEETS REQUIREMENTS\n");
-		printf("GRAPHICS FAMILY INDEX: %i\n", out_queue_info->graphics_family_index);
-		printf("PRESENT FAMILY INDEX: %i\n", out_queue_info->present_family_index);
-		printf("COMPUTE FAMILY INDEX: %i\n", out_queue_info->compute_family_index);
-		printf("TRANSFER FAMILY INDEX: %i\n", out_queue_info->transfer_family_index);
+		SXDEBUG("DEVICE MEETS REQUIREMENTS");
+		SXDEBUG("GRAPHICS FAMILY INDEX: %i", out_queue_info->graphics_family_index);
+		SXDEBUG("PRESENT FAMILY INDEX: %i", out_queue_info->present_family_index);
+		//SXDEBUG("COMPUTE FAMILY INDEX: %i", out_queue_info->compute_family_index);
+		SXDEBUG("TRANSFER FAMILY INDEX: %i", out_queue_info->transfer_family_index);
 		vk_device::query_swapchain_support(device, surface, out_swapchain_support);
 		if (out_swapchain_support->format_count < 1 || out_swapchain_support->present_mode_count < 1) {
-			printf("REQUIRED SWAPCHAIN SUPPORT NOT PRESENT\n");
+			SXERROR("REQUIRED SWAPCHAIN SUPPORT NOT PRESENT");
 			return false;
 		}
 
@@ -364,14 +367,14 @@ bool physical_device_meets_requirements(
 						}
 					}
 					if (!found) {
-						printf("REQUIRED EXTENSION NOT FOUND: '%s'\n", requirements->device_extensions[i]);
+						SXERROR("REQUIRED EXTENSION NOT FOUND: %s", requirements->device_extensions[i]);
 						return false;
 					}
 				}
 			}
 		}
 		if (requirements->sampler_anisotrophy && !features->samplerAnisotropy) {
-			printf("DEVICE DOES NOT SUPPORT SAMPLER ANISOTROPY\n");
+			SXERROR("DEVICE DOES NOT SUPPORT SAMPLER ANISOTROPY");
 			return false;
 		}
 		return true;
