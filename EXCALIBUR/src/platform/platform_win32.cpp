@@ -28,6 +28,7 @@ bool platform::initialize(platform_state *platform, platform_info *info) {
 	platform->internal_state = malloc(sizeof(internal_state));
 	internal_state *state = static_cast<internal_state *>(platform->internal_state);
 	
+	SXDEBUG("INITIALIZING PLATFORM");
 	state->instance = GetModuleHandleA(0);
 
 	WNDCLASSA wc = {};
@@ -43,8 +44,8 @@ bool platform::initialize(platform_state *platform, platform_info *info) {
 	wc.lpszClassName = "EXCALIBUR_WINDOW_CLASS";
 
 	if (!RegisterClassA(&wc)) {
-		SXERROR("FAILED TO REGISTER WINDOW CLASS");
-		MessageBoxA(0, "FAILED TO REGISTER WINDOW CLASS", "ERROR", MB_ICONEXCLAMATION | MB_OK);
+		SXFATAL("FAILED TO REGISTER WINDOW CLASS");
+		MessageBoxA(0, "FAILED TO REGISTER WINDOW CLASS", "FATAL ERROR", MB_ICONEXCLAMATION | MB_OK);
 		return false;
 	}
 
@@ -75,8 +76,8 @@ bool platform::initialize(platform_state *platform, platform_info *info) {
 		window_style, xpos, ypos, screen_width, screen_height,
 		0, 0, state->instance, 0);
 	if (!hwnd) {
-		SXERROR("FAILED TO CREATE WINDOW");
-		MessageBoxA(NULL, "FAILED TO CREATE WINDOW", "ERROR", MB_ICONEXCLAMATION | MB_OK);
+		SXFATAL("FAILED TO CREATE WINDOW");
+		MessageBoxA(NULL, "FAILED TO CREATE WINDOW", "FATAL ERROR", MB_ICONEXCLAMATION | MB_OK);
 		return false;
 	} else {
 		state->hwnd = hwnd;
@@ -86,10 +87,13 @@ bool platform::initialize(platform_state *platform, platform_info *info) {
 	ShowWindow(state->hwnd, SW_SHOW);
 	platform_pointer = platform;
 
+	SXDEBUG("PLATFORM INITIALIZED");
+
 	return true;
 }
 
 void platform::shutdown(platform_state *platform) {
+	SXDEBUG("SHUTTING DOWN PLATFORM");
 	internal_state *state = static_cast<internal_state *>(platform->internal_state);
 	if (state->hwnd) {
 		DestroyWindow(state->hwnd);
@@ -145,6 +149,7 @@ void vk_platform::get_required_extension_names(std::vector<const char *> *extens
 }
 
 bool vk_platform::create_surface(platform_state *platform, vulkan_context *context) {
+	SXDEBUG("CREATING VULKAN SURFACE");
 	internal_state *state = static_cast<internal_state *>(platform->internal_state);
 	VkWin32SurfaceCreateInfoKHR surface_info{ VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR };
 	surface_info.hinstance = state->instance;
@@ -153,6 +158,7 @@ bool vk_platform::create_surface(platform_state *platform, vulkan_context *conte
 	if (result != VK_SUCCESS) {
 		return false;
 	}
+	SXDEBUG("VULKAN SURFACE CREATED");
 	return true;
 }
 
