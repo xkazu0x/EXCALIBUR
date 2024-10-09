@@ -1,4 +1,5 @@
 #include "platform.h"
+#include "core/sxlogger.h"
 
 #if EXCALIBUR_PLATFORM_WINDOWS
 #include "renderer/vulkan/vk_types.h"
@@ -42,7 +43,7 @@ bool platform::initialize(platform_state *platform, platform_info *info) {
 	wc.lpszClassName = "EXCALIBUR_WINDOW_CLASS";
 
 	if (!RegisterClassA(&wc)) {
-		printf("FAILED TO REGISTER WINDOW CLASS\n");
+		SXERROR("FAILED TO REGISTER WINDOW CLASS");
 		MessageBoxA(0, "FAILED TO REGISTER WINDOW CLASS", "ERROR", MB_ICONEXCLAMATION | MB_OK);
 		return false;
 	}
@@ -74,7 +75,7 @@ bool platform::initialize(platform_state *platform, platform_info *info) {
 		window_style, xpos, ypos, screen_width, screen_height,
 		0, 0, state->instance, 0);
 	if (!hwnd) {
-		printf("FAILED TO CREATE WINDOW\n");
+		SXERROR("FAILED TO CREATE WINDOW");
 		MessageBoxA(NULL, "FAILED TO CREATE WINDOW", "ERROR", MB_ICONEXCLAMATION | MB_OK);
 		return false;
 	} else {
@@ -111,6 +112,32 @@ bool platform::should_stop(platform_state *platform) {
 
 void platform::set_should_stop(platform_state *platform, bool value) {
 	platform->quit = value;
+}
+
+void platform::console_write(const char *message, int color) {
+	HANDLE console_handle = GetStdHandle(STD_OUTPUT_HANDLE);
+	// FATAL, ERROR, WARN, INFO, DEBUG, TRACE
+	static int levels[6] = { 64, 4, 6, 2, 3, 8 };
+	//static int levels[6] = { 71, 116, 6, 2, 113, 8 };
+	SetConsoleTextAttribute(console_handle, levels[color]);
+	OutputDebugStringA(message);
+	size_t length = strlen(message);
+	LPDWORD number_written = 0;
+	WriteConsoleA(GetStdHandle(STD_OUTPUT_HANDLE), message, (DWORD)length, number_written, 0);
+	SetConsoleTextAttribute(console_handle, 15);
+}
+
+void platform::console_write_error(const char *message, int color) {
+	HANDLE console_handle = GetStdHandle(STD_ERROR_HANDLE);
+	// FATAL, ERROR, WARN, INFO, DEBUG, TRACE
+	static int levels[6] = { 64, 4, 6, 2, 3, 8 };
+	//static int levels[6] = { 71, 116, 6, 2, 113, 8 };
+	SetConsoleTextAttribute(console_handle, levels[color]);
+	OutputDebugStringA(message);
+	size_t length = strlen(message);
+	LPDWORD number_written = 0;
+	WriteConsoleA(GetStdHandle(STD_ERROR_HANDLE), message, (DWORD)length, number_written, 0);
+	SetConsoleTextAttribute(console_handle, 15);
 }
 
 void vk_platform::get_required_extension_names(std::vector<const char *> *extensions) {

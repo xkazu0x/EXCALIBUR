@@ -19,4 +19,6 @@ namespace platform {
 	void pump_messages(platform_state *platform);
 	bool should_stop(platform_state *platform);
 	void set_should_stop(platform_state *platform, bool value);
+	void console_write(const char *message, int color);
+	void console_write_error(const char *message, int color);
 }
