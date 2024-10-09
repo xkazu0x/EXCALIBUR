@@ -1,4 +1,5 @@
 #include "vk_instance.h"
+#include "vk_platform.h"
 
 #include <stdio.h>
 #include <vector>
@@ -25,7 +26,7 @@ bool vk_instance::create(vulkan_context *context) {
 
 	// Extensions
 	required_extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
-	required_extensions.push_back("VK_KHR_win32_surface");
+	vk_platform::get_required_extension_names(&required_extensions);
 
 #if defined(_DEBUG)
 	// Debug extension
@@ -50,7 +51,7 @@ bool vk_instance::create(vulkan_context *context) {
 		for (const auto &layer : available_layers) {
 			if (strcmp(layer.layerName, required_validation_layers[i]) == 0) {
 				found = true;
-				printf("FOUND LAYER: %s", required_validation_layers[i]);
+				printf("FOUND LAYER: %s\n", required_validation_layers[i]);
 				break;
 			}
 		}
@@ -62,9 +63,9 @@ bool vk_instance::create(vulkan_context *context) {
 	}
 #endif
 
-	instance_info.enabledLayerCount = (uint32_t)required_validation_layers.size();
+	instance_info.enabledLayerCount = static_cast<uint32_t>(required_validation_layers.size());
 	instance_info.ppEnabledLayerNames = required_validation_layers.data();
-	instance_info.enabledExtensionCount = (uint32_t)required_extensions.size();
+	instance_info.enabledExtensionCount = static_cast<uint32_t>(required_extensions.size());
 	instance_info.ppEnabledExtensionNames = required_extensions.data();
 
 	VKCHECK(vkCreateInstance(&instance_info, context->allocator, &context->instance));

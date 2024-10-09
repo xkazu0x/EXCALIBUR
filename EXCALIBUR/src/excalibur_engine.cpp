@@ -1,8 +1,16 @@
 #include "renderer/vulkan/vk_types.h"
 #include "renderer/vulkan/vk_instance.h"
+#include "renderer/vulkan/vk_platform.h"
+#include "renderer/vulkan/vk_device.h"
 
-#include <windows.h>
 #include <stdio.h>
+
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+
+#include <vulkan/vulkan.h>
+#include <vulkan/vulkan_win32.h>
 
 struct window_info {
 	int screen_width;
@@ -41,8 +49,8 @@ int main() {
 	wc.lpszClassName = "EXCALIBUR_WINDOW_CLASS";
 
 	if (!RegisterClassA(&wc)) {
-		printf("FAILED TO REGISTER WINDOW CLASS.");
-		MessageBoxA(0, "FAILED TO REGISTER WINDOW CLASS.", "ERROR", MB_ICONEXCLAMATION | MB_OK);
+		printf("FAILED TO REGISTER WINDOW CLASS\n");
+		MessageBoxA(0, "FAILED TO REGISTER WINDOW CLASS", "ERROR", MB_ICONEXCLAMATION | MB_OK);
 		return -1;
 	}
 
@@ -73,21 +81,32 @@ int main() {
 		window_style, xpos, ypos, screen_width, screen_height,
 		0, 0, state.instance, 0);
 	if (!hwnd) {
-		printf("FAILED TO CREATE WINDOW.");
+		printf("FAILED TO CREATE WINDOW\n");
 		MessageBoxA(NULL, "FAILED TO CREATE WINDOW", "ERROR", MB_ICONEXCLAMATION | MB_OK);
-		return false;
+		return -1;
 	} else {
 		state.hwnd = hwnd;
 	}
 
 	ShowWindow(state.hwnd, SW_SHOW);
 
-	//
-	//
 	vulkan_context context = {};
 	context.allocator = 0;
 
-	vk_instance::create(&context);
+	if (!vk_instance::create(&context)) {
+		printf("FAILED TO CREATE VULKAN INSTANCE\n");
+		return -1;
+	}
+
+	if (!vk_platform::create_surface(&state, &context)) {
+		printf("FAILED TO CREATE VULKAN SURFACE\n");
+		return -1;
+	}
+
+	if (!vk_device::create(&context)) {
+		printf("FAILED TO CREATE VULKAN DEVICE\n");
+		return -1;
+	}
 
 	while (!quit) {
 		MSG message = {};
@@ -96,6 +115,10 @@ int main() {
 			DispatchMessage(&message);
 		}
 	}
+
+	vk_device::destroy(&context);
+
+	vkDestroySurfaceKHR(context.instance, context.surface, context.allocator);
 
 	vk_instance::destroy(&context);
 
@@ -125,4 +148,19 @@ LRESULT CALLBACK win32_process_message(HWND hwnd, UINT message, WPARAM wparam, L
 			result = DefWindowProcA(hwnd, message, wparam, lparam);
 	}
 	return result;
+}
+
+void vk_platform::get_required_extension_names(std::vector<const char *> *extensions) {
+	extensions->push_back("VK_KHR_win32_surface");
+}
+
+bool vk_platform::create_surface(window_state *state, vulkan_context *context) {
+	VkWin32SurfaceCreateInfoKHR surface_info{ VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR };
+	surface_info.hinstance = state->instance;
+	surface_info.hwnd = state->hwnd;
+	VkResult result = vkCreateWin32SurfaceKHR(context->instance, &surface_info, context->allocator, &context->surface);
+	if (result != VK_SUCCESS) {
+		return false;
+	}
+	return true;
 }

@@ -140,10 +140,13 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\excalibur_engine.cpp" />
+    <ClCompile Include="src\renderer\vulkan\vk_device.cpp" />
     <ClCompile Include="src\renderer\vulkan\vk_instance.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\renderer\vulkan\vk_device.h" />
     <ClInclude Include="src\renderer\vulkan\vk_instance.h" />
+    <ClInclude Include="src\renderer\vulkan\vk_platform.h" />
     <ClInclude Include="src\renderer\vulkan\vk_types.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
