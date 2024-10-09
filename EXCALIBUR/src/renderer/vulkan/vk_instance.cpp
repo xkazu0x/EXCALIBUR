@@ -85,6 +85,7 @@ bool vk_instance::create(vulkan_context *context) {
 		(PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(context->instance, "vkCreateDebugUtilsMessengerEXT");
 	VKCHECK(function(context->instance, &debug_info, context->allocator, &context->debug_messenger));
 #endif
+
 	return true;
 }
 
