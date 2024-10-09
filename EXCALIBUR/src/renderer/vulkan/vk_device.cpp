@@ -1,4 +1,5 @@
 #include "vk_device.h"
+#include "core/sxlogger.h"
 
 #include <stdio.h>
 #include <vector>
@@ -31,13 +32,92 @@ bool physical_device_meets_requirements(
 	vulkan_swapchain_support_info *out_swapchain_support);
 
 bool vk_device::create(vulkan_context *context) {
-	if (!select_physical_device(context)) {
+	if (!select_physical_device(context)) { // TODO: refactor this function
+		SXERROR("FAILED TO SELECT PHYSICAL DEVICE");
 		return false;
 	}
+
+	SXDEBUG("CREATING LOGICAL DEVICE");
+	// NOTE: do not create additional queues for shared indices
+	bool present_shares_graphics_queue = context->device.graphics_queue_index == context->device.present_queue_index;
+	bool transfer_shares_graphics_queue = context->device.graphics_queue_index == context->device.transfer_queue_index;
+	
+	uint32_t index_count = 1;
+	if (!present_shares_graphics_queue) index_count++;
+	if (!transfer_shares_graphics_queue) index_count++;
+
+	std::vector<uint32_t> indices(index_count);
+	uint8_t index = 0;
+	indices[index++] = context->device.graphics_queue_index;
+	if (!present_shares_graphics_queue)
+		indices[index++] = context->device.present_queue_index;
+	if (!transfer_shares_graphics_queue)
+		indices[index++] = context->device.transfer_queue_index;
+
+	std::vector<VkDeviceQueueCreateInfo> queue_create_infos(index_count);
+	for (uint32_t i = 0; i < index_count; ++i) {
+		queue_create_infos[i].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+		queue_create_infos[i].queueFamilyIndex = indices[i];
+		queue_create_infos[i].queueCount = 1;
+		queue_create_infos[i].flags = 0;
+		queue_create_infos[i].pNext = 0;
+		float queue_priority = 1.0f;
+		queue_create_infos[i].pQueuePriorities= &queue_priority;
+	}
+
+	// TODO: should be config driven
+	VkPhysicalDeviceFeatures device_features = {};
+	device_features.samplerAnisotropy = VK_TRUE;
+
+	VkDeviceCreateInfo device_info = {};
+	device_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+	device_info.queueCreateInfoCount = index_count;
+	device_info.pQueueCreateInfos = queue_create_infos.data();
+	device_info.pEnabledFeatures = &device_features;
+	device_info.enabledExtensionCount = 1;
+	const char *extension_name = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
+	device_info.ppEnabledExtensionNames = &extension_name;
+	device_info.enabledLayerCount = 0;
+	device_info.ppEnabledLayerNames = 0;
+
+	VKCHECK(vkCreateDevice(
+		context->device.physical_device, 
+		&device_info, context->allocator, 
+		&context->device.logical_device));
+	SXDEBUG("LOGICAL DEVICE CREATED");
+
+	vkGetDeviceQueue(
+		context->device.logical_device, 
+		context->device.graphics_queue_index, 
+		0, 
+		&context->device.graphics_queue);
+	vkGetDeviceQueue(
+		context->device.logical_device,
+		context->device.present_queue_index,
+		0,
+		&context->device.present_queue);
+	vkGetDeviceQueue(
+		context->device.logical_device,
+		context->device.transfer_queue_index,
+		0,
+		&context->device.transfer_queue);
+	SXDEBUG("QUEUES OBTAINED");
+
 	return true;
 }
 
 void vk_device::destroy(vulkan_context *context) {
+	context->device.graphics_queue = 0;
+	context->device.present_queue = 0;
+	context->device.transfer_queue = 0;
+
+	SXDEBUG("DESTROYING LOGICAL DEVICE");
+	if (context->device.logical_device) {
+		vkDestroyDevice(context->device.logical_device, context->allocator);
+		context->device.logical_device = 0;
+	}
+
+	SXDEBUG("RELEASING PHYSICAL DEVICE RESOURCES");
 	context->device.physical_device = 0;
 	if (context->device.swapchain_support.formats.data()) {
 		// TODO: free array

@@ -22,6 +22,11 @@ struct vulkan_device {
 	int present_queue_index;
 	int compute_queue_index;
 	int transfer_queue_index;
+
+	VkQueue graphics_queue;
+	VkQueue present_queue;
+	VkQueue transfer_queue;
+
 	VkPhysicalDeviceProperties properties;
 	VkPhysicalDeviceFeatures features;
 	VkPhysicalDeviceMemoryProperties memory;

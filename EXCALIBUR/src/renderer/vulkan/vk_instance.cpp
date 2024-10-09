@@ -104,11 +104,13 @@ void vk_instance::destroy(vulkan_context *context) {
 		PFN_vkDestroyDebugUtilsMessengerEXT function =
 			(PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(context->instance, "vkDestroyDebugUtilsMessengerEXT");
 		function(context->instance, context->debug_messenger, context->allocator);
+		context->debug_messenger = 0;
 	}
 
 	SXDEBUG("DESTROYING VULKAN INSTANCE");
 	if (context->instance) {
 		vkDestroyInstance(context->instance, context->allocator);
+		context->instance = 0;
 	}
 }
 

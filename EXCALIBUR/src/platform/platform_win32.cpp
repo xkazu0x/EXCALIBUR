@@ -151,7 +151,8 @@ void vk_platform::get_required_extension_names(std::vector<const char *> *extens
 bool vk_platform::create_surface(platform_state *platform, vulkan_context *context) {
 	SXDEBUG("CREATING VULKAN SURFACE");
 	internal_state *state = static_cast<internal_state *>(platform->internal_state);
-	VkWin32SurfaceCreateInfoKHR surface_info{ VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR };
+	VkWin32SurfaceCreateInfoKHR surface_info{};
+	surface_info.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
 	surface_info.hinstance = state->instance;
 	surface_info.hwnd = state->hwnd;
 	VkResult result = vkCreateWin32SurfaceKHR(context->instance, &surface_info, context->allocator, &context->surface);

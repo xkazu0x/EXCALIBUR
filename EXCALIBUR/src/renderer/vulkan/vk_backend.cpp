@@ -25,10 +25,11 @@ bool vk_backend::initialize(vulkan_context *context, platform_state *platform) {
 
 void vk_backend::shutdown(vulkan_context *context) {
 	SXDEBUG("SHUTTING DOWN VULKAN BACKEND");
-
 	vk_device::destroy(context);
-	if (context->surface)
+	if (context->surface) {
 		SXDEBUG("DESTROYING VULKAN SURFACE");
 		vkDestroySurfaceKHR(context->instance, context->surface, context->allocator);
+		context->surface = 0;
+	}
 	vk_instance::destroy(context);
 }
