@@ -9,4 +9,5 @@ namespace vk_device {
 		VkPhysicalDevice physical_device, 
 		VkSurfaceKHR surface, 
 		vulkan_swapchain_support_info *out_support_info);
+	bool detect_depth_format(vulkan_device *device);
 }

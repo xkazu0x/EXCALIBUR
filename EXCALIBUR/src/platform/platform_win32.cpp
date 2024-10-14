@@ -1,11 +1,10 @@
 #include "platform.h"
 #include "core/sxlogger.h"
+#include "core/sxmemory.h"
 
 #if EXCALIBUR_PLATFORM_WINDOWS
 #include "renderer/vulkan/vk_types.h"
 #include "renderer/vulkan/vk_platform.h"
-
-#include <memory>
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -21,11 +20,10 @@ struct internal_state {
 
 static platform_state *platform_pointer;
 
-void platform_kill();
 LRESULT CALLBACK win32_process_message(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
 
 bool platform::initialize(platform_state *platform, platform_info *info) {
-	platform->internal_state = malloc(sizeof(internal_state));
+	platform->internal_state = sxmemory::allocate(sizeof(internal_state), MEMORY_TAG_PLATFORM);
 	internal_state *state = static_cast<internal_state *>(platform->internal_state);
 	
 	SXDEBUG("INITIALIZING PLATFORM");
@@ -85,8 +83,8 @@ bool platform::initialize(platform_state *platform, platform_info *info) {
 
 	platform->quit = false;
 	ShowWindow(state->hwnd, SW_SHOW);
-	platform_pointer = platform;
 
+	platform_pointer = platform;
 	SXDEBUG("PLATFORM INITIALIZED");
 
 	return true;
@@ -99,12 +97,13 @@ void platform::shutdown(platform_state *platform) {
 		DestroyWindow(state->hwnd);
 		state->hwnd = 0;
 	}
+	sxmemory::free_memory(platform->internal_state, sizeof(internal_state), MEMORY_TAG_PLATFORM);
+	platform_pointer = 0;
 }
 
 void platform::pump_messages(platform_state *platform) {
-	internal_state *state = static_cast<internal_state *>(platform->internal_state);
 	MSG message = {};
-	while (PeekMessage(&message, state->hwnd, 0, 0, PM_REMOVE)) {
+	while (PeekMessage(&message, 0, 0, 0, PM_REMOVE)) {
 		TranslateMessage(&message);
 		DispatchMessage(&message);
 	}
@@ -122,7 +121,6 @@ void platform::console_write(const char *message, int color) {
 	HANDLE console_handle = GetStdHandle(STD_OUTPUT_HANDLE);
 	// FATAL, ERROR, WARN, INFO, DEBUG, TRACE
 	static int levels[6] = { 64, 4, 6, 2, 3, 8 };
-	//static int levels[6] = { 71, 116, 6, 2, 113, 8 };
 	SetConsoleTextAttribute(console_handle, levels[color]);
 	OutputDebugStringA(message);
 	size_t length = strlen(message);
@@ -135,7 +133,6 @@ void platform::console_write_error(const char *message, int color) {
 	HANDLE console_handle = GetStdHandle(STD_ERROR_HANDLE);
 	// FATAL, ERROR, WARN, INFO, DEBUG, TRACE
 	static int levels[6] = { 64, 4, 6, 2, 3, 8 };
-	//static int levels[6] = { 71, 116, 6, 2, 113, 8 };
 	SetConsoleTextAttribute(console_handle, levels[color]);
 	OutputDebugStringA(message);
 	size_t length = strlen(message);
@@ -151,10 +148,12 @@ void vk_platform::get_required_extension_names(std::vector<const char *> *extens
 bool vk_platform::create_surface(platform_state *platform, vulkan_context *context) {
 	SXDEBUG("CREATING VULKAN SURFACE");
 	internal_state *state = static_cast<internal_state *>(platform->internal_state);
+
 	VkWin32SurfaceCreateInfoKHR surface_info{};
 	surface_info.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR;
 	surface_info.hinstance = state->instance;
 	surface_info.hwnd = state->hwnd;
+
 	VkResult result = vkCreateWin32SurfaceKHR(context->instance, &surface_info, context->allocator, &context->surface);
 	if (result != VK_SUCCESS) {
 		return false;
@@ -163,15 +162,11 @@ bool vk_platform::create_surface(platform_state *platform, vulkan_context *conte
 	return true;
 }
 
-void platform_kill() {
-	platform::set_should_stop(platform_pointer, true);
-}
-
 LRESULT CALLBACK win32_process_message(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
 	LRESULT result = 0;
 	switch (message) {
 		case WM_CLOSE:
-			platform_kill();
+			platform::set_should_stop(platform_pointer, true);
 			break;
 		case WM_DESTROY:
 			PostQuitMessage(0);

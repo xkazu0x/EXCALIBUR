@@ -6,3 +6,5 @@
 #error "64-bit is required on windows"
 #endif
 #endif
+
+#define SXCLAMP(value, min, max) (value <= min) ? min : (value >= max) ? max : value;

@@ -79,20 +79,26 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\core\sxlogger.cpp" />
+    <ClCompile Include="src\core\sxmemory.cpp" />
     <ClCompile Include="src\excalibur_engine.cpp" />
     <ClCompile Include="src\platform\platform_win32.cpp" />
     <ClCompile Include="src\renderer\vulkan\vk_backend.cpp" />
     <ClCompile Include="src\renderer\vulkan\vk_device.cpp" />
+    <ClCompile Include="src\renderer\vulkan\vk_image.cpp" />
     <ClCompile Include="src\renderer\vulkan\vk_instance.cpp" />
+    <ClCompile Include="src\renderer\vulkan\vk_swapchain.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\core\sxlogger.h" />
+    <ClInclude Include="src\core\sxmemory.h" />
     <ClInclude Include="src\defines.h" />
     <ClInclude Include="src\platform\platform.h" />
     <ClInclude Include="src\renderer\vulkan\vk_backend.h" />
     <ClInclude Include="src\renderer\vulkan\vk_device.h" />
+    <ClInclude Include="src\renderer\vulkan\vk_image.h" />
     <ClInclude Include="src\renderer\vulkan\vk_instance.h" />
     <ClInclude Include="src\renderer\vulkan\vk_platform.h" />
+    <ClInclude Include="src\renderer\vulkan\vk_swapchain.h" />
     <ClInclude Include="src\renderer\vulkan\vk_types.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

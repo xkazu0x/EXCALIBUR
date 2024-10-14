@@ -1,11 +1,13 @@
 #include "core/sxlogger.h"
+#include "core/sxmemory.h"
 #include "platform/platform.h"
 #include "renderer/vulkan/vk_backend.h"
 
 int main() {
-	if (!sxlogger::initialize()) {
+	sxmemory::initialize();
+
+	if (!sxlogger::initialize())
 		return -1;
-	}
 
 	platform_info info = {};
 	info.screen_width = 1920 / 2;
@@ -16,17 +18,20 @@ int main() {
 	if (!platform::initialize(&platform, &info)) 
 		return -1;
 
-	vulkan_context vk_context = {};
-	if (!vk_backend::initialize(&vk_context, &platform)) 
+	if (!vk_backend::initialize(&platform)) 
 		return -1;
 
+	SXINFO(sxmemory::get_memory_usage_str());
 	while (!platform::should_stop(&platform)) {
 		platform::pump_messages(&platform);
 	}
 
-	vk_backend::shutdown(&vk_context);
+	vk_backend::shutdown();
 	platform::shutdown(&platform);
 	sxlogger::shutdown();
+
+	SXINFO(sxmemory::get_memory_usage_str());
+	sxmemory::shutdown();
 
 	return 0;
 }

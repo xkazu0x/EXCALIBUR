@@ -9,14 +9,15 @@
 struct vulkan_swapchain_support_info {
 	VkSurfaceCapabilitiesKHR capabilities;
 	unsigned int format_count;
-	std::vector<VkSurfaceFormatKHR> formats;
+	VkSurfaceFormatKHR *formats;
 	unsigned int present_mode_count;
-	std::vector<VkPresentModeKHR> present_modes;
+	VkPresentModeKHR *present_modes;
 };
 
 struct vulkan_device {
 	VkPhysicalDevice physical_device;
 	VkDevice logical_device;
+
 	vulkan_swapchain_support_info swapchain_support;
 	int graphics_queue_index;
 	int present_queue_index;
@@ -30,6 +31,26 @@ struct vulkan_device {
 	VkPhysicalDeviceProperties properties;
 	VkPhysicalDeviceFeatures features;
 	VkPhysicalDeviceMemoryProperties memory;
+
+	VkFormat depth_format;
+};
+
+struct vulkan_image {
+	VkImage handle;
+	VkDeviceMemory memory;
+	VkImageView view;
+	uint32_t width;
+	uint32_t height;
+};
+
+struct vulkan_swapchain {
+	VkSurfaceFormatKHR image_format;
+	uint8_t max_frames_in_flight;
+	VkSwapchainKHR handle;
+	uint32_t image_count;
+	VkImage *images;
+	VkImageView *views;
+	vulkan_image depth_attachment;
 };
 
 struct vulkan_context {
@@ -40,4 +61,14 @@ struct vulkan_context {
 #endif
 	VkSurfaceKHR surface;
 	vulkan_device device;
+
+	vulkan_swapchain swapchain;
+	uint32_t framebuffer_width;
+	uint32_t framebuffer_height;
+	uint32_t image_index;
+	uint32_t current_frame;
+
+	bool recreating_swapchain;
+
+	int32_t(*find_memory_index)(uint32_t type_filter, uint32_t property_flags);
 };

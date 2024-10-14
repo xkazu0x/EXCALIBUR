@@ -1,7 +1,7 @@
 #include "vk_device.h"
 #include "core/sxlogger.h"
+#include "core/sxmemory.h"
 
-#include <stdio.h>
 #include <vector>
 
 struct vulkan_physical_device_requirements {
@@ -37,7 +37,7 @@ bool vk_device::create(vulkan_context *context) {
 		return false;
 	}
 
-	SXDEBUG("CREATING LOGICAL DEVICE");
+	SXDEBUG("CREATING VULKAN LOGICAL DEVICE");
 	// NOTE: do not create additional queues for shared indices
 	bool present_shares_graphics_queue = context->device.graphics_queue_index == context->device.present_queue_index;
 	bool transfer_shares_graphics_queue = context->device.graphics_queue_index == context->device.transfer_queue_index;
@@ -59,15 +59,13 @@ bool vk_device::create(vulkan_context *context) {
 		queue_create_infos[i].sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
 		queue_create_infos[i].queueFamilyIndex = indices[i];
 		queue_create_infos[i].queueCount = 1;
-		queue_create_infos[i].flags = 0;
-		queue_create_infos[i].pNext = 0;
 		float queue_priority = 1.0f;
 		queue_create_infos[i].pQueuePriorities= &queue_priority;
 	}
 
 	// TODO: should be config driven
 	VkPhysicalDeviceFeatures device_features = {};
-	device_features.samplerAnisotropy = VK_TRUE;
+	device_features.samplerAnisotropy = VK_FALSE;
 
 	VkDeviceCreateInfo device_info = {};
 	device_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -82,9 +80,10 @@ bool vk_device::create(vulkan_context *context) {
 
 	VKCHECK(vkCreateDevice(
 		context->device.physical_device, 
-		&device_info, context->allocator, 
+		&device_info, 
+		context->allocator, 
 		&context->device.logical_device));
-	SXDEBUG("LOGICAL DEVICE CREATED");
+	SXDEBUG("VULKAN LOGICAL DEVICE CREATED");
 
 	vkGetDeviceQueue(
 		context->device.logical_device, 
@@ -109,9 +108,10 @@ bool vk_device::create(vulkan_context *context) {
 void vk_device::destroy(vulkan_context *context) {
 	//context->device.graphics_queue = 0;
 	//context->device.present_queue = 0;
+	//context->device.compute_queue_index = 0;
 	//context->device.transfer_queue = 0;
 
-	SXDEBUG("DESTROYING LOGICAL DEVICE");
+	SXDEBUG("DESTROYING VULKAN LOGICAL DEVICE");
 	if (context->device.logical_device) {
 		vkDestroyDevice(context->device.logical_device, context->allocator);
 		context->device.logical_device = 0;
@@ -119,11 +119,17 @@ void vk_device::destroy(vulkan_context *context) {
 
 	SXDEBUG("RELEASING PHYSICAL DEVICE RESOURCES");
 	context->device.physical_device = 0;
-	if (context->device.swapchain_support.formats.data()) {
-		// TODO: free array
+	if (context->device.swapchain_support.formats) {
+		sxmemory::free_memory(
+			context->device.swapchain_support.formats, 
+			sizeof(VkSurfaceFormatKHR) * context->device.swapchain_support.format_count, 
+			MEMORY_TAG_RENDERER);
 	}
-	if (context->device.swapchain_support.present_modes.data()) {
-		// TODO: free array
+	if (context->device.swapchain_support.present_modes) {
+		sxmemory::free_memory(
+			context->device.swapchain_support.present_modes,
+			sizeof(VkPresentModeKHR) * context->device.swapchain_support.present_mode_count,
+			MEMORY_TAG_RENDERER);
 	}
 
 	// TODO: free capabilities
@@ -146,13 +152,20 @@ void vk_device::query_swapchain_support(
 	VKCHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(
 		physical_device, 
 		surface, 
-		&out_support_info->format_count, 0));
+		&out_support_info->format_count, 
+		0));
 	if (out_support_info->format_count != 0) {
+		if (!out_support_info->formats) {
+			out_support_info->formats = static_cast<VkSurfaceFormatKHR*>(
+				sxmemory::allocate(
+					sizeof(VkSurfaceFormatKHR) * out_support_info->format_count, 
+					MEMORY_TAG_RENDERER));
+		}
 		VKCHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(
 			physical_device, 
 			surface, 
 			&out_support_info->format_count, 
-			out_support_info->formats.data()));
+			out_support_info->formats));
 	}
 
 	VKCHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(
@@ -161,12 +174,40 @@ void vk_device::query_swapchain_support(
 		&out_support_info->present_mode_count,
 		0));
 	if (out_support_info->present_mode_count != 0) {
+		if (!out_support_info->present_modes) {
+			out_support_info->present_modes = static_cast<VkPresentModeKHR*>(
+				sxmemory::allocate(
+					sizeof(VkPresentModeKHR) * out_support_info->present_mode_count, 
+					MEMORY_TAG_RENDERER));
+		}
 		VKCHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(
 			physical_device,
 			surface,
-			&out_support_info->format_count,
-			out_support_info->present_modes.data()));
+			&out_support_info->present_mode_count,
+			out_support_info->present_modes));
 	}
+}
+
+bool vk_device::detect_depth_format(vulkan_device *device) {
+	const uint64_t candidate_count = 3;
+	VkFormat candidates[candidate_count] = {
+		VK_FORMAT_D32_SFLOAT,
+		VK_FORMAT_D32_SFLOAT_S8_UINT,
+		VK_FORMAT_D24_UNORM_S8_UINT};
+
+	uint32_t flags = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT;
+	for (uint64_t i = 0; i < candidate_count; ++i) {
+		VkFormatProperties properties;
+		vkGetPhysicalDeviceFormatProperties(device->physical_device, candidates[i], &properties);
+		if ((properties.linearTilingFeatures & flags) == flags) {
+			device->depth_format = candidates[i];
+			return true;
+		} else if ((properties.optimalTilingFeatures & flags) == flags) {
+			device->depth_format = candidates[i];
+			return true;
+		}
+	}
+	return false;
 }
 
 bool select_physical_device(vulkan_context *context) {
@@ -174,7 +215,7 @@ bool select_physical_device(vulkan_context *context) {
 	uint32_t physical_device_count = 0;
 	VKCHECK(vkEnumeratePhysicalDevices(context->instance, &physical_device_count, 0));
 	if (physical_device_count == 0) {
-		printf("FAILED TO FIND DEVICES WHICH SUPPORT VULKAN\n");
+		SXERROR("FAILED TO FIND DEVICES WHICH SUPPORT VULKAN\n");
 		return false;
 	}
 	std::vector<VkPhysicalDevice> physical_devices(physical_device_count);
@@ -252,8 +293,9 @@ bool select_physical_device(vulkan_context *context) {
 			context->device.physical_device = physical_devices[i];
 			context->device.graphics_queue_index = queue_info.graphics_family_index;
 			context->device.present_queue_index = queue_info.present_family_index;
-			//context->device.compute_queue_index = queue_info.compute_family_index;
+			context->device.compute_queue_index = queue_info.compute_family_index;
 			context->device.transfer_queue_index = queue_info.transfer_family_index;
+
 			context->device.properties = properties;
 			context->device.features = features;
 			context->device.memory = memory;
@@ -301,11 +343,10 @@ bool physical_device_meets_requirements(
 			++current_transfer_score;
 		}
 
-		/*
 		if (queue_families[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
 			out_queue_info->compute_family_index = i;
 			++current_transfer_score;
-		}*/
+		}
 
 		if (queue_families[i].queueFlags & VK_QUEUE_TRANSFER_BIT) {
 			if (current_transfer_score <= min_transfer_score) {
@@ -330,34 +371,48 @@ bool physical_device_meets_requirements(
 	if (
 		(!requirements->graphics || (requirements->graphics && out_queue_info->graphics_family_index != -1)) &&
 		(!requirements->present || (requirements->present && out_queue_info->present_family_index != -1)) &&
-		//(!requirements->compute || (requirements->compute && out_queue_info->compute_family_index != -1)) &&
+		(!requirements->compute || (requirements->compute && out_queue_info->compute_family_index != -1)) &&
 		(!requirements->transfer || (requirements->transfer && out_queue_info->transfer_family_index != -1))) {
 		SXDEBUG("DEVICE MEETS REQUIREMENTS");
 		SXDEBUG("GRAPHICS FAMILY INDEX: %i", out_queue_info->graphics_family_index);
 		SXDEBUG("PRESENT FAMILY INDEX: %i", out_queue_info->present_family_index);
-		//SXDEBUG("COMPUTE FAMILY INDEX: %i", out_queue_info->compute_family_index);
+		SXDEBUG("COMPUTE FAMILY INDEX: %i", out_queue_info->compute_family_index);
 		SXDEBUG("TRANSFER FAMILY INDEX: %i", out_queue_info->transfer_family_index);
+
 		vk_device::query_swapchain_support(device, surface, out_swapchain_support);
 		if (out_swapchain_support->format_count < 1 || out_swapchain_support->present_mode_count < 1) {
+			if (out_swapchain_support->formats) {
+				sxmemory::free_memory(
+					out_swapchain_support->formats, 
+					sizeof(VkSurfaceFormatKHR) * out_swapchain_support->format_count, 
+					MEMORY_TAG_RENDERER);
+			}
+			if (out_swapchain_support->present_modes) {
+				sxmemory::free_memory(
+					out_swapchain_support->present_modes,
+					sizeof(VkPresentModeKHR) * out_swapchain_support->present_mode_count,
+					MEMORY_TAG_RENDERER);
+			}
 			SXERROR("REQUIRED SWAPCHAIN SUPPORT NOT PRESENT");
 			return false;
 		}
 
 		if (requirements->device_extensions.data()) {
 			unsigned int available_extension_count = 0;
-			std::vector<VkExtensionProperties> available_extensions;
+			VkExtensionProperties* available_extensions = 0;
 			VKCHECK(vkEnumerateDeviceExtensionProperties(
 				device, 
 				nullptr, 
 				&available_extension_count, 
 				nullptr));
 			if (available_extension_count != 0) {
-				available_extensions.resize(available_extension_count);
+				available_extensions = static_cast<VkExtensionProperties*>(
+					sxmemory::allocate(sizeof(VkExtensionProperties) * available_extension_count, MEMORY_TAG_RENDERER));
 				VKCHECK(vkEnumerateDeviceExtensionProperties(
 					device, 
 					nullptr, 
 					&available_extension_count, 
-					available_extensions.data()));
+					available_extensions));
 				for (int i = 0; i < requirements->device_extensions.size(); ++i) {
 					bool found = false;
 					for (unsigned int j = 0; j < available_extension_count; ++j) {
@@ -368,13 +423,15 @@ bool physical_device_meets_requirements(
 					}
 					if (!found) {
 						SXERROR("REQUIRED EXTENSION NOT FOUND: %s", requirements->device_extensions[i]);
+						sxmemory::free_memory(available_extensions,sizeof(VkExtensionProperties) * available_extension_count, MEMORY_TAG_RENDERER);
 						return false;
 					}
 				}
 			}
+			sxmemory::free_memory(available_extensions, sizeof(VkExtensionProperties) * available_extension_count, MEMORY_TAG_RENDERER);
 		}
 		if (requirements->sampler_anisotrophy && !features->samplerAnisotropy) {
-			SXERROR("DEVICE DOES NOT SUPPORT SAMPLER ANISOTROPY");
+			SXWARN("DEVICE DOES NOT SUPPORT SAMPLER ANISOTROPY");
 			return false;
 		}
 		return true;
