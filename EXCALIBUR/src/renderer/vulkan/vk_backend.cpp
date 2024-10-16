@@ -3,6 +3,7 @@
 #include "vk_platform.h"
 #include "vk_device.h"
 #include "vk_swapchain.h"
+#include "vk_renderpass.h"
 
 #include "core/sxlogger.h"
 
@@ -36,19 +37,32 @@ bool vk_backend::initialize(platform_state *platform) {
 		context.framebuffer_height,
 		&context.swapchain);
 
+	vk_renderpass::create(
+		&context,
+		&context.main_renderpass,
+		0, 0, (float)context.framebuffer_width, (float)context.framebuffer_height,
+		0.2f, 0.2f, 0.3f, 1.0f,
+		1.0f,
+		0);
+
 	SXDEBUG("VULKAN RENDERER INITIALIZED SUCCESSFULLY");
 	return true;
 }
 
 void vk_backend::shutdown() {
 	SXDEBUG("SHUTTING DOWN VULKAN BACKEND");
+	vk_renderpass::destroy(&context, &context.main_renderpass);
+
 	vk_swapchain::destroy(&context, &context.swapchain);
+
 	vk_device::destroy(&context);
+
 	if (context.surface) {
 		SXDEBUG("DESTROYING VULKAN SURFACE");
 		vkDestroySurfaceKHR(context.instance, context.surface, context.allocator);
 		context.surface = 0;
 	}
+
 	vk_instance::destroy(&context);
 }
 

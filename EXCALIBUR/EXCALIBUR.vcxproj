@@ -86,6 +86,7 @@
     <ClCompile Include="src\renderer\vulkan\vk_device.cpp" />
     <ClCompile Include="src\renderer\vulkan\vk_image.cpp" />
     <ClCompile Include="src\renderer\vulkan\vk_instance.cpp" />
+    <ClCompile Include="src\renderer\vulkan\vk_renderpass.cpp" />
     <ClCompile Include="src\renderer\vulkan\vk_swapchain.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -98,6 +99,7 @@
     <ClInclude Include="src\renderer\vulkan\vk_image.h" />
     <ClInclude Include="src\renderer\vulkan\vk_instance.h" />
     <ClInclude Include="src\renderer\vulkan\vk_platform.h" />
+    <ClInclude Include="src\renderer\vulkan\vk_renderpass.h" />
     <ClInclude Include="src\renderer\vulkan\vk_swapchain.h" />
     <ClInclude Include="src\renderer\vulkan\vk_types.h" />
   </ItemGroup>
