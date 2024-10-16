@@ -4,12 +4,15 @@
 #include "vk_device.h"
 #include "vk_swapchain.h"
 #include "vk_renderpass.h"
+#include "vk_command_buffer.h"
 
 #include "core/sxlogger.h"
+#include "core/sxmemory.h"
 
 static vulkan_context context;
 
 int32_t find_memory_index(uint32_t type_filter, uint32_t property_flags);
+void create_command_buffers();
 
 bool vk_backend::initialize(platform_state *platform) {
 	context.find_memory_index = find_memory_index;
@@ -45,12 +48,27 @@ bool vk_backend::initialize(platform_state *platform) {
 		1.0f,
 		0);
 
+	create_command_buffers();
+
 	SXDEBUG("VULKAN RENDERER INITIALIZED SUCCESSFULLY");
 	return true;
 }
 
 void vk_backend::shutdown() {
 	SXDEBUG("SHUTTING DOWN VULKAN BACKEND");
+
+	SXDEBUG("RELEASING VULKAN COMMAND BUFFERS");
+	for (uint32_t i = 0; i < context.swapchain.image_count; ++i) {
+		if (context.graphics_command_buffers[i].handle) {
+			vk_command_buffer::free(
+				&context,
+				context.device.graphics_command_pool,
+				&context.graphics_command_buffers[i]);
+			context.graphics_command_buffers[i].handle = 0;
+		}
+	}
+	// NOTE: destroy command buffers array
+
 	vk_renderpass::destroy(&context, &context.main_renderpass);
 
 	vk_swapchain::destroy(&context, &context.swapchain);
@@ -77,4 +95,28 @@ int32_t find_memory_index(uint32_t type_filter, uint32_t property_flags) {
 	}
 	SXWARN("UNABLE TO FIND SUITABLE MEMORY TYPE");
 	return -1;
+}
+
+void create_command_buffers() {
+	SXDEBUG("CREATING VULKAN COMMAND BUFFERS");
+
+	if (!context.graphics_command_buffers.data()) {
+		context.graphics_command_buffers.resize(context.swapchain.image_count);
+		for (uint32_t i = 0; i < context.swapchain.image_count; ++i) {
+			sxmemory::zero_memory(&context.graphics_command_buffers[i], sizeof(vulkan_command_buffer));
+		}
+	}
+
+	for (uint32_t i = 0; i < context.swapchain.image_count; ++i) {
+		if (context.graphics_command_buffers[i].handle) {
+			vk_command_buffer::free(
+				&context,
+				context.device.graphics_command_pool,
+				&context.graphics_command_buffers[i]);
+		}
+		sxmemory::zero_memory(&context.graphics_command_buffers[i], sizeof(vulkan_command_buffer));
+		vk_command_buffer::allocate(&context, context.device.graphics_command_pool, true, &context.graphics_command_buffers[i]);
+	}
+
+	SXDEBUG("VULKAN COMMAND BUFFERS CREATED");
 }

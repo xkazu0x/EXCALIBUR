@@ -83,6 +83,7 @@
     <ClCompile Include="src\excalibur_engine.cpp" />
     <ClCompile Include="src\platform\platform_win32.cpp" />
     <ClCompile Include="src\renderer\vulkan\vk_backend.cpp" />
+    <ClCompile Include="src\renderer\vulkan\vk_command_buffer.cpp" />
     <ClCompile Include="src\renderer\vulkan\vk_device.cpp" />
     <ClCompile Include="src\renderer\vulkan\vk_image.cpp" />
     <ClCompile Include="src\renderer\vulkan\vk_instance.cpp" />
@@ -102,6 +103,7 @@
     <ClInclude Include="src\renderer\vulkan\vk_renderpass.h" />
     <ClInclude Include="src\renderer\vulkan\vk_swapchain.h" />
     <ClInclude Include="src\renderer\vulkan\vk_types.h" />
+    <ClInclude Include="src\renderer\vulkan\vk_command_buffer.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

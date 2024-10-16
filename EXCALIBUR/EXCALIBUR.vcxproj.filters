@@ -45,6 +45,9 @@
     <ClCompile Include="src\renderer\vulkan\vk_renderpass.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\renderer\vulkan\vk_command_buffer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\renderer\vulkan\vk_types.h">
@@ -81,6 +84,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\renderer\vulkan\vk_renderpass.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\renderer\vulkan\vk_command_buffer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

@@ -102,10 +102,31 @@ bool vk_device::create(vulkan_context *context) {
 		&context->device.transfer_queue);
 	SXDEBUG("QUEUES OBTAINED");
 
+	// create command pool for graphics queue
+	VkCommandPoolCreateInfo pool_create_info = {};
+	pool_create_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	pool_create_info.queueFamilyIndex = context->device.graphics_queue_index;
+	pool_create_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+	VKCHECK(vkCreateCommandPool(
+		context->device.logical_device, 
+		&pool_create_info, 
+		context->allocator, 
+		&context->device.graphics_command_pool));
+	SXDEBUG("GRAPHICS COMMAND POOL CREATED");
+
 	return true;
 }
 
 void vk_device::destroy(vulkan_context *context) {
+	SXDEBUG("DESTROYING VULKAN COMMAND POOL");
+	if (context->device.graphics_command_pool) {
+		vkDestroyCommandPool(
+			context->device.logical_device,
+			context->device.graphics_command_pool,
+			context->allocator);
+		context->device.graphics_command_pool = 0;
+	}
+
 	//context->device.graphics_queue = 0;
 	//context->device.present_queue = 0;
 	//context->device.compute_queue_index = 0;
