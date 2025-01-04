@@ -114,11 +114,30 @@
 # define ARCH_ARM64 0
 #endif
 
+/////////////////////////////
+// NOTE(xkazu0x): basic types
+
+#include <stdint.h>
+typedef int8_t  int8;
+typedef int16_t int16;
+typedef int32_t int32;
+typedef int64_t int64;
+typedef uint8_t  uint8;
+typedef uint16_t uint16;
+typedef uint32_t uint32;
+typedef uint64_t uint64;
+typedef int8  bool8;
+typedef int16 bool16;
+typedef int32 bool32;
+typedef int64 bool64;
+typedef float  float32;
+typedef double float64;
+
 ///////////////////////////////
 // NOTE(xkazu0x): helper macros
 
-#if !defined(EXM_ENABLE_ASSERT)
-# define EXM_ENABLE_ASSERT
+#if !defined(EX_ENABLE_ASSERT)
+# define EX_ENABLE_ASSERT
 #endif
 
 #define EXM_STMNT(x) do { x } while(0)
@@ -167,5 +186,117 @@
 #define EXM_MEMORY_COPY_ARRAY(d,s) memmove((d),(s),EXM_MIN(sizeof(s), sizeof(d)))
 #define EXM_MEMORY_COPY_TYPED(d,s,c) memmove((d),(s),\
                                              EXM_MIN(sizeof(*(d)), sizeof(*(s)))*(c))
+
+/////////////////////////////////
+// NOTE(xkazu0x): basic constants
+
+global int8  min_int8  = (int8) 0x80;
+global int16 min_int16 = (int16)0x8000;
+global int32 min_int32 = (int32)0x80000000;
+global int64 min_int64 = (int64)0x8000000000000000llu;
+
+global int8  max_int8  = (int8) 0x7f;
+global int16 max_int16 = (int16)0x7fff;
+global int32 max_int32 = (int32)0x7fffffff;
+global int64 max_int64 = (int64)0x7fffffffffffffffllu;
+
+global uint8  max_uint8  = 0xff;
+global uint16 max_uint16 = 0xffff;
+global uint32 max_uint32 = 0xffffffff;
+global uint64 max_uint64 = 0xffffffffffffffffllu;
+
+global float32 pi_f32 = 3.14159265359f;
+global float64 pi_f64 = 3.14159265359;
+
+////////////////////////////////
+// NOTE(xkazu0x): compound types
+
+union VEC2I {
+    struct {
+        int32 x;
+        int32 y;
+    };
+    int32 data[2];
+};
+
+union VEC2F {
+    struct {
+        float32 x;
+        float32 y;
+    };
+    float32 data[2];
+};
+
+union VEC3F {
+    struct {
+        float32 x;
+        float32 y;
+        float32 z;
+    };
+    float32 data[3];
+};
+
+union VEC4F {
+    struct {
+        float32 x;
+        float32 y;
+        float32 z;
+        float32 w;
+    };
+    float32 data[4];
+};
+
+////////////////////////////////
+// NOTE(xkazu0x): math functions
+
+function float32 abs_f32(float32 x);
+function float64 abs_f64(float64 x);
+
+function float32 sqrt_f32(float32 x);
+function float32 sin_f32(float32 x);
+function float32 cos_f32(float32 x);
+function float32 tan_f32(float32 x);
+
+function float64 sqrt_f64(float64 x);
+function float64 sin_f64(float64 x);
+function float64 cos_f64(float64 x);
+function float64 tan_f64(float64 x);
+
+/////////////////////////////////////////
+// NOTE(xkazu0x): compound type functions
+
+function VEC2I vec2i(int32 x, int32 y);
+
+function VEC2F vec2f(float32 x, float32 y);
+function VEC3F vec3f(float32 x, float32 y, float32 z);
+function VEC4F vec4f(float32 x, float32 y, float32 z, float32 w);
+
+function VEC2I operator+(const VEC2I &a, const VEC2I &b);
+function VEC2F operator+(const VEC2F &a, const VEC2F &b);
+function VEC3F operator+(const VEC3F &a, const VEC3F &b);
+function VEC4F operator+(const VEC4F &a, const VEC4F &b);
+
+function VEC2I operator-(const VEC2I &a, const VEC2I &b);
+function VEC2F operator-(const VEC2F &a, const VEC2F &b);
+function VEC3F operator-(const VEC3F &a, const VEC3F &b);
+function VEC4F operator-(const VEC4F &a, const VEC4F &b);
+
+function VEC2I operator*(const VEC2I &v, const int32 &s);
+function VEC2F operator*(const VEC2F &v, const float32 &s);
+function VEC3F operator*(const VEC3F &v, const float32 &s);
+function VEC4F operator*(const VEC4F &v, const float32 &s);
+
+function VEC2I operator*(const int32 &s, const VEC2I &v);
+function VEC2F operator*(const float32 &s, const VEC2F &v);
+function VEC3F operator*(const float32 &s, const VEC3F &v);
+function VEC4F operator*(const float32 &s, const VEC4F &v);
+
+function VEC2F vec2_hadamard(VEC2F a, VEC2F b);
+function VEC3F vec3_hadamard(VEC3F a, VEC3F b);
+function VEC4F vec4_hadamard(VEC4F a, VEC4F b);
+
+function float32 vec2_dot(VEC2F a, VEC2F b);
+function float32 vec3_dot(VEC3F a, VEC3F b);
+function float32 vec4_dot(VEC4F a, VEC4F b);
 
 #endif // EX_BASE_H

@@ -1,14 +1,9 @@
 #include "ex_base.h"
+#include "ex_base.cpp"
 #include <stdio.h>
 
-struct TEST_STRUCT {
-    int a;
-    int b;
-    int c;
-    int d;
-};
-
-#define EX_PRINT(x) printf("%s = %lld\n", #x, (x))
+#define EX_PRINT(x) printf("%s = %d\n", #x, (x))
+#define EX_PRINTF(x) printf("%s = %f\n", #x, (float32)(x))
 
 int main(void) {
     printf("cl      = %d\n", COMPILER_CL);
@@ -22,14 +17,13 @@ int main(void) {
     printf("arm     = %d\n", ARCH_ARM);
     printf("arm64   = %d\n", ARCH_ARM64);
 
-    EX_PRINT(EXM_OFFSETOF(TEST_STRUCT, a));
-    EX_PRINT(EXM_OFFSETOF(TEST_STRUCT, b));
-    EX_PRINT(EXM_OFFSETOF(TEST_STRUCT, c));
-    EX_PRINT(EXM_OFFSETOF(TEST_STRUCT, d));
+    VEC2I v0 = vec2i(20, 30);
+    VEC3F v1 = vec3f(0.0f, 0.0f, 0.0f);
+    VEC3F v2 = { 1.0f, 1.0f, 1.0f};
 
-    TEST_STRUCT t = { 1, 2, 3, 4 };
-    EX_PRINT(t.a);
-    EX_PRINT(t.b);
+    EX_PRINT(v0.x);
+    EX_PRINTF(v1.x);
+    EX_PRINTF(v2.x);
     
     return(0);
 }

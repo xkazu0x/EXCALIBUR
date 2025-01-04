@@ -1,5 +1,5 @@
 CC := g++
-CFLAGS := -g -Wall -Wextra -O0 -Wno-format
+CFLAGS := -g -Wall -Wextra -O0 -Wno-format -Wno-unused-variable -Wno-unused-function
 INCLUDES := -I.
 LIBS := -lkernel32 -luser32
 DEFINES := -DEX_ENABLE_ASSERT
