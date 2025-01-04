@@ -1,6 +1,9 @@
 #ifndef EX_BASE_H
 #define EX_BASE_H
 
+//////////////////////////////////
+// NOTE(xkazu0x): context cracking
+
 #if defined(__clang__)
 # define COMPILER_CLANG 1
 
@@ -110,5 +113,59 @@
 #if !defined(ARCH_ARM64)
 # define ARCH_ARM64 0
 #endif
+
+///////////////////////////////
+// NOTE(xkazu0x): helper macros
+
+#if !defined(EXM_ENABLE_ASSERT)
+# define EXM_ENABLE_ASSERT
+#endif
+
+#define EXM_STMNT(x) do { x } while(0)
+#define EXM_ASSERT_BREAK() (*(int*)0 = 0)
+
+#ifdef EX_ENABLE_ASSERT
+# define EXM_ASSERT(x) EXM_STMNT(if (!(x)) { EXM_ASSERT_BREAK(); })
+#else
+# define EXM_ASSERT(x)
+#endif
+
+#define EXM_ARRAY_COUNT(x) (sizeof(x)/sizeof(*(x)))
+
+#define EXM_INT_FROM_PTR(p) (unsigned long long)((char*)p - (char*)0)
+#define EXM_PTR_FROM_INT(n) (void*)((char*)0 + (n))
+
+#define EXM_MEMBER(T, m) (((T*)0)->m)
+#define EXM_OFFSETOF(T, m) EXM_INT_FROM_PTR(&EXM_MEMBER(T, m))
+
+#define EXM_MIN(a, b) (((a)<(b))?(a):(b))
+#define EXM_MAX(a, b) (((a)>(b))?(a):(b))
+#define EXM_CLAMP(a, x, b) (((x)<(a))?(a):\
+                            ((b)<(x))?(b):(x))
+#define EXM_CLAMP_TOP(a, b) EXM_MIN(a, b)
+#define EXM_CLAMP_BOT(a, b) EXM_MAX(a, b)
+
+#define global static
+#define local static
+#define function static
+
+#define C_LINKAGE_BEGIN extern "C" {
+#define C_LINKAGE_END }
+#define C_LINKAGE extern "C"
+
+#include <string.h>
+#define EXM_MEMORY_ZERO(p,z) memset((p), 0, (z))
+#define EXM_MEMORY_ZERO_STRUCT(p) EXM_MEMORY_ZERO((p), sizeof(*(p)))
+#define EXM_MEMORY_ZERO_ARRAY(p) EXM_MEMORY_ZERO((p), sizeof(p))
+#define EXM_MEMORY_ZERO_TYPED(p,c) EXM_MEMORY_ZERO((p), sizeof(*(p))*(c))
+
+#define EXM_MEMORY_MATCH(a,b,z) (memcmp((a),(b),(z)) == 0)
+
+#define EXM_MEMORY_COPY(d,s,z) memmove((d),(s),(z))
+#define EXM_MEMORY_COPY_STRUCT(d,s) memmove((d),(s),\
+                                            EXM_MIN(sizeof(*(d)), sizeof(*(s))))
+#define EXM_MEMORY_COPY_ARRAY(d,s) memmove((d),(s),EXM_MIN(sizeof(s), sizeof(d)))
+#define EXM_MEMORY_COPY_TYPED(d,s,c) memmove((d),(s),\
+                                             EXM_MIN(sizeof(*(d)), sizeof(*(s)))*(c))
 
 #endif // EX_BASE_H

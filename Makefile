@@ -1,8 +1,8 @@
 CC := g++
-CFLAGS := -g -Wall -Wextra -O0
+CFLAGS := -g -Wall -Wextra -O0 -Wno-format
 INCLUDES := -I.
 LIBS := -lkernel32 -luser32
-DEFINES := -D_DEBUG
+DEFINES := -DEX_ENABLE_ASSERT
 
 SRC_DIR := src
 OBJ_DIR := obj
