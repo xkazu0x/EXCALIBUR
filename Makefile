@@ -1,8 +1,8 @@
 CC := g++
-CFLAGS := -g -Wall -Wextra -O0 -Wno-format -Wno-unused-variable -Wno-unused-function
+CFLAGS := -g -Wall -O0 -Wno-unused-variable -Wno-unused-function
 INCLUDES := -I.
 LIBS := -lkernel32 -luser32
-DEFINES := -DEX_ENABLE_ASSERT
+DEFINES := -DEX_DEBUG_MODE
 
 SRC_DIR := src
 OBJ_DIR := obj

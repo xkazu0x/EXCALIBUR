@@ -1,5 +1,76 @@
 #include "ex_base.h"
 
+function OPERATING_SYSTEM
+operating_system_from_context(void) {
+    OPERATING_SYSTEM result = OPERATING_SYSTEM_UNDEFINED;
+#if OS_WINDOWS
+    result = OPERATING_SYSTEM_WINDOWS;
+#elif OS_LINUX
+    result = OPERATING_SYSTEM_LINUX;
+#elif OS_MAC
+    result = OPERATING_SYSTEM_MAC;
+#endif
+    return(result);
+}
+
+function ARCHITECTURE
+architecture_from_context(void) {
+    ARCHITECTURE result = ARCHITECTURE_UNDEFINED;
+#if ARCH_X64
+    result = ARCHITECTURE_X64;
+#elif ARCH_X86
+    result = ARCHITECTURE_X86;
+#elif ARCH_ARM
+    result = ARCHITECTURE_ARM;
+#elif ARCH_ARM64
+    result = ARCHITECTURE_ARM64;
+#endif
+    return(result);
+}
+
+function const char *
+string_from_operating_system(OPERATING_SYSTEM os) {
+    const char *result = "";
+    switch(os) {
+        case OPERATING_SYSTEM_WINDOWS: {
+            result = "WINDOWS";
+        } break;
+        case OPERATING_SYSTEM_LINUX: {
+            result = "LINUX";
+        } break;
+        case OPERATING_SYSTEM_MAC: {
+            result = "MAC";
+        } break;
+        default: {
+            result = "UNDEFINED";
+        }
+    }
+    return(result);
+}
+
+function const char *
+string_from_architecture(ARCHITECTURE arch) {
+    const char *result = "";
+    switch(arch) {
+        case ARCHITECTURE_X64: {
+            result = "X64";
+        } break;
+        case ARCHITECTURE_X86: {
+            result = "X86";
+        } break;
+        case ARCHITECTURE_ARM: {
+            result = "ARM";
+        } break;
+        case ARCHITECTURE_ARM64: {
+            result = "ARM64";
+        } break;
+        default: {
+            result = "UNDEFINED";
+        }
+    }
+    return(result);
+}
+
 ////////////////////////////////
 // NOTE(xkazu0x): math functions
 

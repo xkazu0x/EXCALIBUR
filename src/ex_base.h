@@ -136,14 +136,10 @@ typedef double float64;
 ///////////////////////////////
 // NOTE(xkazu0x): helper macros
 
-#if !defined(EX_ENABLE_ASSERT)
-# define EX_ENABLE_ASSERT
-#endif
-
 #define EXM_STMNT(x) do { x } while(0)
 #define EXM_ASSERT_BREAK() (*(int*)0 = 0)
 
-#ifdef EX_ENABLE_ASSERT
+#ifdef EX_DEBUG_MODE
 # define EXM_ASSERT(x) EXM_STMNT(if (!(x)) { EXM_ASSERT_BREAK(); })
 #else
 # define EXM_ASSERT(x)
@@ -163,6 +159,9 @@ typedef double float64;
                             ((b)<(x))?(b):(x))
 #define EXM_CLAMP_TOP(a, b) EXM_MIN(a, b)
 #define EXM_CLAMP_BOT(a, b) EXM_MAX(a, b)
+
+#define EX_FALSE 0
+#define EX_TRUE 1
 
 #define global static
 #define local static
@@ -208,6 +207,26 @@ global uint64 max_uint64 = 0xffffffffffffffffllu;
 global float32 pi_f32 = 3.14159265359f;
 global float64 pi_f64 = 3.14159265359;
 
+////////////////////////////////////
+// NOTE(xkazu0x): symbolic constants
+
+enum OPERATING_SYSTEM {
+    OPERATING_SYSTEM_UNDEFINED,
+    OPERATING_SYSTEM_WINDOWS,
+    OPERATING_SYSTEM_LINUX,
+    OPERATING_SYSTEM_MAC,
+    OPERATING_SYSTEM_MAX,
+};
+
+enum ARCHITECTURE {
+    ARCHITECTURE_UNDEFINED,
+    ARCHITECTURE_X64,
+    ARCHITECTURE_X86,
+    ARCHITECTURE_ARM,
+    ARCHITECTURE_ARM64,
+    ARCHITECTURE_MAX,
+};
+
 ////////////////////////////////
 // NOTE(xkazu0x): compound types
 
@@ -245,6 +264,15 @@ union VEC4F {
     };
     float32 data[4];
 };
+
+/////////////////////////////////////////////
+// NOTE(xkazu0x): symbolic constant functions
+
+function OPERATING_SYSTEM operating_system_from_context(void);
+function ARCHITECTURE architecture_from_context(void);
+
+function const char *string_from_operating_system(OPERATING_SYSTEM os);
+function const char *string_from_architecture(ARCHITECTURE arch);
 
 ////////////////////////////////
 // NOTE(xkazu0x): math functions
