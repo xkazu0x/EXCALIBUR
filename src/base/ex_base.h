@@ -136,29 +136,29 @@ typedef double float64;
 ///////////////////////////////
 // NOTE(xkazu0x): helper macros
 
-#define EXM_STMNT(x) do { x } while(0)
-#define EXM_ASSERT_BREAK() (*(int*)0 = 0)
+#define EX_STMNT(x) do { x } while(0)
+#define EX_ASSERT_BREAK() (*(int*)0 = 0)
 
 #ifdef EX_DEBUG_MODE
-# define EXM_ASSERT(x) EXM_STMNT(if (!(x)) { EXM_ASSERT_BREAK(); })
+# define EX_ASSERT(x) EX_STMNT(if (!(x)) { EX_ASSERT_BREAK(); })
 #else
-# define EXM_ASSERT(x)
+# define EX_ASSERT(x)
 #endif
 
-#define EXM_ARRAY_COUNT(x) (sizeof(x)/sizeof(*(x)))
+#define EX_ARRAY_COUNT(x) (sizeof(x)/sizeof(*(x)))
 
-#define EXM_INT_FROM_PTR(p) (unsigned long long)((char*)p - (char*)0)
-#define EXM_PTR_FROM_INT(n) (void*)((char*)0 + (n))
+#define EX_INT_FROM_PTR(p) (unsigned long long)((char*)p - (char*)0)
+#define EX_PTR_FROM_INT(n) (void*)((char*)0 + (n))
 
-#define EXM_MEMBER(T, m) (((T*)0)->m)
-#define EXM_OFFSETOF(T, m) EXM_INT_FROM_PTR(&EXM_MEMBER(T, m))
+#define EX_MEMBER(T, m) (((T*)0)->m)
+#define EX_OFFSETOF(T, m) EX_INT_FROM_PTR(&EX_MEMBER(T, m))
 
-#define EXM_MIN(a, b) (((a)<(b))?(a):(b))
-#define EXM_MAX(a, b) (((a)>(b))?(a):(b))
-#define EXM_CLAMP(a, x, b) (((x)<(a))?(a):\
-                            ((b)<(x))?(b):(x))
-#define EXM_CLAMP_TOP(a, b) EXM_MIN(a, b)
-#define EXM_CLAMP_BOT(a, b) EXM_MAX(a, b)
+#define EX_MIN(a, b) (((a)<(b))?(a):(b))
+#define EX_MAX(a, b) (((a)>(b))?(a):(b))
+#define EX_CLAMP(a, x, b) (((x)<(a))?(a):\
+                           ((b)<(x))?(b):(x))
+#define EX_CLAMP_TOP(a, b) EXM_MIN(a, b)
+#define EX_CLAMP_BOT(a, b) EXM_MAX(a, b)
 
 #define EX_FALSE 0
 #define EX_TRUE 1
@@ -172,19 +172,19 @@ typedef double float64;
 #define C_LINKAGE extern "C"
 
 #include <string.h>
-#define EXM_MEMORY_ZERO(p,z) memset((p), 0, (z))
-#define EXM_MEMORY_ZERO_STRUCT(p) EXM_MEMORY_ZERO((p), sizeof(*(p)))
-#define EXM_MEMORY_ZERO_ARRAY(p) EXM_MEMORY_ZERO((p), sizeof(p))
-#define EXM_MEMORY_ZERO_TYPED(p,c) EXM_MEMORY_ZERO((p), sizeof(*(p))*(c))
+#define EX_MEMORY_ZERO(p,z) memset((p), 0, (z))
+#define EX_MEMORY_ZERO_STRUCT(p) EX_MEMORY_ZERO((p), sizeof(*(p)))
+#define EX_MEMORY_ZERO_ARRAY(p) EX_MEMORY_ZERO((p), sizeof(p))
+#define EX_MEMORY_ZERO_TYPED(p,c) EX_MEMORY_ZERO((p), sizeof(*(p))*(c))
 
-#define EXM_MEMORY_MATCH(a,b,z) (memcmp((a),(b),(z)) == 0)
+#define EX_MEMORY_MATCH(a,b,z) (memcmp((a),(b),(z)) == 0)
 
-#define EXM_MEMORY_COPY(d,s,z) memmove((d),(s),(z))
-#define EXM_MEMORY_COPY_STRUCT(d,s) memmove((d),(s),\
-                                            EXM_MIN(sizeof(*(d)), sizeof(*(s))))
-#define EXM_MEMORY_COPY_ARRAY(d,s) memmove((d),(s),EXM_MIN(sizeof(s), sizeof(d)))
-#define EXM_MEMORY_COPY_TYPED(d,s,c) memmove((d),(s),\
-                                             EXM_MIN(sizeof(*(d)), sizeof(*(s)))*(c))
+#define EX_MEMORY_COPY(d,s,z) memmove((d),(s),(z))
+#define EX_MEMORY_COPY_STRUCT(d,s) memmove((d),(s),\
+                                           EX_MIN(sizeof(*(d)), sizeof(*(s))))
+#define EX_MEMORY_COPY_ARRAY(d,s) memmove((d),(s),EX_MIN(sizeof(s), sizeof(d)))
+#define EX_MEMORY_COPY_TYPED(d,s,c) memmove((d),(s),\
+                                            EX_MIN(sizeof(*(d)), sizeof(*(s)))*(c))
 
 /////////////////////////////////
 // NOTE(xkazu0x): basic constants
@@ -230,7 +230,7 @@ enum ARCHITECTURE {
 ////////////////////////////////
 // NOTE(xkazu0x): compound types
 
-union VEC2I {
+union vec2i {
     struct {
         int32 x;
         int32 y;
@@ -238,7 +238,7 @@ union VEC2I {
     int32 data[2];
 };
 
-union VEC2F {
+union vec2f {
     struct {
         float32 x;
         float32 y;
@@ -246,7 +246,7 @@ union VEC2F {
     float32 data[2];
 };
 
-union VEC3F {
+union vec3f {
     struct {
         float32 x;
         float32 y;
@@ -255,7 +255,7 @@ union VEC3F {
     float32 data[3];
 };
 
-union VEC4F {
+union vec4f {
     struct {
         float32 x;
         float32 y;
@@ -293,38 +293,83 @@ function float64 tan_f64(float64 x);
 /////////////////////////////////////////
 // NOTE(xkazu0x): compound type functions
 
-function VEC2I vec2i(int32 x, int32 y);
+function inline vec2i vec2i_create(int32 x, int32 y);
+function inline vec2f vec2f_create(float32 x, float32 y);
+function inline vec3f vec3f_create(float32 x, float32 y, float32 z);
+function inline vec4f vec4f_create(float32 x, float32 y, float32 z, float32 w);
 
-function VEC2F vec2f(float32 x, float32 y);
-function VEC3F vec3f(float32 x, float32 y, float32 z);
-function VEC4F vec4f(float32 x, float32 y, float32 z, float32 w);
+function inline vec2i operator+(const vec2i &a, const vec2i &b);
+function inline vec2f operator+(const vec2f &a, const vec2f &b);
+function inline vec3f operator+(const vec3f &a, const vec3f &b);
+function inline vec4f operator+(const vec4f &a, const vec4f &b);
 
-function VEC2I operator+(const VEC2I &a, const VEC2I &b);
-function VEC2F operator+(const VEC2F &a, const VEC2F &b);
-function VEC3F operator+(const VEC3F &a, const VEC3F &b);
-function VEC4F operator+(const VEC4F &a, const VEC4F &b);
+function inline vec2i operator-(const vec2i &a, const vec2i &b);
+function inline vec2f operator-(const vec2f &a, const vec2f &b);
+function inline vec3f operator-(const vec3f &a, const vec3f &b);
+function inline vec4f operator-(const vec4f &a, const vec4f &b);
 
-function VEC2I operator-(const VEC2I &a, const VEC2I &b);
-function VEC2F operator-(const VEC2F &a, const VEC2F &b);
-function VEC3F operator-(const VEC3F &a, const VEC3F &b);
-function VEC4F operator-(const VEC4F &a, const VEC4F &b);
+function inline vec2i operator*(const vec2i &v, const int32 &s);
+function inline vec2f operator*(const vec2f &v, const float32 &s);
+function inline vec3f operator*(const vec3f &v, const float32 &s);
+function inline vec4f operator*(const vec4f &v, const float32 &s);
 
-function VEC2I operator*(const VEC2I &v, const int32 &s);
-function VEC2F operator*(const VEC2F &v, const float32 &s);
-function VEC3F operator*(const VEC3F &v, const float32 &s);
-function VEC4F operator*(const VEC4F &v, const float32 &s);
+function inline vec2i operator*(const int32 &s, const vec2i &v);
+function inline vec2f operator*(const float32 &s, const vec2f &v);
+function inline vec3f operator*(const float32 &s, const vec3f &v);
+function inline vec4f operator*(const float32 &s, const vec4f &v);
 
-function VEC2I operator*(const int32 &s, const VEC2I &v);
-function VEC2F operator*(const float32 &s, const VEC2F &v);
-function VEC3F operator*(const float32 &s, const VEC3F &v);
-function VEC4F operator*(const float32 &s, const VEC4F &v);
+function inline vec2f vec2_hadamard(vec2f a, vec2f b);
+function inline vec3f vec3_hadamard(vec3f a, vec3f b);
+function inline vec4f vec4_hadamard(vec4f a, vec4f b);
 
-function VEC2F vec2_hadamard(VEC2F a, VEC2F b);
-function VEC3F vec3_hadamard(VEC3F a, VEC3F b);
-function VEC4F vec4_hadamard(VEC4F a, VEC4F b);
+function inline float32 vec2_dot(vec2f a, vec2f b);
+function inline float32 vec3_dot(vec3f a, vec3f b);
+function inline float32 vec4_dot(vec4f a, vec4f b);
 
-function float32 vec2_dot(VEC2F a, VEC2F b);
-function float32 vec3_dot(VEC3F a, VEC3F b);
-function float32 vec4_dot(VEC4F a, VEC4F b);
+////////////////////////
+// NOTE(xkazu0x): logger
+
+#define EX_ENABLE_WARN 1
+#define EX_ENABLE_INFO 1
+
+#ifdef EX_DEBUG_MODE
+#define EX_ENABLE_DEBUG 1
+#define EX_ENABLE_TRACE 1
+#endif
+
+enum EX_LOG_LEVEL {
+    EX_LOG_LEVEL_FATAL,
+    EX_LOG_LEVEL_ERROR,
+    EX_LOG_LEVEL_WARN,
+    EX_LOG_LEVEL_INFO,
+    EX_LOG_LEVEL_DEBUG,
+    EX_LOG_LEVEL_TRACE,
+    EX_LOG_LEVEL_MAX,
+};
+
+function void _logger_output(EX_LOG_LEVEL level, const char *message, ...);
+
+#define EXFATAL(message, ...) _logger_output(EX_LOG_LEVEL_FATAL, message, ##__VA_ARGS__);
+#define EXERROR(message, ...) _logger_output(EX_LOG_LEVEL_ERROR, message, ##__VA_ARGS__);
+#if EX_ENABLE_WARN == 1
+#define EXWARN(message, ...) _logger_output(EX_LOG_LEVEL_WARN, message, ##__VA_ARGS__);
+#else
+#define EXWARN(message, ...)
+#endif
+#if EX_ENABLE_INFO == 1
+#define EXINFO(message, ...) _logger_output(EX_LOG_LEVEL_INFO, message, ##__VA_ARGS__);
+#else
+#define EXINFO(message, ...)
+#endif
+#if EX_ENABLE_DEBUG == 1
+#define EXDEBUG(message, ...) _logger_output(EX_LOG_LEVEL_DEBUG, message, ##__VA_ARGS__);
+#else
+#define EXDEBUG(message, ...)
+#endif
+#if EX_ENABLE_TRACE == 1
+#define EXTRACE(message, ...) _logger_output(EX_LOG_LEVEL_TRACE, message, ##__VA_ARGS__);
+#else
+#define EXTRACE(message, ...)
+#endif
 
 #endif // EX_BASE_H
