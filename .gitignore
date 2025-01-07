@@ -2,3 +2,7 @@
 bin/
 
 obj/
+
+.vs/EXCALIBUR/v17/
+
+*.sln
