@@ -4,8 +4,11 @@
 #undef function
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#define function static
 #include <xinput.h>
+#include <mmsystem.h>
+//#include <mmreg.h>
+#include <dsound.h>
+#define function static
 
 enum keyboard_key {
     EX_KEY_ESCAPE = 0x1B,
@@ -61,27 +64,6 @@ enum gamepad_button {
     EX_GAMEPAD_X,
     EX_GAMEPAD_Y,
     EX_GAMEPAD_MAX_BUTTON,
-};
-
-#define X_INPUT_GET_STATE(name) unsigned long __stdcall name(unsigned long dwUseIndex, XINPUT_STATE *pState)
-#define X_INPUT_SET_STATE(name) unsigned long __stdcall name(unsigned long dwUseIndex, XINPUT_VIBRATION *pVibration)
-
-typedef X_INPUT_GET_STATE(XINPUTGETSTATE);
-typedef X_INPUT_SET_STATE(XINPUTSETSTATE);
-
-X_INPUT_GET_STATE(_xinput_get_state) { return(ERROR_DEVICE_NOT_CONNECTED); }
-X_INPUT_SET_STATE(_xinput_set_state) { return(ERROR_DEVICE_NOT_CONNECTED); }
-
-struct win32_window_context {
-    ATOM atom;
-    HWND handle;
-    HINSTANCE instance;
-    WINDOWPLACEMENT placement;
-};
-
-struct win32_input_context {
-    XINPUTGETSTATE *xinput_get_state;
-    XINPUTSETSTATE *xinput_set_state;
 };
 
 struct digital_button {
@@ -153,37 +135,37 @@ struct input_context {
     gamepad_context gamepads[EX_GAMEPAD_MAX_COUNT];
 };
 
-global win32_window_context win32_window;
-global win32_input_context win32_input;
+#define X_INPUT_GET_STATE(name) DWORD WINAPI name(DWORD /*dwUseIndex*/, XINPUT_STATE */*pState*/)
+#define X_INPUT_SET_STATE(name) DWORD WINAPI name(DWORD /*dwUseIndex*/, XINPUT_VIBRATION */*pVibration*/)
+
+typedef X_INPUT_GET_STATE(XINPUTGETSTATE);
+typedef X_INPUT_SET_STATE(XINPUTSETSTATE);
+
+X_INPUT_GET_STATE(_xinput_get_state) { return(ERROR_DEVICE_NOT_CONNECTED); }
+X_INPUT_SET_STATE(_xinput_set_state) { return(ERROR_DEVICE_NOT_CONNECTED); }
+
+function XINPUTGETSTATE *xinput_get_state = &_xinput_get_state;
+function XINPUTSETSTATE *xinput_set_state = &_xinput_set_state;
+
+#define DIRECT_SOUND_CREATE(name) HRESULT WINAPI name(LPCGUID /*pcGuidDevice*/, LPDIRECTSOUND */*ppDS*/, LPUNKNOWN /*pUnkOuter*/)
+typedef DIRECT_SOUND_CREATE(DIRECTSOUNDCREATE);
+
+struct win32_sound_output {
+    int32 samples_per_second;
+    int32 tone_hz;
+    int32 tone_volume;
+    uint32 running_sample_index;
+    int32 wave_period;
+    int32 bytes_per_sample;
+    int32 buffer_size;
+};
+
+global LPDIRECTSOUNDBUFFER global_sound_buffer;
 
 global input_context input;
 global bool8 quit;
 
-void
-toggle_fullscreen() {
-    DWORD window_style = GetWindowLong(win32_window.handle, GWL_STYLE);
-    if (window_style & WS_OVERLAPPEDWINDOW) {
-        MONITORINFO monitor_info = {};
-        monitor_info.cbSize = sizeof(monitor_info);
-        if (GetWindowPlacement(win32_window.handle, &win32_window.placement) &&
-            GetMonitorInfo(MonitorFromWindow(win32_window.handle, MONITOR_DEFAULTTOPRIMARY), &monitor_info)) {
-            SetWindowLong(win32_window.handle, GWL_STYLE, (window_style & ~(WS_OVERLAPPEDWINDOW)) | WS_POPUP);
-            SetWindowPos(win32_window.handle, HWND_TOP,
-                         monitor_info.rcMonitor.left, monitor_info.rcMonitor.top,
-                         monitor_info.rcMonitor.right - monitor_info.rcMonitor.left,
-                         monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top,
-                         SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
-        }
-    } else {
-        SetWindowLongPtr(win32_window.handle, GWL_STYLE, (window_style & ~(WS_POPUP)) | WS_OVERLAPPEDWINDOW);
-        SetWindowPlacement(win32_window.handle, &win32_window.placement);
-        SetWindowPos(win32_window.handle, 0, 0, 0, 0, 0,
-                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
-                     SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
-    }
-}
-
-void
+function void
 process_digital_button(digital_button *button, bool8 down) {
     bool8 was_down = button->down;
     button->pressed = !was_down && down;
@@ -191,7 +173,7 @@ process_digital_button(digital_button *button, bool8 down) {
     button->down = down;
 }
 
-void
+function void
 process_analog_button(analog_button *button, float32 value) {
     button->value = value;
     bool8 was_down = button->down;
@@ -200,7 +182,7 @@ process_analog_button(analog_button *button, float32 value) {
     button->released = was_down && !button->down;
 }
 
-void
+function void
 process_stick(stick *stick, float32 x, float32 y) {
     if (abs_f32(x) <= stick->threshold) x = 0.0f;
     if (abs_f32(y) <= stick->threshold) y = 0.0f;
@@ -222,10 +204,170 @@ win32_window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
     return(result);
 }
 
+function void
+win32_toggle_fullscreen(HWND window, WINDOWPLACEMENT *placement) {
+    DWORD window_style = GetWindowLong(window, GWL_STYLE);
+    if (window_style & WS_OVERLAPPEDWINDOW) {
+        MONITORINFO monitor_info = {};
+        monitor_info.cbSize = sizeof(monitor_info);
+        if (GetWindowPlacement(window, placement) &&
+            GetMonitorInfo(MonitorFromWindow(window, MONITOR_DEFAULTTOPRIMARY), &monitor_info)) {
+            SetWindowLong(window, GWL_STYLE, (window_style & ~(WS_OVERLAPPEDWINDOW)) | WS_POPUP);
+            SetWindowPos(window, HWND_TOP,
+                         monitor_info.rcMonitor.left, monitor_info.rcMonitor.top,
+                         monitor_info.rcMonitor.right - monitor_info.rcMonitor.left,
+                         monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top,
+                         SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+        }
+    } else {
+        SetWindowLongPtr(window, GWL_STYLE, (window_style & ~(WS_POPUP)) | WS_OVERLAPPEDWINDOW);
+        SetWindowPlacement(window, placement);
+        SetWindowPos(window, 0, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                     SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+    }
+}
+
+function void
+win32_gamepad_initialize(void) {
+    HMODULE xinput_module = LoadLibraryA("xinput1_4.dll");
+    if (!xinput_module) {
+        EXERROR("< Failed to load 'xinput1_4.dll'.");
+        xinput_module = LoadLibraryA("xinput1_3.dll");
+        if (!xinput_module) {
+            EXERROR("< Failed to load 'xinput1_3.dll'.");
+            return;
+        } else {
+            EXINFO("\t> Successfully loaded 'xinput1_3.dll'.");
+        }
+    } else { 
+        EXINFO("\t> Successfully loaded 'xinput1_4.dll'.");
+    }
+    if (xinput_module) {
+        xinput_get_state = (XINPUTGETSTATE *)GetProcAddress(xinput_module, "XInputGetState");
+        if (!xinput_get_state) xinput_get_state = _xinput_get_state;
+        xinput_set_state = (XINPUTSETSTATE *)GetProcAddress(xinput_module, "XInputSetState");
+        if (xinput_set_state) xinput_set_state = _xinput_set_state;
+    }
+    
+    float32 trigger_threshold = XINPUT_GAMEPAD_TRIGGER_THRESHOLD / 255.0f;
+    for (uint32 i = 0; i < EX_GAMEPAD_MAX_COUNT; i++) {
+        input.gamepads[i].left_trigger.threshold = trigger_threshold;
+        input.gamepads[i].right_trigger.threshold = trigger_threshold;
+        input.gamepads[i].left_stick.threshold = XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE / 32767.0f;
+        input.gamepads[i].right_stick.threshold = XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE / 32767.0f;
+    }
+}
+
+function void
+win32_sound_initialize(HWND window, int32 samples_per_second, int32 buffer_size) {
+    HMODULE direct_sound_library = LoadLibraryA("dsound.dll");
+    if (!direct_sound_library) {
+        EXERROR("< Failed to load 'dsound.dll'.");
+        return;
+    }
+    EXDEBUG("\t> Successfully loaded 'dsound.dll'.");
+    
+    DIRECTSOUNDCREATE *direct_sound_create = (DIRECTSOUNDCREATE *)
+        GetProcAddress(direct_sound_library, "DirectSoundCreate");
+    if (!direct_sound_create) {
+        EXERROR("< Failed to load function \"DirectSoundCreate\"");
+        return;
+    }
+        
+    IDirectSound *direct_sound;
+    HRESULT result = direct_sound_create(0, &direct_sound, 0);
+    if (FAILED(result)) {
+        EXERROR("< Failed to create direct sound object.");
+        return;
+    }
+    EXDEBUG("\t> Direct sound object created.");
+    direct_sound->SetCooperativeLevel(window, DSSCL_PRIORITY);
+    
+    // NOTE(xkazu0x): create a primary buffer
+    DSBUFFERDESC buffer_description = {};
+    buffer_description.dwSize = sizeof(buffer_description);
+    buffer_description.dwFlags = DSBCAPS_PRIMARYBUFFER;
+
+    IDirectSoundBuffer *primary_buffer;
+    result = direct_sound->CreateSoundBuffer(&buffer_description, &primary_buffer, 0);
+    if (FAILED(result)) {
+        EXERROR("< Failed to create primary buffer.");
+        return;
+    }
+    EXDEBUG("\t> Primary buffer created.");
+
+    WAVEFORMATEX wave_format = {};
+    wave_format.wFormatTag = WAVE_FORMAT_PCM;
+    wave_format.nChannels = 2;
+    wave_format.wBitsPerSample = 16;
+    wave_format.nBlockAlign = (wave_format.nChannels * wave_format.wBitsPerSample) / 8;
+    wave_format.nSamplesPerSec = samples_per_second;
+    wave_format.nAvgBytesPerSec = wave_format.nSamplesPerSec * wave_format.nBlockAlign;
+    wave_format.cbSize = 0;
+    result = primary_buffer->SetFormat(&wave_format);
+    if (FAILED(result)) {
+        EXERROR("< Failed to set primary buffer format.");
+        return;
+    }
+    EXDEBUG("\t> Primary buffer format was set.");
+            
+    // NOTE(xkazu0x): create a secondary buffer
+    DSBUFFERDESC buffer_description1 = {};
+    buffer_description1.dwSize = sizeof(buffer_description1);
+    buffer_description1.dwFlags = 0;
+    buffer_description1.dwBufferBytes = buffer_size;
+    buffer_description1.lpwfxFormat = &wave_format;
+
+    result = direct_sound->CreateSoundBuffer(&buffer_description1, &global_sound_buffer, 0);
+    if (FAILED(result)) {
+        EXERROR("< Failed to create secondary buffer.");
+        return;
+    }
+    EXDEBUG("\t> Secondary buffer created.");
+}
+
+function void
+win32_fill_sound_buffer(win32_sound_output *sound_output, DWORD byte_to_lock, DWORD bytes_to_write) {
+    VOID *region1;
+    DWORD region1_size;
+    VOID *region2;
+    DWORD region2_size;
+    if (SUCCEEDED(global_sound_buffer->Lock(byte_to_lock, bytes_to_write,
+                                            &region1, &region1_size,
+                                            &region2, &region2_size,
+                                            0))) {
+        int16 *sample_out = (int16 *)region1;
+        DWORD region1_sample_count = region1_size / sound_output->bytes_per_sample;
+        for (DWORD sample_index = 0; sample_index < region1_sample_count; ++sample_index) {
+            float32 t = 2.0f * pi_f32 * (float32)sound_output->running_sample_index / (float32)sound_output->wave_period;
+            float32 sine_value = sin_f32(t);
+            int16 sample_value = (int16)(sine_value * sound_output->tone_volume);
+            *sample_out++ = sample_value;
+            *sample_out++ = sample_value;
+            ++sound_output->running_sample_index;
+        }
+
+        sample_out = (int16 *)region2;
+        DWORD region2_sample_count = region2_size / sound_output->bytes_per_sample;
+        for (DWORD sample_index = 0; sample_index < region2_sample_count; ++sample_index) {
+            float32 t = 2.0f * pi_f32 * (float32)sound_output->running_sample_index / (float32)sound_output->wave_period;
+            float32 sine_value = sin_f32(t);
+            int16 sample_value = (int16)(sine_value * sound_output->tone_volume);
+            *sample_out++ = sample_value;
+            *sample_out++ = sample_value;
+            ++sound_output->running_sample_index;
+        }
+
+        global_sound_buffer->Unlock(region1, region1_size,
+                                    region2, region2_size);
+    }
+}
+
 int main(void) {
     EXINFO("-+=+EXCALIBUR : CONTEXT+=+-");
-    EXINFO("\t> OPERATING SYSTEM: %s", string_from_operating_system(operating_system_from_context()));
-    EXINFO("\t> OPERATING SYSTEM: %s", string_from_architecture(architecture_from_context()));
+    EXINFO("\t> Operating system: %s", string_from_operating_system(operating_system_from_context()));
+    EXINFO("\t> Architecture: %s", string_from_architecture(architecture_from_context()));
 
     // NOTE(xkazu0x): window configuration
     const char *window_title = "EXCALIBUR";
@@ -235,6 +377,8 @@ int main(void) {
     int32 window_y = (GetSystemMetrics(SM_CYSCREEN) - window_height) / 2;
 
     // NOTE(xkazu0x): window initialize
+    EXINFO("-+=+EXCALIBUR : INITIALIZE+=+-");
+    EXINFO("> Window initialize...");
     RECT window_rectangle = {};
     window_rectangle.left = 0;
     window_rectangle.right = window_width;
@@ -245,64 +389,70 @@ int main(void) {
         window_height = window_rectangle.bottom - window_rectangle.top;
     }
 
-    win32_window.instance = GetModuleHandleA(nullptr);
+    HINSTANCE window_instance = GetModuleHandleA(nullptr);
     
     WNDCLASSA window_class = {};
     window_class.style = CS_HREDRAW | CS_VREDRAW;
     window_class.lpfnWndProc = win32_window_proc;
     window_class.cbClsExtra = 0;
     window_class.cbWndExtra = 0;
-    window_class.hInstance = win32_window.instance;
+    window_class.hInstance = window_instance;
     window_class.hIcon = LoadIcon(0, IDI_APPLICATION);
     window_class.hCursor = LoadCursor(0, IDC_ARROW);
     window_class.hbrBackground = 0;
     window_class.lpszMenuName = 0;
     window_class.lpszClassName = "EXCALIBUR_WINDOW_CLASS";
-    win32_window.atom = RegisterClassA(&window_class);
-    if (!win32_window.atom) {
-        EXFATAL("Failed to register win32 window.");
+    ATOM window_atom = RegisterClassA(&window_class);
+    if (!window_atom) {
+        EXFATAL("< Failed to register win32 window.");
         return(1);
     }
+    EXDEBUG("\t> Win32 window registered.");
     
-    win32_window.handle = CreateWindow(MAKEINTATOM(win32_window.atom),
-                                window_title,
-                                WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-                                window_x, window_y,
-                                window_width, window_height,
-                                0, 0, win32_window.instance, 0);
-    if (!win32_window.handle) {
-        EXFATAL("Failed to create win32 window.");
+    HWND window_handle = CreateWindow(MAKEINTATOM(window_atom),
+                                      window_title,
+                                      WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+                                      window_x, window_y,
+                                      window_width, window_height,
+                                      0, 0, window_instance, 0);
+    if (!window_handle) {
+        EXFATAL("< Failed to create win32 window.");
         return(1);
     }
+    EXDEBUG("\t> Win32 window created.");
+    WINDOWPLACEMENT window_placement = {};
+    GetWindowPlacement(window_handle, &window_placement);
     
     // NOTE(xkazu0x): mouse initialize
+    EXINFO("> Mouse initialize...");
     RAWINPUTDEVICE raw_input_device = {};
     raw_input_device.usUsagePage = 0x01;
     raw_input_device.usUsage = 0x02;
-    raw_input_device.hwndTarget = win32_window.handle;
+    raw_input_device.hwndTarget = window_handle;
     if (!RegisterRawInputDevices(&raw_input_device, 1, sizeof(raw_input_device))) {
-        EXERROR("Failed to register mouse as raw input device.");
+        EXERROR("< Failed to register mouse as raw input device.");
         return(1);
     }
+    EXDEBUG("\t> Mouse registered as raw input device.");
     
     // NOTE(xkazu0x): gamepad initialize
-    win32_input.xinput_get_state = _xinput_get_state;
-    win32_input.xinput_set_state = _xinput_set_state;
+    EXINFO("> Gamepad initialize...");
+    win32_gamepad_initialize();
     
-    HMODULE xinput_module = LoadLibraryA("xinput1_4.dll");
-    if (!xinput_module) xinput_module = LoadLibraryA("xinput1_3.dll");
-    if (xinput_module) {
-        win32_input.xinput_get_state = (XINPUTGETSTATE *)GetProcAddress(xinput_module, "XInputGetState");
-        win32_input.xinput_set_state = (XINPUTSETSTATE *)GetProcAddress(xinput_module, "XInputSetState");
-    }
+    // NOTE(xkazu0x): sound initialize
+    EXINFO("> Sound initialize...");
+    win32_sound_output sound_output = {};
+    sound_output.samples_per_second = 48000;
+    sound_output.tone_hz = 261;
+    sound_output.tone_volume = 4000;
+    sound_output.running_sample_index = 0;
+    sound_output.wave_period = sound_output.samples_per_second / sound_output.tone_hz;
+    sound_output.bytes_per_sample = sizeof(int16) * 2;
+    sound_output.buffer_size = sound_output.samples_per_second * sound_output.bytes_per_sample;
     
-    float32 trigger_threshold = XINPUT_GAMEPAD_TRIGGER_THRESHOLD / 255.0f;
-    for (uint32 i = 0; i < EX_GAMEPAD_MAX_COUNT; i++) {
-        input.gamepads[i].left_trigger.threshold = trigger_threshold;
-        input.gamepads[i].right_trigger.threshold = trigger_threshold;
-        input.gamepads[i].left_stick.threshold = XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE / 32767.0f;
-        input.gamepads[i].right_stick.threshold = XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE / 32767.0f;
-    }
+    win32_sound_initialize(window_handle, sound_output.samples_per_second, sound_output.buffer_size);
+    win32_fill_sound_buffer(&sound_output, 0, sound_output.buffer_size);
+    global_sound_buffer->Play(0, 0, DSBPLAY_LOOPING);
     
     while (!quit) {
         // NOTE(xkazu0x): mouse reset
@@ -356,7 +506,7 @@ int main(void) {
                     DispatchMessage(&msg);
                 } break;
                 case WM_QUIT: {
-                    UnregisterClassA(MAKEINTATOM(win32_window.atom), win32_window.instance);
+                    UnregisterClassA(MAKEINTATOM(window_atom), window_instance);
                     quit = EX_TRUE;
                 } break;
                 default: {
@@ -367,12 +517,12 @@ int main(void) {
         }
 
         RECT client_rectangle;
-        GetClientRect(win32_window.handle, &client_rectangle);
+        GetClientRect(window_handle, &client_rectangle);
         window_width = client_rectangle.right - client_rectangle.left;
         window_height = client_rectangle.bottom - client_rectangle.top;
 
         POINT window_position = { client_rectangle.left, client_rectangle.top };
-        ClientToScreen(win32_window.handle, &window_position);
+        ClientToScreen(window_handle, &window_position);
         window_x = window_position.x;
         window_y = window_position.y;
         
@@ -383,8 +533,6 @@ int main(void) {
                 process_digital_button(input.keyboard + key, (keyboard_state[key] >> 7));
             }
         }
-        if (input.keyboard[EX_KEY_ESCAPE].pressed) DestroyWindow(win32_window.handle);
-        if (input.keyboard[EX_KEY_F11].pressed) toggle_fullscreen();
         
         // NOTE(xkazu0x): mouse update
         input.mouse.position.x += input.mouse.delta_position.x;
@@ -393,32 +541,20 @@ int main(void) {
 
         POINT mouse_position;
         GetCursorPos(&mouse_position);
-        ScreenToClient(win32_window.handle, &mouse_position);
+        ScreenToClient(window_handle, &mouse_position);
         if (mouse_position.x < 0) mouse_position.x = 0;
         if (mouse_position.y < 0) mouse_position.y = 0;
         if (mouse_position.x > window_width) mouse_position.x = window_width;
         if (mouse_position.y > window_height) mouse_position.y = window_height;
         input.mouse.position.x = mouse_position.x;
         input.mouse.position.y = mouse_position.y;
-
-        if (input.mouse.buttons[EX_MOUSE_LEFT].pressed) EXDEBUG("MOUSE LEFT PRESSED");
-        if (input.mouse.buttons[EX_MOUSE_LEFT].released) EXDEBUG("MOUSE LEFT RELEASED");
-        if (input.mouse.buttons[EX_MOUSE_RIGHT].pressed) EXDEBUG("MOUSE RIGHT PRESSED");
-        if (input.mouse.buttons[EX_MOUSE_RIGHT].released) EXDEBUG("MOUSE RIGHT RELEASED");
-        if (input.mouse.buttons[EX_MOUSE_MIDDLE].pressed) EXDEBUG("MOUSE MIDDLE PRESSED");
-        if (input.mouse.buttons[EX_MOUSE_MIDDLE].released) EXDEBUG("MOUSE MIDDLE RELEASED");
-        if (input.mouse.delta_wheel) EXDEBUG("WHEEL VALUE: %d", input.mouse.wheel);
-        if (input.mouse.delta_position.x || input.mouse.delta_position.y)
-            EXDEBUG("MOUSE POSITION: x: %d, y: %d", input.mouse.position.x, input.mouse.position.y);
                         
         // NOTE(xkazu0x): gamepad update
         uint32_t max_gamepad_count = XUSER_MAX_COUNT;
-        if (max_gamepad_count > EX_GAMEPAD_MAX_COUNT) {
-            max_gamepad_count = EX_GAMEPAD_MAX_COUNT;
-        }
+        if (max_gamepad_count > EX_GAMEPAD_MAX_COUNT) max_gamepad_count = EX_GAMEPAD_MAX_COUNT;
         for (uint32 i = 0; i < max_gamepad_count; i++) {
-            XINPUT_STATE xinput_state;
-            if (win32_input.xinput_get_state(i, &xinput_state) == ERROR_SUCCESS) {
+            XINPUT_STATE xinput_state = {};
+            if (xinput_get_state(i, &xinput_state) == ERROR_SUCCESS) {
                 XINPUT_GAMEPAD *xgamepad = &xinput_state.Gamepad;
                 gamepad_context *gamepad = &input.gamepads[i];
                 process_digital_button(&gamepad->up,    (xgamepad->wButtons & XINPUT_GAMEPAD_DPAD_UP) != 0);
@@ -444,7 +580,38 @@ int main(void) {
             }
         }
         
-        if (input.gamepads[0].up.pressed) EXDEBUG("UP");
+        // NOTE(xkazu0x): sound update
+        DWORD play_cursor;
+        DWORD write_cursor;
+        if (SUCCEEDED(global_sound_buffer->GetCurrentPosition(&play_cursor, &write_cursor))) {
+            DWORD byte_to_lock = (sound_output.running_sample_index * sound_output.bytes_per_sample) % sound_output.buffer_size;
+            DWORD bytes_to_write = 0;
+            if (byte_to_lock == play_cursor) {
+                bytes_to_write = 0;
+            } else if (byte_to_lock > play_cursor) {
+                bytes_to_write = (sound_output.buffer_size - byte_to_lock);
+                bytes_to_write += play_cursor;
+            } else {
+                bytes_to_write = play_cursor - byte_to_lock;
+            }
+            win32_fill_sound_buffer(&sound_output, byte_to_lock, bytes_to_write);
+        }
+
+        // NOTE(xkazu0x): input test
+        if (input.keyboard[EX_KEY_ESCAPE].pressed) DestroyWindow(window_handle);
+        if (input.keyboard[EX_KEY_F11].pressed) win32_toggle_fullscreen(window_handle, &window_placement);
+
+        if (input.mouse.buttons[EX_MOUSE_LEFT].pressed) EXDEBUG("MOUSE LEFT PRESSED");
+        if (input.mouse.buttons[EX_MOUSE_LEFT].released) EXDEBUG("MOUSE LEFT RELEASED");
+        if (input.mouse.buttons[EX_MOUSE_RIGHT].pressed) EXDEBUG("MOUSE RIGHT PRESSED");
+        if (input.mouse.buttons[EX_MOUSE_RIGHT].released) EXDEBUG("MOUSE RIGHT RELEASED");
+        if (input.mouse.buttons[EX_MOUSE_MIDDLE].pressed) EXDEBUG("MOUSE MIDDLE PRESSED");
+        if (input.mouse.buttons[EX_MOUSE_MIDDLE].released) EXDEBUG("MOUSE MIDDLE RELEASED");
+        if (input.mouse.delta_wheel) EXDEBUG("WHEEL VALUE: %d", input.mouse.wheel);
+        if (input.mouse.delta_position.x || input.mouse.delta_position.y)
+            //EXDEBUG("MOUSE POSITION: x: %d, y: %d", input.mouse.position.x, input.mouse.position.y);
+        
+        if (input.gamepads[0].up.down) EXDEBUG("UP");
         if (input.gamepads[0].down.pressed) EXDEBUG("DOWN");
         if (input.gamepads[0].left.pressed) EXDEBUG("LEFT");
         if (input.gamepads[0].right.pressed) EXDEBUG("RIGHT");
@@ -471,5 +638,6 @@ int main(void) {
             EXDEBUG("RIGHT STICK: x: %f, y: %f", input.gamepads[0].right_stick.x, input.gamepads[0].right_stick.y);
         }
     }
+    EXINFO("-+=+EXCALIBUR : SHUTDOWN+=+-");
     return(0);
 }

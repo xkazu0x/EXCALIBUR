@@ -1,5 +1,5 @@
 CC := g++
-CFLAGS := -g -Wall -Wextra -O0 -Wno-unused-variable -Wno-unused-function -Wno-unused-parameter -Wno-cast-function-type
+CFLAGS := -g -Wall -Wextra -O0 -Wno-unused-variable -Wno-unused-function -Wno-cast-function-type
 INCLUDES := -I.
 LIBS := -lkernel32 -luser32
 DEFINES := -DEX_DEBUG_MODE
