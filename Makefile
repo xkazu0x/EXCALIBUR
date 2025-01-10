@@ -1,33 +1,30 @@
 CC := g++
 CFLAGS := -g -Wall -Wextra -O0 -Wno-unused-variable -Wno-unused-function -Wno-cast-function-type
 INCLUDES := -I.
-LIBS := -lkernel32 -luser32
-DEFINES := -DEX_DEBUG_MODE
+LIBS := -lkernel32 -luser32 -lole32
+DEFINES := -DEX_DEBUG_MODE=1
 
 SRC_DIR := src
-OBJ_DIR := obj
-BUILD_DIR := bin
+BUILD_DIR := build
 
-SRCS := $(wildcard $(SRC_DIR)/*.cpp)
-OBJS := $(SRCS:$(SRC_DIR)/%.cpp=$(OBJ_DIR)/%.o)
+SRCS := $(SRC_DIR)/excalibur_test.cpp
 EXEC := EXCALIBUR.exe
 
-all: $(BUILD_DIR)/$(EXEC)
+compile: $(BUILD_DIR)/$(EXEC)
 
-$(BUILD_DIR)/$(EXEC): $(OBJS) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
+$(BUILD_DIR)/$(EXEC): $(SRCS) | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -o $@ $^ $(DEFINES) $(INCLUDES) $(LIBS)
 
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp | $(OBJ_DIR)
-	$(CC) $(CFLAGS) -c -o $@ $< $(DEFINES) $(INCLUDES)
-
-$(BUILD_DIR) $(OBJ_DIR):
+$(BUILD_DIR):
 	mkdir $@
 
-asm:
-	objdump -D $(BUILD_DIR)/$(EXEC)
+rebuild: clean compile
 
-run: all
+run: build
 	$(BUILD_DIR)/$(EXEC)
 
 clean:
-	rmdir /s /q $(OBJ_DIR) $(BUILD_DIR)
+	rmdir /s /q $(BUILD_DIR)
+
+asm:
+	objdump -D $(BUILD_DIR)/$(EXEC)

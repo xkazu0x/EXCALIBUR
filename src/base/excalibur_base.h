@@ -1,5 +1,5 @@
-#ifndef EX_BASE_H
-#define EX_BASE_H
+#ifndef EXCALIBUR_BASE_H
+#define EXCALIBUR_BASE_H
 
 //////////////////////////////////
 // NOTE(xkazu0x): context cracking
@@ -116,21 +116,24 @@
 
 /////////////////////////////
 // NOTE(xkazu0x): basic types
-
 #include <stdint.h>
-typedef int8_t  int8;
+
+typedef int8_t int8;
 typedef int16_t int16;
 typedef int32_t int32;
 typedef int64_t int64;
-typedef uint8_t  uint8;
+
+typedef uint8_t uint8;
 typedef uint16_t uint16;
 typedef uint32_t uint32;
 typedef uint64_t uint64;
-typedef int8  bool8;
+
+typedef int8 bool8;
 typedef int16 bool16;
 typedef int32 bool32;
 typedef int64 bool64;
-typedef float  float32;
+
+typedef float float32;
 typedef double float64;
 
 ///////////////////////////////
@@ -165,13 +168,13 @@ typedef double float64;
 
 #define global static
 #define local static
-#define function static
+#define internal static
 
 #define C_LINKAGE_BEGIN extern "C" {
 #define C_LINKAGE_END }
 #define C_LINKAGE extern "C"
 
-#include <string.h>
+#include <malloc.h>
 #define EX_MEMORY_ZERO(p,z) memset((p), 0, (z))
 #define EX_MEMORY_ZERO_STRUCT(p) EX_MEMORY_ZERO((p), sizeof(*(p)))
 #define EX_MEMORY_ZERO_ARRAY(p) EX_MEMORY_ZERO((p), sizeof(p))
@@ -268,63 +271,63 @@ union vec4f {
 /////////////////////////////////////////////
 // NOTE(xkazu0x): symbolic constant functions
 
-function OPERATING_SYSTEM operating_system_from_context(void);
-function ARCHITECTURE architecture_from_context(void);
+internal OPERATING_SYSTEM operating_system_from_context(void);
+internal ARCHITECTURE architecture_from_context(void);
 
-function const char *string_from_operating_system(OPERATING_SYSTEM os);
-function const char *string_from_architecture(ARCHITECTURE arch);
+internal const char *string_from_operating_system(OPERATING_SYSTEM os);
+internal const char *string_from_architecture(ARCHITECTURE arch);
 
 ////////////////////////////////
 // NOTE(xkazu0x): math functions
 
-function float32 abs_f32(float32 x);
-function float64 abs_f64(float64 x);
+internal float32 abs_f32(float32 x);
+internal float64 abs_f64(float64 x);
 
-function float32 sqrt_f32(float32 x);
-function float32 sin_f32(float32 x);
-function float32 cos_f32(float32 x);
-function float32 tan_f32(float32 x);
+internal float32 sqrt_f32(float32 x);
+internal float32 sin_f32(float32 x);
+internal float32 cos_f32(float32 x);
+internal float32 tan_f32(float32 x);
 
-function float64 sqrt_f64(float64 x);
-function float64 sin_f64(float64 x);
-function float64 cos_f64(float64 x);
-function float64 tan_f64(float64 x);
+internal float64 sqrt_f64(float64 x);
+internal float64 sin_f64(float64 x);
+internal float64 cos_f64(float64 x);
+internal float64 tan_f64(float64 x);
 
 /////////////////////////////////////////
 // NOTE(xkazu0x): compound type functions
 
-function inline vec2i vec2i_create(int32 x, int32 y);
-function inline vec2f vec2f_create(float32 x, float32 y);
-function inline vec3f vec3f_create(float32 x, float32 y, float32 z);
-function inline vec4f vec4f_create(float32 x, float32 y, float32 z, float32 w);
+internal inline vec2i vec2i_create(int32 x, int32 y);
+internal inline vec2f vec2f_create(float32 x, float32 y);
+internal inline vec3f vec3f_create(float32 x, float32 y, float32 z);
+internal inline vec4f vec4f_create(float32 x, float32 y, float32 z, float32 w);
 
-function inline vec2i operator+(const vec2i &a, const vec2i &b);
-function inline vec2f operator+(const vec2f &a, const vec2f &b);
-function inline vec3f operator+(const vec3f &a, const vec3f &b);
-function inline vec4f operator+(const vec4f &a, const vec4f &b);
+internal inline vec2i operator+(const vec2i &a, const vec2i &b);
+internal inline vec2f operator+(const vec2f &a, const vec2f &b);
+internal inline vec3f operator+(const vec3f &a, const vec3f &b);
+internal inline vec4f operator+(const vec4f &a, const vec4f &b);
 
-function inline vec2i operator-(const vec2i &a, const vec2i &b);
-function inline vec2f operator-(const vec2f &a, const vec2f &b);
-function inline vec3f operator-(const vec3f &a, const vec3f &b);
-function inline vec4f operator-(const vec4f &a, const vec4f &b);
+internal inline vec2i operator-(const vec2i &a, const vec2i &b);
+internal inline vec2f operator-(const vec2f &a, const vec2f &b);
+internal inline vec3f operator-(const vec3f &a, const vec3f &b);
+internal inline vec4f operator-(const vec4f &a, const vec4f &b);
 
-function inline vec2i operator*(const vec2i &v, const int32 &s);
-function inline vec2f operator*(const vec2f &v, const float32 &s);
-function inline vec3f operator*(const vec3f &v, const float32 &s);
-function inline vec4f operator*(const vec4f &v, const float32 &s);
+internal inline vec2i operator*(const vec2i &v, const int32 &s);
+internal inline vec2f operator*(const vec2f &v, const float32 &s);
+internal inline vec3f operator*(const vec3f &v, const float32 &s);
+internal inline vec4f operator*(const vec4f &v, const float32 &s);
 
-function inline vec2i operator*(const int32 &s, const vec2i &v);
-function inline vec2f operator*(const float32 &s, const vec2f &v);
-function inline vec3f operator*(const float32 &s, const vec3f &v);
-function inline vec4f operator*(const float32 &s, const vec4f &v);
+internal inline vec2i operator*(const int32 &s, const vec2i &v);
+internal inline vec2f operator*(const float32 &s, const vec2f &v);
+internal inline vec3f operator*(const float32 &s, const vec3f &v);
+internal inline vec4f operator*(const float32 &s, const vec4f &v);
 
-function inline vec2f vec2_hadamard(vec2f a, vec2f b);
-function inline vec3f vec3_hadamard(vec3f a, vec3f b);
-function inline vec4f vec4_hadamard(vec4f a, vec4f b);
+internal inline vec2f vec2_hadamard(vec2f a, vec2f b);
+internal inline vec3f vec3_hadamard(vec3f a, vec3f b);
+internal inline vec4f vec4_hadamard(vec4f a, vec4f b);
 
-function inline float32 vec2_dot(vec2f a, vec2f b);
-function inline float32 vec3_dot(vec3f a, vec3f b);
-function inline float32 vec4_dot(vec4f a, vec4f b);
+internal inline float32 vec2_dot(vec2f a, vec2f b);
+internal inline float32 vec3_dot(vec3f a, vec3f b);
+internal inline float32 vec4_dot(vec4f a, vec4f b);
 
 ////////////////////////
 // NOTE(xkazu0x): logger
@@ -347,7 +350,7 @@ enum EX_LOG_LEVEL {
     EX_LOG_LEVEL_MAX,
 };
 
-function void _logger_output(EX_LOG_LEVEL level, const char *message, ...);
+internal void _logger_output(EX_LOG_LEVEL level, const char *message, ...);
 
 #define EXFATAL(message, ...) _logger_output(EX_LOG_LEVEL_FATAL, message, ##__VA_ARGS__);
 #define EXERROR(message, ...) _logger_output(EX_LOG_LEVEL_ERROR, message, ##__VA_ARGS__);
@@ -372,4 +375,4 @@ function void _logger_output(EX_LOG_LEVEL level, const char *message, ...);
 #define EXTRACE(message, ...)
 #endif
 
-#endif // EX_BASE_H
+#endif // EXCALIBUR_BASE_H

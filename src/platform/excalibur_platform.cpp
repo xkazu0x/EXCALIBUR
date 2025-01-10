@@ -1,7 +1,5 @@
-#include "base/excalibur_base.cpp"
-
 #ifdef OS_WINDOWS
-#include "excalibur_win32.cpp"
+#include "excalibur_platform_win32.cpp"
 #else
 #error missing support for the current operating system
 #endif
