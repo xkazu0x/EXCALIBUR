@@ -1,107 +1,129 @@
-#ifndef EXCALIBUR_H
-#define EXCALIBUR_H
+#ifndef EXCALIBUR_GAME_H
+#define EXCALIBUR_GAME_H
 
-#include "base/excalibur_base.h"
+#include "excalibur_base.h"
+#include "excalibur_base.cpp"
 
-// TODO(xkazu0x): platform independent keycodes
+#include "excalibur_math.h"
+#include "excalibur_math.cpp"
+
+#include "excalibur_logger.h"
+#include "excalibur_logger.cpp"
+
+///////////////////////////////////////////////////////////////////////
+// NOTE(xkazu0x): services that the platform layer provides to the game
+// TODO(xkazu0x): define functions
+#if EXCALIBUR_DEBUG
+struct debug_read_file_result {
+    u32 size;
+    void *memory;
+};
+
+internal debug_read_file_result debug_platform_read_file(char *filename);
+internal void debug_platform_free_file_memory(void *memory);
+internal b32 debug_platform_write_file(char *filename, u32 memory_size, void *memory);
+#endif
+
+///////////////////////////////////////////////////////////////////////
+// NOTE(xkazu0x): services that the game provides to the platform layer
+// TODO(xkazu0x): key codes for keyboard input
 enum keyboard_key {
-    EX_KEY_ESCAPE = 0x1B,
-    
-    EX_KEY_F1 = 0x70,
-    EX_KEY_F2 = 0x71,
-    EX_KEY_F3 = 0x72,
-    EX_KEY_F4 = 0x73,
-    EX_KEY_F5 = 0x74,
-    EX_KEY_F6 = 0x75,
-    EX_KEY_F7 = 0x76,
-    EX_KEY_F8 = 0x77,
-    EX_KEY_F9 = 0x78,
-    EX_KEY_F10 = 0x79,
-    EX_KEY_F11 = 0x7A,
-    EX_KEY_F12 = 0x7B,
-    EX_KEY_F13 = 0x7C,
-    EX_KEY_F14 = 0x7D,
-    EX_KEY_F15 = 0x7E,
-    EX_KEY_F16 = 0x7F,
-    EX_KEY_F17 = 0x80,
-    EX_KEY_F18 = 0x81,
-    EX_KEY_F19 = 0x82,
-    EX_KEY_F20 = 0x83,
-    EX_KEY_F21 = 0x84,
-    EX_KEY_F22 = 0x85,
-    EX_KEY_F23 = 0x86,
-    EX_KEY_F24 = 0x87,
-    
-    EX_KEY_MAX = 256,
+    KEY_ESCAPE = 0x1B,
+    KEY_LEFT   = 0x25,
+    KEY_UP     = 0x26,
+    KEY_RIGHT  = 0x27,
+    KEY_DOWN   = 0x28,
 };
 
-struct ex_digital_button {
-    bool8 down;
-    bool8 pressed;
-    bool8 released;
+struct digital_button {
+    b32 down;
+    b32 pressed;
+    b32 released;
 };
 
-struct ex_analog_button {
-    float32 threshold;
-    float32 value;
-    bool8 down;
-    bool8 pressed;
-    bool8 released;
+struct analog_button {
+    f32 threshold;
+    f32 value;
+    b32 down;
+    b32 pressed;
+    b32 released;
 };
 
-struct ex_stick {
-    float threshold;
-    float x;
-    float y;
+struct stick {
+    f32 threshold;
+    f32 x;
+    f32 y;
 };
 
-struct ex_gamepad_input {
-    ex_digital_button up;
-    ex_digital_button down;
-    ex_digital_button left;
-    ex_digital_button right;
-    ex_digital_button start;
-    ex_digital_button back;
-    ex_digital_button left_thumb;
-    ex_digital_button right_thumb;
-    ex_digital_button left_shoulder;
-    ex_digital_button right_shoulder;
-    ex_digital_button a;
-    ex_digital_button b;
-    ex_digital_button x;
-    ex_digital_button y;
-    ex_analog_button left_trigger;
-    ex_analog_button right_trigger;
-    ex_stick left_stick;
-    ex_stick right_stick;
-};
-
-struct ex_mouse_input {
-    ex_digital_button left;
-    ex_digital_button right;
-    ex_digital_button middle;
-    int32 wheel;
-    int32 delta_wheel;
+struct mouse_input {
+    digital_button left;
+    digital_button right;
+    digital_button middle;
+    s32 wheel;
+    s32 delta_wheel;
     vec2i position;
     vec2i delta_position;
 };
 
-struct ex_input {
-    ex_mouse_input mouse;
-    ex_gamepad_input gamepads[4];
-    ex_digital_button keyboard[EX_KEY_MAX];
+struct gamepad_input {
+    digital_button up;
+    digital_button down;
+    digital_button left;
+    digital_button right;
+    digital_button start;
+    digital_button back;
+    digital_button left_thumb;
+    digital_button right_thumb;
+    digital_button left_shoulder;
+    digital_button right_shoulder;
+    digital_button a;
+    digital_button b;
+    digital_button x;
+    digital_button y;
+    analog_button left_trigger;
+    analog_button right_trigger;
+    stick left_stick;
+    stick right_stick;
 };
 
-struct ex_sound_buffer {
-    int32 samples_per_second;
-    int32 sample_count;
-    int16 *samples;
+#define KEY_MAX 256
+
+struct game_memory {
+    b32 initialized;
+    u64 permanent_storage_size;
+    u64 transient_storage_size;
+    void *permanent_storage;
+    void *transient_storage;
 };
 
-struct excalibur_desc {
-    void (*update_and_render)(ex_input *, ex_sound_buffer *);
+struct game_clock {
+    // TODO(xkazu0x):
+    f32 delta_seconds;
 };
 
-internal bool32 excalibur_initialize(excalibur_desc *description);
+struct game_input {
+    digital_button keyboard[KEY_MAX];
+    mouse_input mouse;
+    gamepad_input gamepads[4];
+};
 
-#endif // EXCALIBUR_H
+struct game_backbuffer {
+    vec2i size;
+    s32 pitch;
+    void *memory;
+};
+
+#define GAME_UPDATE_AND_RENDER(name) void name(game_memory *memory, game_input *input, game_backbuffer *backbuffer)
+typedef GAME_UPDATE_AND_RENDER(GAMEUPDATEANDRENDER);
+
+extern "C" {
+    GAME_UPDATE_AND_RENDER(game_update_and_render);
+}
+
+///////////////////
+///////////////////
+struct game_state {
+    vec2i offset;
+};
+
+#endif // EXCALIBUR_GAME_H

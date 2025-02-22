@@ -1,22 +1,26 @@
 CC := g++
-CFLAGS := -g -Wall -Wextra -O0 -Wno-unused-variable -Wno-unused-function -Wno-cast-function-type
+CFLAGS := -g -Wall -Wextra -Wpadded -O0 -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -Wno-write-strings
 INCLUDES := -I.
-LIBS := -lkernel32 -luser32 -lole32
-DEFINES := -DEX_DEBUG_MODE=1
+LIBS := -lkernel32 -luser32 -lgdi32
+DEFINES := -DEXCALIBUR_DEBUG=1
 
 SRC_DIR := src
 BUILD_DIR := build
 
-SRCS := $(SRC_DIR)/excalibur_test.cpp
-EXEC := EXCALIBUR.exe
+DLL := excalibur.dll
+EXEC := excalibur.exe
 
-compile: $(BUILD_DIR)/$(EXEC)
-
-$(BUILD_DIR)/$(EXEC): $(SRCS) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -o $@ $^ $(DEFINES) $(INCLUDES) $(LIBS)
+compile: $(BUILD_DIR) $(BUILD_DIR)/$(DLL) $(BUILD_DIR)/$(EXEC)
 
 $(BUILD_DIR):
 	mkdir $@
+
+$(BUILD_DIR)/$(DLL): $(SRC_DIR)/excalibur.cpp
+	$(CC) $(CFLAGS) -shared -o $@ $^
+
+
+$(BUILD_DIR)/$(EXEC): $(SRC_DIR)/excalibur_win32.cpp
+	$(CC) $(CFLAGS) -mconsole -o $@ $^ $(DEFINES) $(INCLUDES) $(LIBS)
 
 rebuild: clean compile
 
