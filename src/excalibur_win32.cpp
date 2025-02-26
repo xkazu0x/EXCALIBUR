@@ -6,10 +6,9 @@
 
 /*
   TODO(xkazu0x):
-  > game memory
   > fixed framerate
-  > sound system
   > key codes for keyboard input
+  > sound system
   > software render is so fucking slow
 */
 
@@ -26,27 +25,89 @@ struct win32_state {
 };
 
 global b32 global_quit;
-
 global win32_state global_win32;
+
 global game_memory global_memory;
 global game_input global_input;
 global game_backbuffer global_backbuffer;
 
 #define WIN32_GET_PROC_ADDR(v, m, s) (*(PROC*)(&(v))) = GetProcAddress((m), (s))
+GAME_UPDATE_AND_RENDER(_game_update_and_render) {
+}
 
-GAME_UPDATE_AND_RENDER(_game_update_and_render) {}
-
-#define X_INPUT_GET_STATE(x) DWORD WINAPI x(DWORD, XINPUT_STATE *)
-#define X_INPUT_SET_STATE(x) DWORD WINAPI x(DWORD, XINPUT_VIBRATION *)
-
-X_INPUT_GET_STATE(_xinput_get_state) { return(ERROR_DEVICE_NOT_CONNECTED); }
-X_INPUT_SET_STATE(_xinput_set_state) { return(ERROR_DEVICE_NOT_CONNECTED); }
-
+#define X_INPUT_GET_STATE(name) DWORD WINAPI name(DWORD, XINPUT_STATE *)
+X_INPUT_GET_STATE(_xinput_get_state) {
+    return(ERROR_DEVICE_NOT_CONNECTED);
+}
 typedef X_INPUT_GET_STATE(XINPUTGETSTATE);
-typedef X_INPUT_SET_STATE(XINPUTSETSTATE);
-
 XINPUTGETSTATE *xinput_get_state;
+
+#define X_INPUT_SET_STATE(name) DWORD WINAPI name(DWORD, XINPUT_VIBRATION *)
+X_INPUT_SET_STATE(_xinput_set_state) {
+    return(ERROR_DEVICE_NOT_CONNECTED);
+}
+typedef X_INPUT_SET_STATE(XINPUTSETSTATE);
 XINPUTSETSTATE *xinput_set_state;
+
+internal debug_read_file_result
+debug_platform_read_file(char *filename) {
+    debug_read_file_result result = {};
+    
+    HANDLE file_handle = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+    if (file_handle != INVALID_HANDLE_VALUE) {
+        LARGE_INTEGER file_size;
+        if (GetFileSizeEx(file_handle, &file_size)) {
+            u32 file_size32 = safe_truncate_u64(file_size.QuadPart);
+            void *file_memory = VirtualAlloc(0, file_size32, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+            if (file_memory) {
+                DWORD bytes_read;
+                if (ReadFile(file_handle, file_memory, file_size32, &bytes_read, 0) &&
+                    (file_size32 == bytes_read)) {
+                    result.size = file_size32;
+                    result.memory = file_memory;
+                } else {
+                    // TODO(xkazu0x): logging
+                    debug_platform_free_file_memory(file_memory);
+                    file_memory = 0;
+                }
+            } else {
+                // TODO(xkazu0x): logging
+            }
+        } else {
+            // TODO(xkazu0x): logging
+        }
+        CloseHandle(file_handle);
+    } else {
+        // TODO(xkazu0x): logging
+    }
+    
+    return(result);
+}
+
+internal void
+debug_platform_free_file_memory(void *memory) {
+    if (memory) {
+        VirtualFree(memory, 0, MEM_RELEASE);
+    }
+}
+
+internal b32
+debug_platform_write_file(char *filename, u32 memory_size, void *memory) {
+    b32 result = EX_FALSE;
+    HANDLE file_handle = CreateFileA(filename, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
+    if (file_handle != INVALID_HANDLE_VALUE) {
+        DWORD bytes_written;
+        if (WriteFile(file_handle, memory, memory_size, &bytes_written, 0)) {
+            result = (bytes_written == memory_size);
+        } else {
+            // TODO(xkazu0x): logging
+        }
+        CloseHandle(file_handle);
+    } else {
+        // TODO(xkazu0x): logging
+    }
+    return(result);
+}
 
 internal win32_game_code
 win32_load_game(void) {
@@ -190,7 +251,7 @@ win32_window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
 
 int WINAPI
 WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int show_command) {
-    EXINFO("EXCALIBUR :: INITIALIZE");
+    EXINFO("EXCALIBUR : INITIALIZE");
     EXINFO("> Operating system: %s", string_from_operating_system(operating_system_from_context()));
     EXINFO("> Architecture: %s", string_from_architecture(architecture_from_context()));
 
@@ -204,11 +265,12 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     EXINFO("> Monitor size: %dx%d", monitor_size.x, monitor_size.y);
     EXINFO("> Monitor refresh rate: %dHz", monitor_frame_rate);
 
-    EXINFO("EXCALIBUR : GAME");
+    EXINFO("EXCALIBUR :: GAME");
+    // TODO(xkazu0x): fix hardcoded game's dll path
     win32_game_code game = win32_load_game();
     if (!game.loaded) return(1);
     
-    EXINFO("EXCALIBUR : WINDOW");
+    EXINFO("EXCALIBUR :: WINDOW");
     char *window_title = "EXCALIBUR";
     vec2i window_size = vec2i_create(960, 540);
     vec2i window_position = (monitor_size - window_size) / 2;
@@ -255,7 +317,7 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     HDC window_device = GetDC(window_handle);
     ShowWindow(window_handle, SW_SHOW);
 
-    EXINFO("EXCALIBUR : INPUT");
+    EXINFO("EXCALIBUR :: INPUT");
     RAWINPUTDEVICE raw_input_device = {};
     raw_input_device.usUsagePage = 0x01;
     raw_input_device.usUsage = 0x02;
@@ -305,10 +367,10 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
 
     ///////////////////////////////////
     // NOTE(xkazu0x): memory initialize
-#if EXCALIBUR_DEBUG
-    LPVOID base_address = (LPVOID)EX_TERABYTES(2);
-#else
+    EXINFO("EXCALIBUR :: MEMORY");
     LPVOID base_address = 0;
+#if EXCALIBUR_INTERNAL
+    base_address = (LPVOID)EX_TERABYTES(2);
 #endif
     global_memory.permanent_storage_size = EX_MEGABYTES(64);
     global_memory.transient_storage_size = EX_GIGABYTES(2);
@@ -319,6 +381,10 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     if (!global_memory.permanent_storage) {
         EXFATAL("< Failed to allocate game memory");
         return(1);
+    } else {
+        EXDEBUG("> Memory allocated:");
+        EXTRACE("\t^ Permanent storage: %llu", global_memory.permanent_storage_size);
+        EXTRACE("\t^ Transient storage: %llu", global_memory.transient_storage_size);
     }
     
     /////////////////////////////////
@@ -333,7 +399,14 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     s32 game_update_hz = monitor_frame_rate / 2;
     f32 target_seconds_per_frame = 1.0f / (f32)game_update_hz;
     
-    EXINFO("EXCALIBUR :: RUN");
+    EXINFO("EXCALIBUR : RUN");
+    char *filename = __FILE__;
+    debug_read_file_result file = debug_platform_read_file(filename);
+    if (file.memory) {
+        debug_platform_write_file("test.out", file.size, file.memory);
+        debug_platform_free_file_memory(file.memory);
+    }
+    
     while (!global_quit) {
         MSG message;
         while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
@@ -481,38 +554,38 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
         s64 end_cycle_count = __rdtsc();
         s64 cycles_per_frame = end_cycle_count - last_cycle_count;
         
-        LARGE_INTEGER work_counter = win32_get_time();
-        s64 counts_per_frame = work_counter.QuadPart - last_counter.QuadPart;
-        f32 seconds_per_frame = ((f32)counts_per_frame / (f32)counts_per_second);
+        LARGE_INTEGER end_counter = win32_get_time();
+        s64 counts_per_frame = end_counter.QuadPart - last_counter.QuadPart;
+        f32 seconds_per_frame = win32_get_delta_seconds(last_counter, end_counter, (f32)counts_per_second);
 
         // f32 seconds_elapsed_for_frame = seconds_per_frame;
         // while (seconds_per_frame < target_seconds_per_frame) {
         //     seconds_elapsed_for_frame = win32_get_delta_seconds(last_counter, win32_get_time(), (f32)counts_per_second);
         // }
         
-        f32 frames_per_second = (f32)counts_per_second / (f32)counts_per_frame;
         f32 ms_per_frame = (1000.0f * seconds_per_frame);
         f32 mega_cycles_per_frame = ((f32)cycles_per_frame / (1000.0f * 1000.0f));
+        f32 frames_per_second = (f32)counts_per_second / (f32)counts_per_frame;
         
 #if 1
+        // TODO(xkazu0x): this is debug code only
         static f64 time_seconds = 0.0;
         static f64 last_print_time = 0.0;
         time_seconds += seconds_per_frame;
         if (time_seconds - last_print_time > 0.2f) {
-            // TODO(xkazu0x): this is debug code only
             //EXDEBUG("%.02fms, %.02ffps, %.02fmc", ms_per_frame, frames_per_second, mega_cycles_per_frame);
             char new_window_title[512];
-            sprintf(new_window_title, "%s - %.02fms, %.02ffps, %.02fmc", window_title, ms_per_frame, frames_per_second, mega_cycles_per_frame);
+            sprintf(new_window_title, "%s - %.02fms, %.02fmc, %.02ffps", window_title, ms_per_frame, mega_cycles_per_frame, frames_per_second);
             SetWindowTextA(window_handle, new_window_title);
             last_print_time = time_seconds;
         }
 #endif
         
-        last_counter = work_counter;
+        last_counter = end_counter;
         last_cycle_count = end_cycle_count;
     }
     
-    EXINFO("EXCALIBUR :: SHUTDOWN");
+    EXINFO("EXCALIBUR : SHUTDOWN");
     ReleaseDC(window_handle, window_device);
     UnregisterClassA(MAKEINTATOM(window_atom), instance);
     DestroyWindow(window_handle);

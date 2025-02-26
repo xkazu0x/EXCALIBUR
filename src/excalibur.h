@@ -10,10 +10,20 @@
 #include "excalibur_logger.h"
 #include "excalibur_logger.cpp"
 
+inline u32
+safe_truncate_u64(u64 value) {
+    EX_ASSERT(value <= u32_max);
+    u32 result = (u32)value;
+    return(result);
+}
+
 ///////////////////////////////////////////////////////////////////////
 // NOTE(xkazu0x): services that the platform layer provides to the game
-// TODO(xkazu0x): define functions
-#if EXCALIBUR_DEBUG
+#if EXCALIBUR_INTERNAL
+/* IMPORTANT(xkazu0x):
+   These are NOT for doing anything in the shipping game - they are
+   blocking and the write doesn't protect against lost data
+ */
 struct debug_read_file_result {
     u32 size;
     void *memory;

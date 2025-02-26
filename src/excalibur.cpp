@@ -2,6 +2,7 @@
 
 void
 game_update_and_render(game_memory *memory, game_input *input, game_backbuffer *backbuffer) {
+    // NOTE(xkazu0x): initialize
     EX_ASSERT(sizeof(game_state) <= memory->permanent_storage_size);
     game_state *state = (game_state *)memory->permanent_storage;
     if (!memory->initialized) {
