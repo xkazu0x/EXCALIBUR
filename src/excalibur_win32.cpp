@@ -7,15 +7,14 @@
 
 /*
   TODO(xkazu0x):
-  > fixed framerate
   > key codes for keyboard input
   > sound system
-  > software render is so fucking slow
+  > hardware 
 */
 
 struct win32_game_code {
     b32 loaded;
-    HMODULE game_code_dll;
+    HMODULE library;
     GAMEUPDATEANDRENDER *update_and_render;
 };
 
@@ -34,8 +33,6 @@ global game_input global_input;
 global game_backbuffer global_backbuffer;
 
 #define WIN32_GET_PROC_ADDR(v, m, s) (*(PROC*)(&(v))) = GetProcAddress((m), (s))
-GAME_UPDATE_AND_RENDER(_game_update_and_render) {
-}
 
 #define X_INPUT_GET_STATE(name) DWORD WINAPI name(DWORD, XINPUT_STATE *)
 X_INPUT_GET_STATE(_xinput_get_state) {
@@ -51,9 +48,14 @@ X_INPUT_SET_STATE(_xinput_set_state) {
 typedef X_INPUT_SET_STATE(XINPUTSETSTATE);
 XINPUTSETSTATE *xinput_set_state;
 
-internal debug_read_file_result
-debug_platform_read_file(char *filename) {
-    debug_read_file_result result = {};
+DEBUG_PLATFORM_FREE_FILE(debug_platform_free_file) {
+    if (memory) {
+        VirtualFree(memory, 0, MEM_RELEASE);
+    }
+}
+
+DEBUG_PLATFORM_READ_FILE(debug_platform_read_file) {
+    debug_file_handle result = {};
     
     HANDLE file_handle = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
     if (file_handle != INVALID_HANDLE_VALUE) {
@@ -69,7 +71,7 @@ debug_platform_read_file(char *filename) {
                     result.memory = file_memory;
                 } else {
                     // TODO(xkazu0x): logging
-                    debug_platform_free_file_memory(file_memory);
+                    debug_platform_free_file(file_memory);
                     file_memory = 0;
                 }
             } else {
@@ -86,15 +88,7 @@ debug_platform_read_file(char *filename) {
     return(result);
 }
 
-internal void
-debug_platform_free_file_memory(void *memory) {
-    if (memory) {
-        VirtualFree(memory, 0, MEM_RELEASE);
-    }
-}
-
-internal b32
-debug_platform_write_file(char *filename, u32 memory_size, void *memory) {
+DEBUG_PLATFORM_WRITE_FILE(debug_platform_write_file) {
     b32 result = EX_FALSE;
     HANDLE file_handle = CreateFileA(filename, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
     if (file_handle != INVALID_HANDLE_VALUE) {
@@ -113,20 +107,31 @@ debug_platform_write_file(char *filename, u32 memory_size, void *memory) {
 
 internal win32_game_code
 win32_load_game(void) {
-    win32_game_code result;
-    result.game_code_dll = LoadLibraryA("build/excalibur.dll");
-    if (result.game_code_dll) {
-        WIN32_GET_PROC_ADDR(result.update_and_render, result.game_code_dll, "game_update_and_render");
+    win32_game_code result = {};
+    CopyFile("excalibur.dll", "excalibur_copy.dll", FALSE);
+    result.library = LoadLibraryA("excalibur_copy.dll");
+    if (result.library) {
+        WIN32_GET_PROC_ADDR(result.update_and_render,
+                            result.library,
+                            "game_update_and_render");
         if (result.update_and_render) {
             result.loaded = EX_TRUE;
-            EXDEBUG("> Game loaded successfully");
         }
     }
     if (!result.loaded) {
         result.update_and_render = _game_update_and_render;
-        EXERROR("< Failed to load Game");
     }
     return(result);
+}
+
+internal void
+win32_unload_game(win32_game_code *game_code) {
+    if (game_code->library) {
+        FreeLibrary(game_code->library);
+        game_code->library = 0;
+    }
+    game_code->loaded = EX_FALSE;
+    game_code->update_and_render = _game_update_and_render;
 }
 
 inline LARGE_INTEGER
@@ -266,17 +271,12 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     s32 monitor_frame_rate = monitor_info.dmDisplayFrequency;
     EXINFO("> Monitor size: %dx%d", monitor_size.x, monitor_size.y);
     EXINFO("> Monitor refresh rate: %dHz", monitor_frame_rate);
-
-    EXINFO("EXCALIBUR :: GAME");
-    // TODO(xkazu0x): fix hardcoded game's dll path
-    win32_game_code game = win32_load_game();
-    if (!game.loaded) return(1);
     
     EXINFO("EXCALIBUR :: WINDOW");
     char *window_title = "EXCALIBUR";
     vec2i window_size = vec2i_create(960, 540);
     vec2i window_position = (monitor_size - window_size) / 2;
-    EXINFO("> Window size: %dx%d", window_size.x, window_size.y);
+    EXDEBUG("> Window size: %dx%d", window_size.x, window_size.y);
     
     RECT window_rectangle = {};
     window_rectangle.left = 0;
@@ -377,7 +377,10 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
 #endif
     global_memory.permanent_storage_size = EX_MEGABYTES(64);
     global_memory.transient_storage_size = EX_GIGABYTES(2);
-
+    global_memory.debug_platform_free_file = debug_platform_free_file;
+    global_memory.debug_platform_read_file = debug_platform_read_file;
+    global_memory.debug_platform_write_file = debug_platform_write_file;
+    
     u64 total_memory_size = global_memory.permanent_storage_size + global_memory.transient_storage_size;
     global_memory.permanent_storage = VirtualAlloc(base_address, total_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     global_memory.transient_storage = ((u8 *)global_memory.permanent_storage + global_memory.permanent_storage_size);
@@ -405,16 +408,26 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     s64 last_cycle_count = __rdtsc();
 
     f32 target_seconds_per_frame = 1.0f / ((f32)(monitor_frame_rate));
-    
+
+    //////////////////////////////
+    // NOTE(xkazu0x): game loading
+    EXINFO("EXCALIBUR :: GAME");
+    u32 game_load_counter = 0;
+    win32_game_code game = win32_load_game();
+    if (!game.loaded) {
+        EXERROR("< Failed to load game code");
+        return(1);
+    }
+    EXDEBUG("> Game code loaded");
+
     EXINFO("EXCALIBUR : RUN");
-    // char *filename = __FILE__;
-    // debug_read_file_result file = debug_platform_read_file(filename);
-    // if (file.memory) {
-    //     debug_platform_write_file("test.out", file.size, file.memory);
-    //     debug_platform_free_file_memory(file.memory);
-    // }
-    
     while (!global_quit) {
+        if (game_load_counter++ > 120) {
+            win32_unload_game(&game);
+            game = win32_load_game();
+            game_load_counter = 0;
+        }
+
         MSG message;
         while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
             switch (message.message) {
@@ -471,6 +484,7 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
                 }
             }
         }
+        
         if (global_input.keyboard[VK_ESCAPE].pressed) {
             global_quit = EX_TRUE;
         }
@@ -580,8 +594,8 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
                 
 #if 1
         // TODO(xkazu0x): this is debug code only
-        static f64 time_seconds = 0.0;
-        static f64 last_print_time = 0.0;
+        local f64 time_seconds = 0.0;
+        local f64 last_print_time = 0.0;
         time_seconds += work_seconds_per_frame;
         if (time_seconds - last_print_time > 0.1f) {
             EXDEBUG("%.02fms, %.02ffps, %.02fmc", ms_per_frame, frames_per_second, mega_cycles_per_frame);

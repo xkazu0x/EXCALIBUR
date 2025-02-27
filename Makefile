@@ -16,7 +16,7 @@ $(BUILD_DIR):
 	mkdir $@
 
 $(BUILD_DIR)/$(DLL): $(SRC_DIR)/excalibur.cpp
-	$(CC) $(CFLAGS) -shared -o $@ $^
+	$(CC) $(CFLAGS) -shared -o $@ $^ $(DEFINES)
 
 
 $(BUILD_DIR)/$(EXEC): $(SRC_DIR)/excalibur_win32.cpp
@@ -25,7 +25,7 @@ $(BUILD_DIR)/$(EXEC): $(SRC_DIR)/excalibur_win32.cpp
 rebuild: clean compile
 
 run: build
-	$(BUILD_DIR)/$(EXEC)
+	cd ./$(BUILD_DIR) && $(EXEC)
 
 clean:
 	rmdir /s /q $(BUILD_DIR)

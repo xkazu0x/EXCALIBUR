@@ -9,6 +9,8 @@
 #include "excalibur_math.cpp"
 #include "excalibur_logger.cpp"
 
+#define KEY_MAX 256
+
 inline u32
 safe_truncate_u64(u64 value) {
     EX_ASSERT(value <= u32_max);
@@ -23,14 +25,19 @@ safe_truncate_u64(u64 value) {
    These are NOT for doing anything in the shipping game - they are
    blocking and the write doesn't protect against lost data
  */
-struct debug_read_file_result {
+struct debug_file_handle {
     u32 size;
     void *memory;
 };
 
-internal debug_read_file_result debug_platform_read_file(char *filename);
-internal void debug_platform_free_file_memory(void *memory);
-internal b32 debug_platform_write_file(char *filename, u32 memory_size, void *memory);
+#define DEBUG_PLATFORM_FREE_FILE(name) void name(void *memory)
+typedef DEBUG_PLATFORM_FREE_FILE(DEBUGPLATFORMFREEFILE);
+
+#define DEBUG_PLATFORM_READ_FILE(name) debug_file_handle name(char *filename)
+typedef DEBUG_PLATFORM_READ_FILE(DEBUGPLATFORMREADFILE);
+
+#define DEBUG_PLATFORM_WRITE_FILE(name) b32 name(char *filename, u32 memory_size, void *memory)
+typedef DEBUG_PLATFORM_WRITE_FILE(DEBUGPLATFORMWRITEFILE);
 #endif
 
 ///////////////////////////////////////////////////////////////////////
@@ -42,6 +49,44 @@ enum keyboard_key {
     KEY_UP     = 0x26,
     KEY_RIGHT  = 0x27,
     KEY_DOWN   = 0x28,
+    
+    KEY_0 = 0x30,
+    KEY_1 = 0x31,
+    KEY_2 = 0x32,
+    KEY_3 = 0x33,
+    KEY_4 = 0x34,
+    KEY_5 = 0x35,
+    KEY_6 = 0x36,
+    KEY_7 = 0x37,
+    KEY_8 = 0x38,
+    KEY_9 = 0x39,
+
+    KEY_A = 0x41,
+    KEY_B = 0x42,
+    KEY_C = 0x43,
+    KEY_D = 0x44,
+    KEY_E = 0x45,
+    KEY_F = 0x46,
+    KEY_G = 0x47,
+    KEY_H = 0x48,
+    KEY_I = 0x49,
+    KEY_J = 0x4A,
+    KEY_K = 0x4B,
+    KEY_L = 0x4C,
+    KEY_M = 0x4D,
+    KEY_N = 0x4E,
+    KEY_O = 0x4F,
+    KEY_P = 0x50,
+    KEY_Q = 0x51,
+    KEY_R = 0x52,
+    KEY_S = 0x53,
+    KEY_T = 0x54,
+    KEY_U = 0x55,
+    KEY_V = 0x56,
+    KEY_W = 0x57,
+    KEY_X = 0x58,
+    KEY_Y = 0x59,
+    KEY_Z = 0x5A,
 };
 
 struct digital_button {
@@ -95,14 +140,16 @@ struct gamepad_input {
     stick right_stick;
 };
 
-#define KEY_MAX 256
-
 struct game_memory {
     b32 initialized;
     u64 permanent_storage_size;
     u64 transient_storage_size;
     void *permanent_storage;
     void *transient_storage;
+
+    DEBUGPLATFORMFREEFILE *debug_platform_free_file;
+    DEBUGPLATFORMREADFILE *debug_platform_read_file;
+    DEBUGPLATFORMWRITEFILE *debug_platform_write_file;
 };
 
 struct game_clock {
@@ -126,6 +173,7 @@ struct game_backbuffer {
 typedef GAME_UPDATE_AND_RENDER(GAMEUPDATEANDRENDER);
 
 extern "C" {
+    GAME_UPDATE_AND_RENDER(_game_update_and_render) {}
     GAME_UPDATE_AND_RENDER(game_update_and_render);
 }
 
