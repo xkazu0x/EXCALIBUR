@@ -4,7 +4,7 @@
 #define EX_ENABLE_WARN 1
 #define EX_ENABLE_INFO 1
 
-#if EXCALIBUR_LOG
+#if EXCALIBUR_DEBUG
 #define EX_ENABLE_DEBUG 1
 #define EX_ENABLE_TRACE 1
 #endif

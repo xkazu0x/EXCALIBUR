@@ -1,8 +1,8 @@
 CC := g++
 CFLAGS := -g -Wall -Wextra -Wpadded -O0 -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -Wno-write-strings
 INCLUDES := -I.
-LIBS := -lkernel32 -luser32 -lgdi32
-DEFINES := -DEXCALIBUR_INTERNAL=1 -DEXCALIBUR_LOG=1
+LIBS := -lkernel32 -luser32 -lgdi32 -lwinmm
+DEFINES := -DEXCALIBUR_INTERNAL=1 -DEXCALIBUR_DEBUG=1
 
 SRC_DIR := src
 BUILD_DIR := build

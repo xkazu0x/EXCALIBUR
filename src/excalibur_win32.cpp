@@ -1,7 +1,8 @@
 #include "excalibur.h"
 
-#define WIN32_LEAN_AND_MEAN
+//#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+//#include <timeapi.h>
 #include <xinput.h>
 
 /*
@@ -22,6 +23,7 @@ struct win32_game_code {
 struct win32_state {
     BITMAPINFO bitmap_info;
     WINDOWPLACEMENT window_placement;
+    s64 time_frequency;
 };
 
 global b32 global_quit;
@@ -135,8 +137,8 @@ win32_get_time(void) {
 }
 
 inline f32
-win32_get_delta_seconds(LARGE_INTEGER start, LARGE_INTEGER end, f32 frequency) {
-    f32 result = ((f32)(end.QuadPart - start.QuadPart)) / frequency;
+win32_get_delta_seconds(LARGE_INTEGER start, LARGE_INTEGER end) {
+    f32 result = ((f32)(end.QuadPart - start.QuadPart)) / ((f32)(global_win32.time_frequency));
     return(result);
 }
 
@@ -368,9 +370,10 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     ///////////////////////////////////
     // NOTE(xkazu0x): memory initialize
     EXINFO("EXCALIBUR :: MEMORY");
-    LPVOID base_address = 0;
 #if EXCALIBUR_INTERNAL
-    base_address = (LPVOID)EX_TERABYTES(2);
+    LPVOID base_address = (LPVOID)EX_TERABYTES(2);
+#else
+    LPVOID base_address = 0;
 #endif
     global_memory.permanent_storage_size = EX_MEGABYTES(64);
     global_memory.transient_storage_size = EX_GIGABYTES(2);
@@ -391,21 +394,25 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     // NOTE(xkazu0x): time initialize
     LARGE_INTEGER large_integer;
     QueryPerformanceFrequency(&large_integer);
-    s64 counts_per_second = large_integer.QuadPart;
-        
+    global_win32.time_frequency = large_integer.QuadPart;
+
+    // NOTE(xkazu0x): set the windows scheduler granularity to 1ms
+    // so that our Sleep() can be more granular
+    UINT desired_scheduler_ms = 1;
+    b32 sleep_is_granular = (timeBeginPeriod(desired_scheduler_ms) == TIMERR_NOERROR);
+    
     LARGE_INTEGER last_counter = win32_get_time();
     s64 last_cycle_count = __rdtsc();
 
-    s32 game_update_hz = monitor_frame_rate / 2;
-    f32 target_seconds_per_frame = 1.0f / (f32)game_update_hz;
+    f32 target_seconds_per_frame = 1.0f / ((f32)(monitor_frame_rate));
     
     EXINFO("EXCALIBUR : RUN");
-    char *filename = __FILE__;
-    debug_read_file_result file = debug_platform_read_file(filename);
-    if (file.memory) {
-        debug_platform_write_file("test.out", file.size, file.memory);
-        debug_platform_free_file_memory(file.memory);
-    }
+    // char *filename = __FILE__;
+    // debug_read_file_result file = debug_platform_read_file(filename);
+    // if (file.memory) {
+    //     debug_platform_write_file("test.out", file.size, file.memory);
+    //     debug_platform_free_file_memory(file.memory);
+    // }
     
     while (!global_quit) {
         MSG message;
@@ -470,8 +477,6 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
         if (global_input.keyboard[VK_F11].pressed) {
             win32_window_toggle_fullscreen(window_handle, &global_win32.window_placement);
         }
-
-        window_size = win32_get_window_size(window_handle);
         
         //////////////////////////////
         // NOTE(xkazu0x): mouse update
@@ -530,7 +535,62 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
         ///////////////////////////////////
         // NOTE(xkazu0x): update and render
         game.update_and_render(&global_memory, &global_input, &global_backbuffer);
+        //window_size = win32_get_window_size(window_handle);
+        //win32_display_backbuffer(global_backbuffer, window_size, window_device);
+        
+        /////////////////////////////
+        // NOTE(xkazu0x): time update
+        s64 end_cycle_count = __rdtsc();
+        s64 cycles_per_frame = end_cycle_count - last_cycle_count;
+        
+        LARGE_INTEGER work_counter = win32_get_time();
+        f32 work_seconds_per_frame = win32_get_delta_seconds(last_counter, work_counter);
+
+        // TODO(xkazu0x): PROBRABLY BUGGY
+        f32 seconds_elapsed_for_frame = work_seconds_per_frame;
+        if (seconds_elapsed_for_frame < target_seconds_per_frame) {
+            if (sleep_is_granular) {
+                DWORD sleep_ms = (DWORD)(1000.0f * (target_seconds_per_frame - seconds_elapsed_for_frame));
+                if (sleep_ms > 0) {
+                    Sleep(sleep_ms);
+                }
+            }
+            while (seconds_elapsed_for_frame < target_seconds_per_frame) {
+                seconds_elapsed_for_frame = win32_get_delta_seconds(last_counter, win32_get_time());
+            }
+        } else {
+            EXWARN("< FRAME RATE MISSED");
+        }
+        
+        ////////////////////////////////////////////
+        // TODO(xkazu0x): display backbuffer here????
+        window_size = win32_get_window_size(window_handle);
         win32_display_backbuffer(global_backbuffer, window_size, window_device);
+        
+        LARGE_INTEGER end_counter = win32_get_time();
+        f32 ms_per_frame = 1000.0f * win32_get_delta_seconds(last_counter, end_counter);
+        
+        s64 counts_per_frame = last_counter.QuadPart - end_counter.QuadPart;
+        f32 frames_per_second = (f32)global_win32.time_frequency / (f32)counts_per_frame;
+
+        f32 mega_cycles_per_frame = ((f32)cycles_per_frame / (1000.0f * 1000.0f));
+        
+        last_counter = end_counter;
+        last_cycle_count = end_cycle_count;
+                
+#if 1
+        // TODO(xkazu0x): this is debug code only
+        static f64 time_seconds = 0.0;
+        static f64 last_print_time = 0.0;
+        time_seconds += work_seconds_per_frame;
+        if (time_seconds - last_print_time > 0.1f) {
+            EXDEBUG("%.02fms, %.02ffps, %.02fmc", ms_per_frame, frames_per_second, mega_cycles_per_frame);
+            char new_window_title[512];
+            sprintf(new_window_title, "%s - %.02fms, %.02ffps, %.02fmc", window_title, ms_per_frame, frames_per_second, mega_cycles_per_frame);
+            SetWindowTextA(window_handle, new_window_title);
+            last_print_time = time_seconds;
+        }
+#endif
 
         /////////////////////////////
         // NOTE(xkazu0x): input reset
@@ -548,41 +608,6 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
         global_input.mouse.delta_position.x = 0;
         global_input.mouse.delta_position.y = 0;
         global_input.mouse.delta_wheel = 0;
-        
-        /////////////////////////////
-        // NOTE(xkazu0x): time update
-        s64 end_cycle_count = __rdtsc();
-        s64 cycles_per_frame = end_cycle_count - last_cycle_count;
-        
-        LARGE_INTEGER end_counter = win32_get_time();
-        s64 counts_per_frame = end_counter.QuadPart - last_counter.QuadPart;
-        f32 seconds_per_frame = win32_get_delta_seconds(last_counter, end_counter, (f32)counts_per_second);
-
-        // f32 seconds_elapsed_for_frame = seconds_per_frame;
-        // while (seconds_per_frame < target_seconds_per_frame) {
-        //     seconds_elapsed_for_frame = win32_get_delta_seconds(last_counter, win32_get_time(), (f32)counts_per_second);
-        // }
-        
-        f32 ms_per_frame = (1000.0f * seconds_per_frame);
-        f32 mega_cycles_per_frame = ((f32)cycles_per_frame / (1000.0f * 1000.0f));
-        f32 frames_per_second = (f32)counts_per_second / (f32)counts_per_frame;
-        
-#if 1
-        // TODO(xkazu0x): this is debug code only
-        static f64 time_seconds = 0.0;
-        static f64 last_print_time = 0.0;
-        time_seconds += seconds_per_frame;
-        if (time_seconds - last_print_time > 0.2f) {
-            //EXDEBUG("%.02fms, %.02ffps, %.02fmc", ms_per_frame, frames_per_second, mega_cycles_per_frame);
-            char new_window_title[512];
-            sprintf(new_window_title, "%s - %.02fms, %.02fmc, %.02ffps", window_title, ms_per_frame, mega_cycles_per_frame, frames_per_second);
-            SetWindowTextA(window_handle, new_window_title);
-            last_print_time = time_seconds;
-        }
-#endif
-        
-        last_counter = end_counter;
-        last_cycle_count = end_cycle_count;
     }
     
     EXINFO("EXCALIBUR : SHUTDOWN");

@@ -2,12 +2,11 @@
 #define EXCALIBUR_GAME_H
 
 #include "excalibur_base.h"
-#include "excalibur_base.cpp"
-
 #include "excalibur_math.h"
-#include "excalibur_math.cpp"
-
 #include "excalibur_logger.h"
+
+#include "excalibur_base.cpp"
+#include "excalibur_math.cpp"
 #include "excalibur_logger.cpp"
 
 inline u32
