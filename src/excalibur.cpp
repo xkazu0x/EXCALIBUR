@@ -36,13 +36,9 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
         u32 *pixel = (u32 *)row;
         for (s32 x = 0; x < backbuffer->size.x; ++x) {
             u8 blue = (x + state->offset.x);
-#if 0
             u8 green = (y + state->offset.y);
             u8 red = 0;
-#else
-            u8 green = 0;
-            u8 red = (y + state->offset.y);
-#endif
+
             *pixel++ = ((red << 16) | (green << 8) | blue);
         }
         row += backbuffer->pitch;

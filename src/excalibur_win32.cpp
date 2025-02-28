@@ -15,6 +15,7 @@
 struct win32_game_code {
     b32 loaded;
     HMODULE library;
+    FILETIME last_write_time;
     GAMEUPDATEANDRENDER *update_and_render;
 };
 
@@ -105,30 +106,49 @@ DEBUG_PLATFORM_WRITE_FILE(debug_platform_write_file) {
     return(result);
 }
 
+inline FILETIME
+win32_get_last_write_time(char *filename) {
+    FILETIME result = {};
+    WIN32_FIND_DATA find_data;
+    HANDLE file_handle = FindFirstFileA(filename, &find_data);
+    if (file_handle != INVALID_HANDLE_VALUE) {
+        result = find_data.ftLastWriteTime;
+        FindClose(file_handle);
+    }
+    return(result);
+}
+
 internal win32_game_code
-win32_load_game(void) {
+win32_load_game_code(char *source_dll_name, char *temp_dll_name) {
+    CopyFile(source_dll_name, temp_dll_name, FALSE);
+    
     win32_game_code result = {};
-    CopyFile("excalibur.dll", "excalibur_copy.dll", FALSE);
-    result.library = LoadLibraryA("excalibur_copy.dll");
+    result.last_write_time = win32_get_last_write_time(source_dll_name);
+    result.library = LoadLibraryA(temp_dll_name);
     if (result.library) {
         WIN32_GET_PROC_ADDR(result.update_and_render,
                             result.library,
                             "game_update_and_render");
         if (result.update_and_render) {
             result.loaded = EX_TRUE;
+            EXDEBUG("> Game code loaded");
         }
+    } else {
+        EXERROR("< Failed to load game dll ");
     }
     if (!result.loaded) {
         result.update_and_render = _game_update_and_render;
+        EXERROR("< Failed to load game code");
     }
     return(result);
 }
 
 internal void
-win32_unload_game(win32_game_code *game_code) {
+win32_unload_game_code(win32_game_code *game_code) {
     if (game_code->library) {
         FreeLibrary(game_code->library);
         game_code->library = 0;
+        EXDEBUG("> Game code unloaded");
     }
     game_code->loaded = EX_FALSE;
     game_code->update_and_render = _game_update_and_render;
@@ -256,12 +276,46 @@ win32_window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
     return(result);
 }
 
+internal void
+cat_strings(size_t src_a_count, char *src_a,
+            size_t src_b_count, char *src_b,
+            size_t dest_count, char *dest) {
+    for (u32 i = 0; i < src_a_count; ++i) {
+        *dest++ = *src_a++;
+    }
+    for (u32 i = 0; i < src_b_count; ++i) {
+        *dest++ = *src_b++;
+    }
+    *dest++ = 0;
+}
+
 int WINAPI
 WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int show_command) {
+    char exe_filename[MAX_PATH];
+    DWORD size_of_filename = GetModuleFileName(0, exe_filename, sizeof(exe_filename));
+    char *one_past_last_slash = exe_filename;
+    for (char *scan = exe_filename; *scan; ++scan) {
+        if (*scan == '\\') {
+            one_past_last_slash = scan + 1;
+        }
+    }
+
+    char source_game_code_dll_filename[] = "excalibur.dll";
+    char source_game_code_dll_fullpath[MAX_PATH];
+    cat_strings(one_past_last_slash - exe_filename, exe_filename,
+                sizeof(source_game_code_dll_filename) - 1, source_game_code_dll_filename,
+                sizeof(source_game_code_dll_fullpath), source_game_code_dll_fullpath);
+
+    char temp_game_code_dll_filename[] = "excalibur_temp.dll";
+    char temp_game_code_dll_fullpath[MAX_PATH];
+    cat_strings(one_past_last_slash - exe_filename, exe_filename,
+                sizeof(temp_game_code_dll_filename) - 1, temp_game_code_dll_filename,
+                sizeof(temp_game_code_dll_fullpath), temp_game_code_dll_fullpath);
+    
     EXINFO("EXCALIBUR : INITIALIZE");
     EXINFO("> Operating system: %s", string_from_operating_system(operating_system_from_context()));
     EXINFO("> Architecture: %s", string_from_architecture(architecture_from_context()));
-
+    
     DEVMODE monitor_info;
     monitor_info.dmSize = sizeof(DEVMODE);
     EnumDisplaySettings(0, ENUM_CURRENT_SETTINGS, &monitor_info);
@@ -412,22 +466,21 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     //////////////////////////////
     // NOTE(xkazu0x): game loading
     EXINFO("EXCALIBUR :: GAME");
-    u32 game_load_counter = 0;
-    win32_game_code game = win32_load_game();
-    if (!game.loaded) {
-        EXERROR("< Failed to load game code");
+    win32_game_code game_code = win32_load_game_code(source_game_code_dll_fullpath, temp_game_code_dll_fullpath);
+    if (!game_code.loaded) {
         return(1);
     }
-    EXDEBUG("> Game code loaded");
 
     EXINFO("EXCALIBUR : RUN");
     while (!global_quit) {
-        if (game_load_counter++ > 120) {
-            win32_unload_game(&game);
-            game = win32_load_game();
-            game_load_counter = 0;
+        // NOTE(xkazu0x): reload game code
+        FILETIME game_code_dll_write_time = win32_get_last_write_time(source_game_code_dll_fullpath);
+        if (CompareFileTime(&game_code_dll_write_time, &game_code.last_write_time) != 0) {
+            win32_unload_game_code(&game_code);
+            game_code = win32_load_game_code(source_game_code_dll_fullpath, temp_game_code_dll_fullpath);
         }
 
+        // NOTE(xkazu0x): message loop
         MSG message;
         while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
             switch (message.message) {
@@ -548,7 +601,7 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
 
         ///////////////////////////////////
         // NOTE(xkazu0x): update and render
-        game.update_and_render(&global_memory, &global_input, &global_backbuffer);
+        game_code.update_and_render(&global_memory, &global_input, &global_backbuffer);
         //window_size = win32_get_window_size(window_handle);
         //win32_display_backbuffer(global_backbuffer, window_size, window_device);
         

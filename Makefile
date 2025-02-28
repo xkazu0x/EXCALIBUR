@@ -25,7 +25,7 @@ $(BUILD_DIR)/$(EXEC): $(SRC_DIR)/excalibur_win32.cpp
 rebuild: clean compile
 
 run: build
-	cd ./$(BUILD_DIR) && $(EXEC)
+	$(BUILD_DIR)/$(EXEC)
 
 clean:
 	rmdir /s /q $(BUILD_DIR)
