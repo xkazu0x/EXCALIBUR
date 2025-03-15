@@ -1,9 +1,5 @@
 #include "excalibur.h"
-
-//#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-//#include <timeapi.h>
-#include <xinput.h>
+#include "excalibur_win32.h"
 
 /*
   TODO(xkazu0x):
@@ -12,42 +8,11 @@
   > hardware 
 */
 
-struct win32_game_code {
-    b32 loaded;
-    HMODULE library;
-    FILETIME last_write_time;
-    GAMEUPDATEANDRENDER *update_and_render;
-};
+global win32_state g_win32;
 
-// TODO(xkazu0x): maybe split??
-struct win32_state {
-    BITMAPINFO bitmap_info;
-    WINDOWPLACEMENT window_placement;
-    s64 time_frequency;
-};
-
-global b32 global_quit;
-global win32_state global_win32;
-
-global game_memory global_memory;
-global game_input global_input;
-global game_backbuffer global_backbuffer;
-
-#define WIN32_GET_PROC_ADDR(v, m, s) (*(PROC*)(&(v))) = GetProcAddress((m), (s))
-
-#define X_INPUT_GET_STATE(name) DWORD WINAPI name(DWORD, XINPUT_STATE *)
-X_INPUT_GET_STATE(_xinput_get_state) {
-    return(ERROR_DEVICE_NOT_CONNECTED);
-}
-typedef X_INPUT_GET_STATE(XINPUTGETSTATE);
-XINPUTGETSTATE *xinput_get_state;
-
-#define X_INPUT_SET_STATE(name) DWORD WINAPI name(DWORD, XINPUT_VIBRATION *)
-X_INPUT_SET_STATE(_xinput_set_state) {
-    return(ERROR_DEVICE_NOT_CONNECTED);
-}
-typedef X_INPUT_SET_STATE(XINPUTSETSTATE);
-XINPUTSETSTATE *xinput_set_state;
+global game_memory g_memory;
+global game_input g_input;
+global game_bitmap g_bitmap;
 
 DEBUG_PLATFORM_FREE_FILE(debug_platform_free_file) {
     if (memory) {
@@ -72,7 +37,7 @@ DEBUG_PLATFORM_READ_FILE(debug_platform_read_file) {
                     result.memory = file_memory;
                 } else {
                     // TODO(xkazu0x): logging
-                    debug_platform_free_file(file_memory);
+                    debug_platform_free_file(thread, file_memory);
                     file_memory = 0;
                 }
             } else {
@@ -108,38 +73,38 @@ DEBUG_PLATFORM_WRITE_FILE(debug_platform_write_file) {
 
 inline FILETIME
 win32_get_last_write_time(char *filename) {
-    FILETIME result = {};
-    WIN32_FIND_DATA find_data;
-    HANDLE file_handle = FindFirstFileA(filename, &find_data);
-    if (file_handle != INVALID_HANDLE_VALUE) {
-        result = find_data.ftLastWriteTime;
-        FindClose(file_handle);
+    FILETIME last_write_time = {};
+    
+    WIN32_FILE_ATTRIBUTE_DATA data;
+    if (GetFileAttributesEx(filename, GetFileExInfoStandard, &data)) {
+        last_write_time = data.ftLastWriteTime;
     }
-    return(result);
+    
+    return(last_write_time);
 }
 
 internal win32_game_code
 win32_load_game_code(char *source_dll_name, char *temp_dll_name) {
-    CopyFile(source_dll_name, temp_dll_name, FALSE);
-    
     win32_game_code result = {};
     result.last_write_time = win32_get_last_write_time(source_dll_name);
+
+    CopyFile(source_dll_name, temp_dll_name, FALSE);
     result.library = LoadLibraryA(temp_dll_name);
     if (result.library) {
-        WIN32_GET_PROC_ADDR(result.update_and_render,
-                            result.library,
-                            "game_update_and_render");
+        WIN32_GET_PROC_ADDR(result.update_and_render, result.library, "game_update_and_render");
         if (result.update_and_render) {
             result.loaded = EX_TRUE;
             EXDEBUG("> Game code loaded");
         }
     } else {
-        EXERROR("< Failed to load game dll ");
+        EXERROR("< Failed to load game dll");
     }
+    
     if (!result.loaded) {
-        result.update_and_render = _game_update_and_render;
+        result.update_and_render = 0;
         EXERROR("< Failed to load game code");
     }
+    
     return(result);
 }
 
@@ -151,7 +116,7 @@ win32_unload_game_code(win32_game_code *game_code) {
         EXDEBUG("> Game code unloaded");
     }
     game_code->loaded = EX_FALSE;
-    game_code->update_and_render = _game_update_and_render;
+    game_code->update_and_render = 0;
 }
 
 inline LARGE_INTEGER
@@ -163,7 +128,7 @@ win32_get_time(void) {
 
 inline f32
 win32_get_delta_seconds(LARGE_INTEGER start, LARGE_INTEGER end) {
-    f32 result = ((f32)(end.QuadPart - start.QuadPart)) / ((f32)(global_win32.time_frequency));
+    f32 result = ((f32)(end.QuadPart - start.QuadPart)) / ((f32)(g_win32.time_frequency));
     return(result);
 }
 
@@ -227,33 +192,34 @@ win32_get_window_size(HWND window) {
 }
 
 internal void
-win32_resize_backbuffer(game_backbuffer *buffer, vec2i size) {
-    if (buffer->memory) {
-        VirtualFree(buffer->memory, 0, MEM_RELEASE);
+win32_resize_bitmap(game_bitmap *bitmap, vec2i size) {
+    if (bitmap->memory) {
+        VirtualFree(bitmap->memory, 0, MEM_RELEASE);
     }
 
-    s32 bytes_per_pixel = 4;
-    buffer->size = size;
-    buffer->pitch = buffer->size.x * bytes_per_pixel;
+    bitmap->size = size;
+    bitmap->bytes_per_pixel = 4;
+    bitmap->pitch = bitmap->size.x * bitmap->bytes_per_pixel;
     
-    global_win32.bitmap_info.bmiHeader.biSize = sizeof(global_win32.bitmap_info.bmiHeader);
-    global_win32.bitmap_info.bmiHeader.biWidth = buffer->size.x;
-    global_win32.bitmap_info.bmiHeader.biHeight = -buffer->size.y;
-    global_win32.bitmap_info.bmiHeader.biPlanes = 1;
-    global_win32.bitmap_info.bmiHeader.biBitCount = 32;
-    global_win32.bitmap_info.bmiHeader.biCompression = BI_RGB;
+    g_win32.bitmap_info.bmiHeader.biSize = sizeof(g_win32.bitmap_info.bmiHeader);
+    g_win32.bitmap_info.bmiHeader.biWidth = bitmap->size.x;
+    g_win32.bitmap_info.bmiHeader.biHeight = -bitmap->size.y;
+    g_win32.bitmap_info.bmiHeader.biPlanes = 1;
+    g_win32.bitmap_info.bmiHeader.biBitCount = 32;
+    g_win32.bitmap_info.bmiHeader.biCompression = BI_RGB;
 
-    s32 bitmap_memory_size = (buffer->size.x * buffer->size.y) * bytes_per_pixel;
-    buffer->memory = VirtualAlloc(0, bitmap_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    s32 bitmap_memory_size = (bitmap->size.x * bitmap->size.y) * bitmap->bytes_per_pixel;
+    bitmap->memory = VirtualAlloc(0, bitmap_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 }
 
 internal void
-win32_display_backbuffer(game_backbuffer buffer, vec2i window_size, HDC device_context) {
+win32_display_bitmap(game_bitmap bitmap, vec2i window_size, HDC device_context) {
     StretchDIBits(device_context,
-                  0, 0, window_size.x, window_size.y,
-                  0, 0, buffer.size.x, buffer.size.y,
-                  buffer.memory,
-                  &global_win32.bitmap_info,
+                  //0, 0, window_size.x, window_size.y, NOTE(xkazu0x): stretch
+                  0, 0, bitmap.size.x, bitmap.size.y,
+                  0, 0, bitmap.size.x, bitmap.size.y,
+                  bitmap.memory,
+                  &g_win32.bitmap_info,
                   DIB_RGB_COLORS, SRCCOPY);
 }
 
@@ -265,9 +231,16 @@ win32_window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
         case WM_DESTROY: {
             PostQuitMessage(0);
         } break;
+        case WM_ACTIVATEAPP: {
+            if (wparam == TRUE) {
+                SetLayeredWindowAttributes(window, RGB(0, 0, 0), 255, LWA_ALPHA);
+            } else {
+                SetLayeredWindowAttributes(window, RGB(0, 0, 0), 128, LWA_ALPHA);
+            }
+        } break;
         case WM_SIZE: {
-            vec2i window_size = win32_get_window_size(window);
-            win32_resize_backbuffer(&global_backbuffer, window_size);
+            //vec2i window_size = win32_get_window_size(window);
+            //win32_resize_bitmap(&g_bitmap, window_size);
         } break;
         default: {
             result = DefWindowProcA(window, message, wparam, lparam);
@@ -289,28 +262,38 @@ cat_strings(size_t src_a_count, char *src_a,
     *dest++ = 0;
 }
 
-int WINAPI
-WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int show_command) {
-    char exe_filename[MAX_PATH];
-    DWORD size_of_filename = GetModuleFileName(0, exe_filename, sizeof(exe_filename));
-    char *one_past_last_slash = exe_filename;
-    for (char *scan = exe_filename; *scan; ++scan) {
+internal void
+win32_get_exe_filename(win32_state *state) {
+    DWORD size_of_filename = GetModuleFileName(0, state->exe_filename, sizeof(state->exe_filename));
+    state->one_past_last_exe_filename_slash = state->exe_filename;
+    for (char *scan = state->exe_filename; *scan; ++scan) {
         if (*scan == '\\') {
-            one_past_last_slash = scan + 1;
+            state->one_past_last_exe_filename_slash = scan + 1;
         }
     }
+}
 
-    char source_game_code_dll_filename[] = "excalibur.dll";
-    char source_game_code_dll_fullpath[MAX_PATH];
-    cat_strings(one_past_last_slash - exe_filename, exe_filename,
-                sizeof(source_game_code_dll_filename) - 1, source_game_code_dll_filename,
-                sizeof(source_game_code_dll_fullpath), source_game_code_dll_fullpath);
+internal void
+win32_build_exe_path_filename(win32_state *state, char *filename,
+                              u32 dest_count, char *dest) {
+    cat_strings(state->one_past_last_exe_filename_slash - state->exe_filename, state->exe_filename,
+                string_length(filename), filename,
+                dest_count, dest);
+}
 
-    char temp_game_code_dll_filename[] = "excalibur_temp.dll";
-    char temp_game_code_dll_fullpath[MAX_PATH];
-    cat_strings(one_past_last_slash - exe_filename, exe_filename,
-                sizeof(temp_game_code_dll_filename) - 1, temp_game_code_dll_filename,
-                sizeof(temp_game_code_dll_fullpath), temp_game_code_dll_fullpath);
+int WINAPI
+WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int show_command) {
+    win32_get_exe_filename(&g_win32);
+    
+    char source_game_code_dll_fullpath[WIN32_STATE_FILENAME_MAX];
+    win32_build_exe_path_filename(&g_win32, "excalibur.dll",
+                                  sizeof(source_game_code_dll_fullpath),
+                                  source_game_code_dll_fullpath);
+    
+    char temp_game_code_dll_fullpath[WIN32_STATE_FILENAME_MAX];
+    win32_build_exe_path_filename(&g_win32, "excalibur_temp.dll",
+                                  sizeof(temp_game_code_dll_fullpath),
+                                  temp_game_code_dll_fullpath);
     
     EXINFO("EXCALIBUR : INITIALIZE");
     EXINFO("> Operating system: %s", string_from_operating_system(operating_system_from_context()));
@@ -343,7 +326,7 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     }
 
     WNDCLASSA window_class = {};
-    window_class.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
+    window_class.style = CS_HREDRAW | CS_VREDRAW;
     window_class.lpfnWndProc = win32_window_proc;
     window_class.cbClsExtra = 0;
     window_class.cbWndExtra = 0;
@@ -359,9 +342,16 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
         return(1);
     }
     EXDEBUG("> Win32 window registered");
+
+    u32 window_style = WS_OVERLAPPEDWINDOW;
+#if 1
+    u32 window_style_ex = 0;
+#else
+    u32 window_style_ex = WS_EX_TOPMOST | WS_EX_LAYERED;
+#endif
     
-    HWND window_handle = CreateWindowExA(0, MAKEINTATOM(window_atom),
-                                         window_title, WS_OVERLAPPEDWINDOW,
+    HWND window_handle = CreateWindowExA(window_style_ex, MAKEINTATOM(window_atom),
+                                         window_title, window_style,
                                          window_position.x, window_position.y,
                                          window_size.x, window_size.y,
                                          0, 0, instance, 0);
@@ -370,9 +360,11 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
         return(1);
     }
     EXDEBUG("> Win32 window created");
-    HDC window_device = GetDC(window_handle);
     ShowWindow(window_handle, SW_SHOW);
 
+    vec2i bitmap_size = win32_get_window_size(window_handle);
+    win32_resize_bitmap(&g_bitmap, bitmap_size);
+    
     EXINFO("EXCALIBUR :: INPUT");
     RAWINPUTDEVICE raw_input_device = {};
     raw_input_device.usUsagePage = 0x01;
@@ -414,11 +406,11 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     // TODO(xkazu0x): is that a better way to do this?
     // every gamepads has the same constant values
     f32 trigger_threshold = XINPUT_GAMEPAD_TRIGGER_THRESHOLD / 255.0f;
-    for (u32 i = 0; i < EX_ARRAY_COUNT(global_input.gamepads); i++) {
-        global_input.gamepads[i].left_trigger.threshold = trigger_threshold;
-        global_input.gamepads[i].right_trigger.threshold = trigger_threshold;
-        global_input.gamepads[i].left_stick.threshold = XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE / 32767.0f;
-        global_input.gamepads[i].right_stick.threshold = XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE / 32767.0f;
+    for (u32 i = 0; i < EX_ARRAY_COUNT(g_input.gamepads); i++) {
+        g_input.gamepads[i].left_trigger.threshold = trigger_threshold;
+        g_input.gamepads[i].right_trigger.threshold = trigger_threshold;
+        g_input.gamepads[i].left_stick.threshold = XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE / 32767.0f;
+        g_input.gamepads[i].right_stick.threshold = XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE / 32767.0f;
     }
 
     ///////////////////////////////////
@@ -429,29 +421,30 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
 #else
     LPVOID base_address = 0;
 #endif
-    global_memory.permanent_storage_size = EX_MEGABYTES(64);
-    global_memory.transient_storage_size = EX_GIGABYTES(2);
-    global_memory.debug_platform_free_file = debug_platform_free_file;
-    global_memory.debug_platform_read_file = debug_platform_read_file;
-    global_memory.debug_platform_write_file = debug_platform_write_file;
+    g_memory.permanent_storage_size = EX_MEGABYTES(64);
+    g_memory.transient_storage_size = EX_GIGABYTES(1);
+    g_memory.debug_platform_free_file = debug_platform_free_file;
+    g_memory.debug_platform_read_file = debug_platform_read_file;
+    g_memory.debug_platform_write_file = debug_platform_write_file;
     
-    u64 total_memory_size = global_memory.permanent_storage_size + global_memory.transient_storage_size;
-    global_memory.permanent_storage = VirtualAlloc(base_address, total_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-    global_memory.transient_storage = ((u8 *)global_memory.permanent_storage + global_memory.permanent_storage_size);
-    if (!global_memory.permanent_storage) {
+    g_win32.game_memory_size = g_memory.permanent_storage_size + g_memory.transient_storage_size;
+    g_win32.game_memory_block = VirtualAlloc(base_address, g_win32.game_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    
+    g_memory.permanent_storage = g_win32.game_memory_block;
+    g_memory.transient_storage = ((u8 *)g_memory.permanent_storage + g_memory.permanent_storage_size);
+    if (!g_memory.permanent_storage) {
         EXFATAL("< Failed to allocate game memory");
         return(1);
-    } else {
-        EXDEBUG("> Memory allocated:");
-        EXTRACE("\t^ Permanent storage: %llu", global_memory.permanent_storage_size);
-        EXTRACE("\t^ Transient storage: %llu", global_memory.transient_storage_size);
     }
+    EXDEBUG("> Memory allocated:");
+    EXTRACE("\t> Permanent storage: %llu", g_memory.permanent_storage_size);
+    EXTRACE("\t> Transient storage: %llu", g_memory.transient_storage_size);
     
     /////////////////////////////////
     // NOTE(xkazu0x): time initialize
     LARGE_INTEGER large_integer;
     QueryPerformanceFrequency(&large_integer);
-    global_win32.time_frequency = large_integer.QuadPart;
+    g_win32.time_frequency = large_integer.QuadPart;
 
     // NOTE(xkazu0x): set the windows scheduler granularity to 1ms
     // so that our Sleep() can be more granular
@@ -463,29 +456,35 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
 
     f32 target_seconds_per_frame = 1.0f / ((f32)(monitor_frame_rate));
 
-    //////////////////////////////
-    // NOTE(xkazu0x): game loading
+    ///////////////////////////
+    // NOTE(xkazu0x): game load
     EXINFO("EXCALIBUR :: GAME");
-    win32_game_code game_code = win32_load_game_code(source_game_code_dll_fullpath, temp_game_code_dll_fullpath);
-    if (!game_code.loaded) {
+    win32_game_code game = win32_load_game_code(source_game_code_dll_fullpath, temp_game_code_dll_fullpath);
+    if (!game.loaded) {
         return(1);
     }
-
+    s32 game_load_count = 0;
+    
     EXINFO("EXCALIBUR : RUN");
-    while (!global_quit) {
-        // NOTE(xkazu0x): reload game code
-        FILETIME game_code_dll_write_time = win32_get_last_write_time(source_game_code_dll_fullpath);
-        if (CompareFileTime(&game_code_dll_write_time, &game_code.last_write_time) != 0) {
-            win32_unload_game_code(&game_code);
-            game_code = win32_load_game_code(source_game_code_dll_fullpath, temp_game_code_dll_fullpath);
+    b32 quit = EX_FALSE;
+    while (!quit) {
+        // NOTE(xkazu0x): game reload
+        // NOTE(xkazu0x): the game load count prevents a reloading error
+        if (game_load_count++ > 60) {
+            FILETIME game_new_write_time = win32_get_last_write_time(source_game_code_dll_fullpath);
+            if (CompareFileTime(&game_new_write_time, &game.last_write_time) != 0) {
+                win32_unload_game_code(&game);
+                game = win32_load_game_code(source_game_code_dll_fullpath, temp_game_code_dll_fullpath);
+            }
+            game_load_count = 0;
         }
 
-        // NOTE(xkazu0x): message loop
+        // NOTE(xkazu0x): window message loop
         MSG message;
         while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
             switch (message.message) {
                 case WM_QUIT: {
-                    global_quit = EX_TRUE;
+                    quit = EX_TRUE;
                 } break;
                 case WM_SYSKEYDOWN:
                 case WM_SYSKEYUP:
@@ -493,7 +492,7 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
                 case WM_KEYUP: {
                     u32 key_code = (u32)message.wParam;
                     b32 down = ((message.lParam & (1 << 31)) == 0);
-                    win32_process_digital_button(&global_input.keyboard[key_code], down);
+                    win32_process_digital_button(&g_input.keyboard[key_code], down);
                     TranslateMessage(&message);
                     DispatchMessageA(&message);
                 } break;
@@ -504,27 +503,37 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
                     if (GetRawInputData((HRAWINPUT)message.lParam, RID_INPUT, buffer, &size, sizeof(RAWINPUTHEADER)) == size) {
                         RAWINPUT *raw_input = (RAWINPUT *)buffer;
                         if (raw_input->header.dwType == RIM_TYPEMOUSE && raw_input->data.mouse.usFlags == MOUSE_MOVE_RELATIVE){
-                            global_input.mouse.delta_position.x += raw_input->data.mouse.lLastX;
-                            global_input.mouse.delta_position.y += raw_input->data.mouse.lLastY;
+                            g_input.mouse.delta_position.x += raw_input->data.mouse.lLastX;
+                            g_input.mouse.delta_position.y += raw_input->data.mouse.lLastY;
 
                             USHORT button_flags = raw_input->data.mouse.usButtonFlags;
-                            b32 left_button_down = global_input.mouse.left.down;
+                            b32 left_button_down = g_input.mouse.left.down;
                             if (button_flags & RI_MOUSE_LEFT_BUTTON_DOWN) left_button_down = EX_TRUE;
                             if (button_flags & RI_MOUSE_LEFT_BUTTON_UP) left_button_down = EX_FALSE;
-                            win32_process_digital_button(&global_input.mouse.left, left_button_down);
+                            win32_process_digital_button(&g_input.mouse.left, left_button_down);
 
-                            b32 right_button_down = global_input.mouse.right.down;
+                            b32 right_button_down = g_input.mouse.right.down;
                             if (button_flags & RI_MOUSE_RIGHT_BUTTON_DOWN) right_button_down = EX_TRUE;
                             if (button_flags & RI_MOUSE_RIGHT_BUTTON_UP) right_button_down = EX_FALSE;
-                            win32_process_digital_button(&global_input.mouse.right, right_button_down);
+                            win32_process_digital_button(&g_input.mouse.right, right_button_down);
                             
-                            b32 middle_button_down = global_input.mouse.middle.down;
+                            b32 middle_button_down = g_input.mouse.middle.down;
                             if (button_flags & RI_MOUSE_MIDDLE_BUTTON_DOWN) middle_button_down = EX_TRUE;
                             if (button_flags & RI_MOUSE_MIDDLE_BUTTON_UP) middle_button_down = EX_FALSE;
-                            win32_process_digital_button(&global_input.mouse.middle, middle_button_down);
+                            win32_process_digital_button(&g_input.mouse.middle, middle_button_down);
 
+                            b32 x1_button_down = g_input.mouse.x1.down;
+                            if (button_flags & RI_MOUSE_BUTTON_4_DOWN) x1_button_down = EX_TRUE;
+                            if (button_flags & RI_MOUSE_BUTTON_4_UP) x1_button_down = EX_FALSE;
+                            win32_process_digital_button(&g_input.mouse.x1, x1_button_down);
+                            
+                            b32 x2_button_down = g_input.mouse.x2.down;
+                            if (button_flags & RI_MOUSE_BUTTON_5_DOWN) x2_button_down = EX_TRUE;
+                            if (button_flags & RI_MOUSE_BUTTON_5_UP) x2_button_down = EX_FALSE;
+                            win32_process_digital_button(&g_input.mouse.x2, x2_button_down);
+                            
                             if (raw_input->data.mouse.usButtonFlags & RI_MOUSE_WHEEL) {
-                                global_input.mouse.delta_wheel += ((SHORT)raw_input->data.mouse.usButtonData) / WHEEL_DELTA;
+                                g_input.mouse.delta_wheel += ((SHORT)raw_input->data.mouse.usButtonData) / WHEEL_DELTA;
                             }
                         }
                     }
@@ -538,74 +547,70 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
             }
         }
         
-        if (global_input.keyboard[VK_ESCAPE].pressed) {
-            global_quit = EX_TRUE;
+        if (g_input.keyboard[VK_ESCAPE].pressed) {
+            quit = EX_TRUE;
         }
-        if (global_input.keyboard[VK_F11].pressed) {
-            win32_window_toggle_fullscreen(window_handle, &global_win32.window_placement);
+        if (g_input.keyboard[VK_F11].pressed) {
+            win32_window_toggle_fullscreen(window_handle, &g_win32.window_placement);
         }
-        
-        //////////////////////////////
+
         // NOTE(xkazu0x): mouse update
-#if 0
-        global_input.mouse.position.x += global_input.mouse.delta_position.x;
-        global_input.mouse.position.y += global_input.mouse.delta_position.y;
-        global_input.mouse.wheel += global_input.mouse.delta_wheel;
+        // g_input.mouse.position.x += g_input.mouse.delta_position.x;
+        // g_input.mouse.position.y += g_input.mouse.delta_position.y;
+        g_input.mouse.wheel += g_input.mouse.delta_wheel;
 
         POINT mouse_position;
-        GetCursorPos(&mouse_position); // this slow down
+        GetCursorPos(&mouse_position);
         ScreenToClient(window_handle, &mouse_position);
 
         if (mouse_position.x < 0) mouse_position.x = 0;
         if (mouse_position.y < 0) mouse_position.y = 0;
         if (mouse_position.x > window_size.x) mouse_position.x = window_size.x;
         if (mouse_position.y > window_size.y) mouse_position.y = window_size.y;
-        global_input.mouse.position.x = mouse_position.x;
-        global_input.mouse.position.y = mouse_position.y;
-#endif
-
-        ////////////////////////////////
+        
+        g_input.mouse.position.x = mouse_position.x;
+        g_input.mouse.position.y = mouse_position.y;
+        
         // NOTE(xkazu0x): gamepad update
         u32 max_gamepad_count = XUSER_MAX_COUNT;
-        if (max_gamepad_count > EX_ARRAY_COUNT(global_input.gamepads)) {
-            max_gamepad_count = EX_ARRAY_COUNT(global_input.gamepads);
+        if (max_gamepad_count > EX_ARRAY_COUNT(g_input.gamepads)) {
+            max_gamepad_count = EX_ARRAY_COUNT(g_input.gamepads);
         }
         for (u32 i = 0; i < max_gamepad_count; i++) {
             XINPUT_STATE xinput_state = {};
             DWORD xinput_result = xinput_get_state(i, &xinput_state);
             if (xinput_result == ERROR_SUCCESS) {
-                win32_process_digital_button(&global_input.gamepads[i].up, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_UP) != 0);
-                win32_process_digital_button(&global_input.gamepads[i].down, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN) != 0);
-                win32_process_digital_button(&global_input.gamepads[i].left, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT) != 0);
-                win32_process_digital_button(&global_input.gamepads[i].right, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) != 0);
-                win32_process_digital_button(&global_input.gamepads[i].start, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_START) != 0);
-                win32_process_digital_button(&global_input.gamepads[i].back, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_BACK) != 0);
-                win32_process_digital_button(&global_input.gamepads[i].left_thumb,(xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_THUMB) != 0);
-                win32_process_digital_button(&global_input.gamepads[i].right_thumb, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) != 0);
-                win32_process_digital_button(&global_input.gamepads[i].left_shoulder, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0);
-                win32_process_digital_button(&global_input.gamepads[i].right_shoulder, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0);
-                win32_process_digital_button(&global_input.gamepads[i].a, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_A) != 0);
-                win32_process_digital_button(&global_input.gamepads[i].b, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_B) != 0);
-                win32_process_digital_button(&global_input.gamepads[i].x, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_X) != 0);
-                win32_process_digital_button(&global_input.gamepads[i].y, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_Y) != 0);
-                win32_process_analog_button(&global_input.gamepads[i].left_trigger, xinput_state.Gamepad.bLeftTrigger / 255.0f);
-                win32_process_analog_button(&global_input.gamepads[i].right_trigger, xinput_state.Gamepad.bRightTrigger / 255.0f);
+                win32_process_digital_button(&g_input.gamepads[i].up, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_UP) != 0);
+                win32_process_digital_button(&g_input.gamepads[i].down, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN) != 0);
+                win32_process_digital_button(&g_input.gamepads[i].left, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT) != 0);
+                win32_process_digital_button(&g_input.gamepads[i].right, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) != 0);
+                win32_process_digital_button(&g_input.gamepads[i].start, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_START) != 0);
+                win32_process_digital_button(&g_input.gamepads[i].back, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_BACK) != 0);
+                win32_process_digital_button(&g_input.gamepads[i].left_thumb,(xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_THUMB) != 0);
+                win32_process_digital_button(&g_input.gamepads[i].right_thumb, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) != 0);
+                win32_process_digital_button(&g_input.gamepads[i].left_shoulder, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0);
+                win32_process_digital_button(&g_input.gamepads[i].right_shoulder, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0);
+                win32_process_digital_button(&g_input.gamepads[i].a, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_A) != 0);
+                win32_process_digital_button(&g_input.gamepads[i].b, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_B) != 0);
+                win32_process_digital_button(&g_input.gamepads[i].x, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_X) != 0);
+                win32_process_digital_button(&g_input.gamepads[i].y, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_Y) != 0);
+                win32_process_analog_button(&g_input.gamepads[i].left_trigger, xinput_state.Gamepad.bLeftTrigger / 255.0f);
+                win32_process_analog_button(&g_input.gamepads[i].right_trigger, xinput_state.Gamepad.bRightTrigger / 255.0f);
 #define CONVERT(x) (2.0f * (((x + 32768) / 65535.0f) - 0.5f))
-                win32_process_stick(&global_input.gamepads[i].left_stick, CONVERT(xinput_state.Gamepad.sThumbLX), CONVERT(xinput_state.Gamepad.sThumbLY));
-                win32_process_stick(&global_input.gamepads[i].right_stick, CONVERT(xinput_state.Gamepad.sThumbRX), CONVERT(xinput_state.Gamepad.sThumbRY));
+                win32_process_stick(&g_input.gamepads[i].left_stick, CONVERT(xinput_state.Gamepad.sThumbLX), CONVERT(xinput_state.Gamepad.sThumbLY));
+                win32_process_stick(&g_input.gamepads[i].right_stick, CONVERT(xinput_state.Gamepad.sThumbRX), CONVERT(xinput_state.Gamepad.sThumbRY));
 #undef CONVERT
             } else {
                 break;
             }
         }
 
-        ///////////////////////////////////
         // NOTE(xkazu0x): update and render
-        game_code.update_and_render(&global_memory, &global_input, &global_backbuffer);
-        //window_size = win32_get_window_size(window_handle);
-        //win32_display_backbuffer(global_backbuffer, window_size, window_device);
+        thread_context thread = {};
+        if (game.update_and_render) {
+            game.update_and_render(&thread, &g_memory, &g_input, &g_bitmap);
+        }
         
-        /////////////////////////////
         // NOTE(xkazu0x): time update
         s64 end_cycle_count = __rdtsc();
         s64 cycles_per_frame = end_cycle_count - last_cycle_count;
@@ -626,19 +631,21 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
                 seconds_elapsed_for_frame = win32_get_delta_seconds(last_counter, win32_get_time());
             }
         } else {
-            EXWARN("< FRAME RATE MISSED");
+            EXWARN("< Frame rate missed");
         }
         
-        ////////////////////////////////////////////
-        // TODO(xkazu0x): display backbuffer here????
+        // NOTE(xkazu0x): display bitmap
         window_size = win32_get_window_size(window_handle);
-        win32_display_backbuffer(global_backbuffer, window_size, window_device);
-        
+        HDC window_device = GetDC(window_handle);
+        win32_display_bitmap(g_bitmap, window_size, window_device);
+        ReleaseDC(window_handle, window_device);
+
+        // NOTE(xkazu0x): compute time
         LARGE_INTEGER end_counter = win32_get_time();
         f32 ms_per_frame = 1000.0f * win32_get_delta_seconds(last_counter, end_counter);
         
-        s64 counts_per_frame = last_counter.QuadPart - end_counter.QuadPart;
-        f32 frames_per_second = (f32)global_win32.time_frequency / (f32)counts_per_frame;
+        s64 counts_per_frame = end_counter.QuadPart - last_counter.QuadPart;
+        f32 frames_per_second = (f32)g_win32.time_frequency / (f32)counts_per_frame;
 
         f32 mega_cycles_per_frame = ((f32)cycles_per_frame / (1000.0f * 1000.0f));
         
@@ -646,39 +653,37 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
         last_cycle_count = end_cycle_count;
                 
 #if 1
+        // NOTE(xkazu0x): log time
         // TODO(xkazu0x): this is debug code only
         local f64 time_seconds = 0.0;
         local f64 last_print_time = 0.0;
         time_seconds += work_seconds_per_frame;
         if (time_seconds - last_print_time > 0.1f) {
-            EXDEBUG("%.02fms, %.02ffps, %.02fmc", ms_per_frame, frames_per_second, mega_cycles_per_frame);
+            //EXDEBUG("%.02fms, %.02ffps, %.02fmc", ms_per_frame, frames_per_second, mega_cycles_per_frame);
             char new_window_title[512];
-            sprintf(new_window_title, "%s - %.02fms, %.02ffps, %.02fmc", window_title, ms_per_frame, frames_per_second, mega_cycles_per_frame);
+            sprintf(new_window_title, "%s - %.02ff/s, %.02fms/f, %.02fmc/f", window_title, frames_per_second, ms_per_frame, mega_cycles_per_frame);
             SetWindowTextA(window_handle, new_window_title);
             last_print_time = time_seconds;
         }
 #endif
-
-        /////////////////////////////
-        // NOTE(xkazu0x): input reset
-        for (u32 i = 0; i < KEY_MAX; i++) {
-            global_input.keyboard[i].pressed = EX_FALSE;
-            global_input.keyboard[i].released = EX_FALSE;
-        }
         
-        global_input.mouse.left.pressed = EX_FALSE;
-        global_input.mouse.left.released = EX_FALSE;
-        global_input.mouse.right.pressed = EX_FALSE;
-        global_input.mouse.right.released = EX_FALSE;
-        global_input.mouse.middle.pressed = EX_FALSE;
-        global_input.mouse.middle.released = EX_FALSE;
-        global_input.mouse.delta_position.x = 0;
-        global_input.mouse.delta_position.y = 0;
-        global_input.mouse.delta_wheel = 0;
+        // NOTE(xkazu0x): input reset
+        for (u32 i = 0; i < KK_MAX; i++) {
+            g_input.keyboard[i].pressed = EX_FALSE;
+            g_input.keyboard[i].released = EX_FALSE;
+        }
+
+        g_input.mouse.left.pressed = EX_FALSE;
+        g_input.mouse.left.released = EX_FALSE;
+        g_input.mouse.right.pressed = EX_FALSE;
+        g_input.mouse.right.released = EX_FALSE;
+        g_input.mouse.middle.pressed = EX_FALSE;
+        g_input.mouse.middle.released = EX_FALSE;
+        g_input.mouse.delta_position.x = 0;
+        g_input.mouse.delta_position.y = 0;
+        g_input.mouse.delta_wheel = 0;
     }
-    
     EXINFO("EXCALIBUR : SHUTDOWN");
-    ReleaseDC(window_handle, window_device);
     UnregisterClassA(MAKEINTATOM(window_atom), instance);
     DestroyWindow(window_handle);
     return(0);

@@ -71,3 +71,20 @@ string_from_architecture(ARCHITECTURE arch) {
     }
     return(result);
 }
+
+////////////////////////////////
+inline u32
+safe_truncate_u64(u64 value) {
+    EX_ASSERT(value <= u32_max);
+    u32 result = (u32)value;
+    return(result);
+}
+
+internal u32
+string_length(char *string) {
+    u32 count = 0;
+    while (*string++) {
+        ++count;
+    }
+    return(count);
+}

@@ -18,7 +18,6 @@ $(BUILD_DIR):
 $(BUILD_DIR)/$(DLL): $(SRC_DIR)/excalibur.cpp
 	$(CC) $(CFLAGS) -shared -o $@ $^ $(DEFINES)
 
-
 $(BUILD_DIR)/$(EXEC): $(SRC_DIR)/excalibur_win32.cpp
 	$(CC) $(CFLAGS) -mconsole -o $@ $^ $(DEFINES) $(INCLUDES) $(LIBS)
 
