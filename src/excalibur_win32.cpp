@@ -5,12 +5,13 @@
   TODO(xkazu0x):
   > key codes for keyboard input
   > sound system
-  > hardware 
+  > hardware render
 */
 
 global win32_state g_win32;
 
 global game_memory g_memory;
+global game_clock g_clock;
 global game_input g_input;
 global game_bitmap g_bitmap;
 
@@ -33,8 +34,8 @@ DEBUG_PLATFORM_READ_FILE(debug_platform_read_file) {
                 DWORD bytes_read;
                 if (ReadFile(file_handle, file_memory, file_size32, &bytes_read, 0) &&
                     (file_size32 == bytes_read)) {
-                    result.size = file_size32;
-                    result.memory = file_memory;
+                    result.data_size = file_size32;
+                    result.data = file_memory;
                 } else {
                     // TODO(xkazu0x): logging
                     debug_platform_free_file(thread, file_memory);
@@ -214,9 +215,11 @@ win32_resize_bitmap(game_bitmap *bitmap, vec2i size) {
 
 internal void
 win32_display_bitmap(game_bitmap bitmap, vec2i window_size, HDC device_context) {
+    // PatBlt(device_context, 0, 0, window_size.x, window_size.y, BLACKNESS);
+    vec2i offset = vec2i_create(0, 0);
     StretchDIBits(device_context,
                   //0, 0, window_size.x, window_size.y, NOTE(xkazu0x): stretch
-                  0, 0, bitmap.size.x, bitmap.size.y,
+                  offset.x, offset.y, bitmap.size.x, bitmap.size.y,
                   0, 0, bitmap.size.x, bitmap.size.y,
                   bitmap.memory,
                   &g_win32.bitmap_info,
@@ -247,19 +250,6 @@ win32_window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
         }
     }
     return(result);
-}
-
-internal void
-cat_strings(size_t src_a_count, char *src_a,
-            size_t src_b_count, char *src_b,
-            size_t dest_count, char *dest) {
-    for (u32 i = 0; i < src_a_count; ++i) {
-        *dest++ = *src_a++;
-    }
-    for (u32 i = 0; i < src_b_count; ++i) {
-        *dest++ = *src_b++;
-    }
-    *dest++ = 0;
 }
 
 internal void
@@ -361,9 +351,7 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     }
     EXDEBUG("> Win32 window created");
     ShowWindow(window_handle, SW_SHOW);
-
-    vec2i bitmap_size = win32_get_window_size(window_handle);
-    win32_resize_bitmap(&g_bitmap, bitmap_size);
+    win32_resize_bitmap(&g_bitmap, win32_get_window_size(window_handle));
     
     EXINFO("EXCALIBUR :: INPUT");
     RAWINPUTDEVICE raw_input_device = {};
@@ -454,7 +442,11 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     LARGE_INTEGER last_counter = win32_get_time();
     s64 last_cycle_count = __rdtsc();
 
-    f32 target_seconds_per_frame = 1.0f / ((f32)(monitor_frame_rate));
+    // TODO(xkazu0x): maybe there is something wrong how fast it is updating per frame
+    // personally, i don't think so
+    f32 game_update_hz = ((f32)monitor_frame_rate / 1.0f);
+    //f32 game_update_hz = (60.0f / 2.0f);
+    f32 target_seconds_per_frame = 1.0f / game_update_hz;
 
     ///////////////////////////
     // NOTE(xkazu0x): game load
@@ -463,20 +455,15 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     if (!game.loaded) {
         return(1);
     }
-    s32 game_load_count = 0;
     
     EXINFO("EXCALIBUR : RUN");
     b32 quit = EX_FALSE;
     while (!quit) {
         // NOTE(xkazu0x): game reload
-        // NOTE(xkazu0x): the game load count prevents a reloading error
-        if (game_load_count++ > 60) {
-            FILETIME game_new_write_time = win32_get_last_write_time(source_game_code_dll_fullpath);
-            if (CompareFileTime(&game_new_write_time, &game.last_write_time) != 0) {
-                win32_unload_game_code(&game);
-                game = win32_load_game_code(source_game_code_dll_fullpath, temp_game_code_dll_fullpath);
-            }
-            game_load_count = 0;
+        FILETIME game_new_write_time = win32_get_last_write_time(source_game_code_dll_fullpath);
+        if (CompareFileTime(&game_new_write_time, &game.last_write_time) != 0) {
+            win32_unload_game_code(&game);
+            game = win32_load_game_code(source_game_code_dll_fullpath, temp_game_code_dll_fullpath);
         }
 
         // NOTE(xkazu0x): window message loop
@@ -607,8 +594,9 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
 
         // NOTE(xkazu0x): update and render
         thread_context thread = {};
+        g_clock.delta = target_seconds_per_frame;
         if (game.update_and_render) {
-            game.update_and_render(&thread, &g_memory, &g_input, &g_bitmap);
+            game.update_and_render(&thread, &g_memory, &g_clock, &g_input, &g_bitmap);
         }
         
         // NOTE(xkazu0x): time update
@@ -616,10 +604,10 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
         s64 cycles_per_frame = end_cycle_count - last_cycle_count;
         
         LARGE_INTEGER work_counter = win32_get_time();
-        f32 work_seconds_per_frame = win32_get_delta_seconds(last_counter, work_counter);
+        f32 work_delta_seconds = win32_get_delta_seconds(last_counter, work_counter);
 
         // TODO(xkazu0x): PROBRABLY BUGGY
-        f32 seconds_elapsed_for_frame = work_seconds_per_frame;
+        f32 seconds_elapsed_for_frame = work_delta_seconds;
         if (seconds_elapsed_for_frame < target_seconds_per_frame) {
             if (sleep_is_granular) {
                 DWORD sleep_ms = (DWORD)(1000.0f * (target_seconds_per_frame - seconds_elapsed_for_frame));
@@ -627,45 +615,37 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
                     Sleep(sleep_ms);
                 }
             }
+            
+            // f32 test_seconds_elapsed_for_frame = win32_get_delta_seconds(last_counter, win32_get_time());
+            // while (test_seconds_elapsed_for_frame < target_seconds_per_frame) {
+            //     // TODO(xkazu0x): LOG MISSED SLEEP HERE
+            //     EXDEBUG("TEST");
+            // }
+            
             while (seconds_elapsed_for_frame < target_seconds_per_frame) {
                 seconds_elapsed_for_frame = win32_get_delta_seconds(last_counter, win32_get_time());
             }
         } else {
-            EXWARN("< Frame rate missed");
+            // TODO(xkazu0x): MISSED FRAME RATE
         }
         
+        // NOTE(xkazu0x): compute time
+        LARGE_INTEGER end_counter = win32_get_time();
+        f32 ms_per_frame = 1000.0f * win32_get_delta_seconds(last_counter, end_counter);
+
+        s64 counts_per_frame = end_counter.QuadPart - last_counter.QuadPart;
+        f32 frames_per_second = (f32)g_win32.time_frequency / (f32)counts_per_frame;
+
+        f32 mega_cycles_per_frame = ((f32)cycles_per_frame / (1000.0f * 1000.0f));
+
+        last_counter = end_counter;
+        last_cycle_count = end_cycle_count;
+
         // NOTE(xkazu0x): display bitmap
         window_size = win32_get_window_size(window_handle);
         HDC window_device = GetDC(window_handle);
         win32_display_bitmap(g_bitmap, window_size, window_device);
         ReleaseDC(window_handle, window_device);
-
-        // NOTE(xkazu0x): compute time
-        LARGE_INTEGER end_counter = win32_get_time();
-        f32 ms_per_frame = 1000.0f * win32_get_delta_seconds(last_counter, end_counter);
-        
-        s64 counts_per_frame = end_counter.QuadPart - last_counter.QuadPart;
-        f32 frames_per_second = (f32)g_win32.time_frequency / (f32)counts_per_frame;
-
-        f32 mega_cycles_per_frame = ((f32)cycles_per_frame / (1000.0f * 1000.0f));
-        
-        last_counter = end_counter;
-        last_cycle_count = end_cycle_count;
-                
-#if 1
-        // NOTE(xkazu0x): log time
-        // TODO(xkazu0x): this is debug code only
-        local f64 time_seconds = 0.0;
-        local f64 last_print_time = 0.0;
-        time_seconds += work_seconds_per_frame;
-        if (time_seconds - last_print_time > 0.1f) {
-            //EXDEBUG("%.02fms, %.02ffps, %.02fmc", ms_per_frame, frames_per_second, mega_cycles_per_frame);
-            char new_window_title[512];
-            sprintf(new_window_title, "%s - %.02ff/s, %.02fms/f, %.02fmc/f", window_title, frames_per_second, ms_per_frame, mega_cycles_per_frame);
-            SetWindowTextA(window_handle, new_window_title);
-            last_print_time = time_seconds;
-        }
-#endif
         
         // NOTE(xkazu0x): input reset
         for (u32 i = 0; i < KK_MAX; i++) {
@@ -682,6 +662,21 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
         g_input.mouse.delta_position.x = 0;
         g_input.mouse.delta_position.y = 0;
         g_input.mouse.delta_wheel = 0;
+
+#if 1
+        // NOTE(xkazu0x): log time
+        // TODO(xkazu0x): this is debug code only
+        local f64 time_seconds = 0.0;
+        local f64 last_print_time = 0.0;
+        time_seconds += work_delta_seconds;
+        if (time_seconds - last_print_time > 0.1f) {
+            //EXDEBUG("%.02fms, %.02ffps, %.02fmc", ms_per_frame, frames_per_second, mega_cycles_per_frame);
+            char new_window_title[512];
+            sprintf(new_window_title, "%s - %.02ff/s, %.02fms/f, %.02fmc/f", window_title, frames_per_second, ms_per_frame, mega_cycles_per_frame);
+            SetWindowTextA(window_handle, new_window_title);
+            last_print_time = time_seconds;
+        }
+#endif        
     }
     EXINFO("EXCALIBUR : SHUTDOWN");
     UnregisterClassA(MAKEINTATOM(window_atom), instance);

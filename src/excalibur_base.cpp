@@ -72,8 +72,10 @@ string_from_architecture(ARCHITECTURE arch) {
     return(result);
 }
 
-////////////////////////////////
-inline u32
+//////////////////////
+// TODO(xkazu0x): temp
+
+internal inline u32
 safe_truncate_u64(u64 value) {
     EX_ASSERT(value <= u32_max);
     u32 result = (u32)value;
@@ -88,3 +90,17 @@ string_length(char *string) {
     }
     return(count);
 }
+
+internal void
+cat_strings(size_t src_a_count, char *src_a,
+            size_t src_b_count, char *src_b,
+            size_t dest_count, char *dest) {
+    for (u32 i = 0; i < src_a_count; ++i) {
+        *dest++ = *src_a++;
+    }
+    for (u32 i = 0; i < src_b_count; ++i) {
+        *dest++ = *src_b++;
+    }
+    *dest++ = 0;
+}
+

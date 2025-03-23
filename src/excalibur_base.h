@@ -229,13 +229,14 @@ internal ARCHITECTURE architecture_from_context(void);
 internal char *string_from_operating_system(OPERATING_SYSTEM os);
 internal char *string_from_architecture(ARCHITECTURE arch);
 
-////////////////////////////////
+//////////////////////
+// TODO(xkazu0x): temp
+
 internal inline u32 safe_truncate_u64(u64 value);
 
-/* internal void cat_strings(size_t src_a_count, char *src_a, */
-/*                           size_t src_b_count, char *src_b, */
-/*                           size_t dest_count, char *dest); */
-
 internal u32 string_length(char *string);
+internal void cat_strings(size_t src_a_count, char *src_a,
+                          size_t src_b_count, char *src_b,
+                          size_t dest_count, char *dest);
 
 #endif // EXCALIBUR_BASE_H
