@@ -67,9 +67,22 @@ internal f64 tan_f64(f64 x);
 // NOTE(xkazu0x): compound type functions
 
 internal inline vec2i vec2i_create(s32 x, s32 y);
+internal inline vec2i vec2i_create(s32 s);
+
 internal inline vec2f vec2f_create(f32 x, f32 y);
+internal inline vec2f vec2f_create(f32 f);
+
 internal inline vec3f vec3f_create(f32 x, f32 y, f32 z);
+internal inline vec3f vec3f_create(vec2f v, f32 z);
+internal inline vec3f vec3f_create(f32 f);
+
 internal inline vec4f vec4f_create(f32 x, f32 y, f32 z, f32 w);
+internal inline vec4f vec4f_create(vec2f v, f32 z, f32 w);
+internal inline vec4f vec4f_create(vec3f v, f32 w);
+internal inline vec4f vec4f_create(f32 f);
+
+internal inline vec2i vec2i_from_vec2f(vec2f v);
+internal inline vec2f vec2f_from_vec2i(vec2i v);
 
 internal inline vec2i operator+(vec2i a, vec2i b);
 internal inline vec2f operator+(vec2f a, vec2f b);

@@ -1,8 +1,8 @@
 CC := g++
 CFLAGS := -g -Wall -Wextra -Wpadded -O0 -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -Wno-write-strings
+DEFINES := -DEXCALIBUR_INTERNAL=1 -DEXCALIBUR_DEBUG=1
 INCLUDES := -I.
 LIBS := -lkernel32 -luser32 -lgdi32 -lwinmm
-DEFINES := -DEXCALIBUR_INTERNAL=1 -DEXCALIBUR_DEBUG=1
 
 SRC_DIR := src
 BUILD_DIR := build
@@ -10,7 +10,7 @@ BUILD_DIR := build
 DLL := excalibur.dll
 EXEC := excalibur.exe
 
-compile: $(BUILD_DIR) $(BUILD_DIR)/$(DLL) $(BUILD_DIR)/$(EXEC)
+all: $(BUILD_DIR) $(BUILD_DIR)/$(DLL) $(BUILD_DIR)/$(EXEC)
 
 $(BUILD_DIR):
 	mkdir $@
@@ -21,10 +21,10 @@ $(BUILD_DIR)/$(DLL): $(SRC_DIR)/excalibur.cpp
 $(BUILD_DIR)/$(EXEC): $(SRC_DIR)/excalibur_win32.cpp
 	$(CC) $(CFLAGS) -mconsole -o $@ $^ $(DEFINES) $(INCLUDES) $(LIBS)
 
-rebuild: clean compile
-
 run: build
 	$(BUILD_DIR)/$(EXEC)
+
+remake: clean all
 
 clean:
 	rmdir /s /q $(BUILD_DIR)

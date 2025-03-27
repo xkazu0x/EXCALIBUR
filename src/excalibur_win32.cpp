@@ -8,12 +8,12 @@
   > hardware render
 */
 
-global win32_state g_win32;
+global win32_t g_win32;
 
-global game_memory g_memory;
-global game_clock g_clock;
-global game_input g_input;
-global game_bitmap g_bitmap;
+global os_memory_t g_memory;
+global os_clock_t g_clock;
+global os_input_t g_input;
+global os_bitmap_t g_bitmap;
 
 DEBUG_PLATFORM_FREE_FILE(debug_platform_free_file) {
     if (memory) {
@@ -22,7 +22,7 @@ DEBUG_PLATFORM_FREE_FILE(debug_platform_free_file) {
 }
 
 DEBUG_PLATFORM_READ_FILE(debug_platform_read_file) {
-    debug_file_handle result = {};
+    debug_file_t result = {};
     
     HANDLE file_handle = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
     if (file_handle != INVALID_HANDLE_VALUE) {
@@ -84,9 +84,9 @@ win32_get_last_write_time(char *filename) {
     return(last_write_time);
 }
 
-internal win32_game_code
-win32_load_game_code(char *source_dll_name, char *temp_dll_name) {
-    win32_game_code result = {};
+internal win32_game_t
+win32_load_game(char *source_dll_name, char *temp_dll_name) {
+    win32_game_t result = {};
     result.last_write_time = win32_get_last_write_time(source_dll_name);
 
     CopyFile(source_dll_name, temp_dll_name, FALSE);
@@ -95,29 +95,29 @@ win32_load_game_code(char *source_dll_name, char *temp_dll_name) {
         WIN32_GET_PROC_ADDR(result.update_and_render, result.library, "game_update_and_render");
         if (result.update_and_render) {
             result.loaded = EX_TRUE;
-            EXDEBUG("> Game code loaded");
+            EXDEBUG("> game code loaded");
         }
     } else {
-        EXERROR("< Failed to load game dll");
+        EXERROR("< failed to load game dll");
     }
     
     if (!result.loaded) {
         result.update_and_render = 0;
-        EXERROR("< Failed to load game code");
+        EXERROR("< failed to load game code");
     }
     
     return(result);
 }
 
 internal void
-win32_unload_game_code(win32_game_code *game_code) {
-    if (game_code->library) {
-        FreeLibrary(game_code->library);
-        game_code->library = 0;
-        EXDEBUG("> Game code unloaded");
+win32_unload_game(win32_game_t *game) {
+    if (game->library) {
+        FreeLibrary(game->library);
+        game->library = 0;
+        EXDEBUG("> game code unloaded");
     }
-    game_code->loaded = EX_FALSE;
-    game_code->update_and_render = 0;
+    game->loaded = EX_FALSE;
+    game->update_and_render = 0;
 }
 
 inline LARGE_INTEGER
@@ -134,7 +134,7 @@ win32_get_delta_seconds(LARGE_INTEGER start, LARGE_INTEGER end) {
 }
 
 internal void
-win32_process_digital_button(digital_button *button, b32 down) {
+win32_process_digital_button(digital_button_t *button, b32 down) {
     b32 was_down = button->down;
     button->pressed = !was_down && down;
     button->released = was_down && !down;
@@ -142,7 +142,7 @@ win32_process_digital_button(digital_button *button, b32 down) {
 }
 
 internal void
-win32_process_analog_button(analog_button *button, f32 value) {
+win32_process_analog_button(analog_button_t *button, f32 value) {
     button->value = value;
     b32 was_down = button->down;
     button->down = (value >= button->threshold);
@@ -151,7 +151,7 @@ win32_process_analog_button(analog_button *button, f32 value) {
 }
 
 internal void
-win32_process_stick(stick *stick, f32 x, f32 y) {
+win32_process_stick(stick_t *stick, f32 x, f32 y) {
     if (abs_f32(x) <= stick->threshold) x = 0.0f;
     if (abs_f32(y) <= stick->threshold) y = 0.0f;
     stick->x = x;
@@ -193,7 +193,7 @@ win32_get_window_size(HWND window) {
 }
 
 internal void
-win32_resize_bitmap(game_bitmap *bitmap, vec2i size) {
+win32_resize_bitmap(os_bitmap_t *bitmap, vec2i size) {
     if (bitmap->memory) {
         VirtualFree(bitmap->memory, 0, MEM_RELEASE);
     }
@@ -214,7 +214,7 @@ win32_resize_bitmap(game_bitmap *bitmap, vec2i size) {
 }
 
 internal void
-win32_display_bitmap(game_bitmap bitmap, vec2i window_size, HDC device_context) {
+win32_display_bitmap(os_bitmap_t bitmap, vec2i window_size, HDC device_context) {
     // PatBlt(device_context, 0, 0, window_size.x, window_size.y, BLACKNESS);
     vec2i offset = vec2i_create(0, 0);
     StretchDIBits(device_context,
@@ -253,57 +253,55 @@ win32_window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
 }
 
 internal void
-win32_get_exe_filename(win32_state *state) {
-    DWORD size_of_filename = GetModuleFileName(0, state->exe_filename, sizeof(state->exe_filename));
-    state->one_past_last_exe_filename_slash = state->exe_filename;
-    for (char *scan = state->exe_filename; *scan; ++scan) {
+win32_get_exe_filename(win32_t *win32) {
+    DWORD size_of_filename = GetModuleFileName(0, win32->exe_filename, sizeof(win32->exe_filename));
+    win32->one_past_last_exe_filename_slash = win32->exe_filename;
+    for (char *scan = win32->exe_filename; *scan; ++scan) {
         if (*scan == '\\') {
-            state->one_past_last_exe_filename_slash = scan + 1;
+            win32->one_past_last_exe_filename_slash = scan + 1;
         }
     }
 }
 
 internal void
-win32_build_exe_path_filename(win32_state *state, char *filename,
+win32_build_exe_path_filename(win32_t *win32, char *filename,
                               u32 dest_count, char *dest) {
-    cat_strings(state->one_past_last_exe_filename_slash - state->exe_filename, state->exe_filename,
+    cat_strings(win32->one_past_last_exe_filename_slash - win32->exe_filename, win32->exe_filename,
                 string_length(filename), filename,
                 dest_count, dest);
 }
 
 int WINAPI
-WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int show_command) {
+WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int show_command)  {
+    EXINFO("EXCALIBUR : INITIALIZE");
+    EXINFO("> operating system: %s", string_from_operating_system(operating_system_from_context()));
+    EXINFO("> architecture: %s", string_from_architecture(architecture_from_context()));
+    
     win32_get_exe_filename(&g_win32);
     
     char source_game_code_dll_fullpath[WIN32_STATE_FILENAME_MAX];
     win32_build_exe_path_filename(&g_win32, "excalibur.dll",
                                   sizeof(source_game_code_dll_fullpath),
                                   source_game_code_dll_fullpath);
-    
     char temp_game_code_dll_fullpath[WIN32_STATE_FILENAME_MAX];
     win32_build_exe_path_filename(&g_win32, "excalibur_temp.dll",
                                   sizeof(temp_game_code_dll_fullpath),
                                   temp_game_code_dll_fullpath);
     
-    EXINFO("EXCALIBUR : INITIALIZE");
-    EXINFO("> Operating system: %s", string_from_operating_system(operating_system_from_context()));
-    EXINFO("> Architecture: %s", string_from_architecture(architecture_from_context()));
-    
     DEVMODE monitor_info;
     monitor_info.dmSize = sizeof(DEVMODE);
     EnumDisplaySettings(0, ENUM_CURRENT_SETTINGS, &monitor_info);
     
-    //vec2i screen_size = vec2i_create(GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN));
     vec2i monitor_size = vec2i_create(monitor_info.dmPelsWidth, monitor_info.dmPelsHeight);
     s32 monitor_frame_rate = monitor_info.dmDisplayFrequency;
-    EXINFO("> Monitor size: %dx%d", monitor_size.x, monitor_size.y);
-    EXINFO("> Monitor refresh rate: %dHz", monitor_frame_rate);
+    EXINFO("> monitor size: %dx%d", monitor_size.x, monitor_size.y);
+    EXINFO("> monitor refresh rate: %dHz", monitor_frame_rate);
     
     EXINFO("EXCALIBUR :: WINDOW");
     char *window_title = "EXCALIBUR";
     vec2i window_size = vec2i_create(960, 540);
     vec2i window_position = (monitor_size - window_size) / 2;
-    EXDEBUG("> Window size: %dx%d", window_size.x, window_size.y);
+    EXDEBUG("> window size: %dx%d", window_size.x, window_size.y);
     
     RECT window_rectangle = {};
     window_rectangle.left = 0;
@@ -328,10 +326,10 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     window_class.lpszClassName = "EXCALIBUR_WINDOW";
     ATOM window_atom = RegisterClassA(&window_class);
     if (!window_atom) {
-        EXFATAL("< Failed to register win32 window");
+        EXFATAL("< failed to register win32 window");
         return(1);
     }
-    EXDEBUG("> Win32 window registered");
+    EXDEBUG("> win32 window registered");
 
     u32 window_style = WS_OVERLAPPEDWINDOW;
 #if 1
@@ -346,10 +344,11 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
                                          window_size.x, window_size.y,
                                          0, 0, instance, 0);
     if (!window_handle) {
-        EXFATAL("< Failed to create win32 window");
+        EXFATAL("< failed to create win32 window");
         return(1);
     }
-    EXDEBUG("> Win32 window created");
+    EXDEBUG("> win32 window created");
+    
     ShowWindow(window_handle, SW_SHOW);
     win32_resize_bitmap(&g_bitmap, win32_get_window_size(window_handle));
     
@@ -359,28 +358,28 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     raw_input_device.usUsage = 0x02;
     raw_input_device.hwndTarget = window_handle;
     if (!RegisterRawInputDevices(&raw_input_device, 1, sizeof(raw_input_device))) {
-        EXERROR("< Failed to register mouse as raw input device");
+        EXERROR("< failed to register mouse as raw input device");
         return(1);
     }
-    EXDEBUG("> Mouse registered as raw input device");
+    EXDEBUG("> mouse registered as raw input device");
     
     HMODULE xinput_library = LoadLibraryA("xinput1_4.dll");
     if (!xinput_library) {
-        EXERROR("< Failed to load 'xinput1_4.dll'");
+        EXERROR("< failed to load 'xinput1_4.dll'");
         xinput_library = LoadLibraryA("xinput1_3.dll");
         if (!xinput_library) {
-            EXERROR("< Failed to load 'xinput1_3.dll'");
+            EXERROR("< failed to load 'xinput1_3.dll'");
             xinput_library = LoadLibraryA("xinput9_1_0.dll");
             if (!xinput_library) {
-                EXERROR("< Failed to load 'xinput9_1_0.dll'");
+                EXERROR("< failed to load 'xinput9_1_0.dll'");
             } else {
-                EXDEBUG("> Successfully loaded 'xinput9_1_0.dll'");
+                EXDEBUG("> successfully loaded 'xinput9_1_0.dll'");
             }
         } else {
-            EXDEBUG("> Successfully loaded 'xinput1_3.dll'");
+            EXDEBUG("> successfully loaded 'xinput1_3.dll'");
         }
     } else {
-        EXDEBUG("> Successfully loaded 'xinput1_4.dll'");
+        EXDEBUG("> successfully loaded 'xinput1_4.dll'");
     }
     
     if (xinput_library) {
@@ -421,12 +420,12 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     g_memory.permanent_storage = g_win32.game_memory_block;
     g_memory.transient_storage = ((u8 *)g_memory.permanent_storage + g_memory.permanent_storage_size);
     if (!g_memory.permanent_storage) {
-        EXFATAL("< Failed to allocate game memory");
+        EXFATAL("< failed to allocate game memory");
         return(1);
     }
-    EXDEBUG("> Memory allocated:");
-    EXTRACE("\t> Permanent storage: %llu", g_memory.permanent_storage_size);
-    EXTRACE("\t> Transient storage: %llu", g_memory.transient_storage_size);
+    EXDEBUG("> memory allocated:");
+    EXTRACE("\t> permanent storage: %llu", g_memory.permanent_storage_size);
+    EXTRACE("\t> transient storage: %llu", g_memory.transient_storage_size);
     
     /////////////////////////////////
     // NOTE(xkazu0x): time initialize
@@ -444,26 +443,27 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
 
     // TODO(xkazu0x): maybe there is something wrong how fast it is updating per frame
     // personally, i don't think so
-    f32 game_update_hz = ((f32)monitor_frame_rate / 1.0f);
-    //f32 game_update_hz = (60.0f / 2.0f);
+    // f32 game_update_hz = ((f32)monitor_frame_rate / 1.0f);
+    f32 game_update_hz = (60.0f / 2.0f);
     f32 target_seconds_per_frame = 1.0f / game_update_hz;
 
     ///////////////////////////
     // NOTE(xkazu0x): game load
     EXINFO("EXCALIBUR :: GAME");
-    win32_game_code game = win32_load_game_code(source_game_code_dll_fullpath, temp_game_code_dll_fullpath);
+    win32_game_t game = win32_load_game(source_game_code_dll_fullpath, temp_game_code_dll_fullpath);
     if (!game.loaded) {
         return(1);
     }
     
     EXINFO("EXCALIBUR : RUN");
     b32 quit = EX_FALSE;
+    b32 pause = EX_FALSE;
     while (!quit) {
         // NOTE(xkazu0x): game reload
         FILETIME game_new_write_time = win32_get_last_write_time(source_game_code_dll_fullpath);
         if (CompareFileTime(&game_new_write_time, &game.last_write_time) != 0) {
-            win32_unload_game_code(&game);
-            game = win32_load_game_code(source_game_code_dll_fullpath, temp_game_code_dll_fullpath);
+            win32_unload_game(&game);
+            game = win32_load_game(source_game_code_dll_fullpath, temp_game_code_dll_fullpath);
         }
 
         // NOTE(xkazu0x): window message loop
@@ -534,16 +534,17 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
             }
         }
         
-        if (g_input.keyboard[VK_ESCAPE].pressed) {
+        if (g_input.keyboard[KEY_ESCAPE].pressed) {
             quit = EX_TRUE;
         }
-        if (g_input.keyboard[VK_F11].pressed) {
+        if (g_input.keyboard[KEY_F1].pressed) {
+            pause = !pause;
+        }
+        if (g_input.keyboard[KEY_F11].pressed) {
             win32_window_toggle_fullscreen(window_handle, &g_win32.window_placement);
         }
 
         // NOTE(xkazu0x): mouse update
-        // g_input.mouse.position.x += g_input.mouse.delta_position.x;
-        // g_input.mouse.position.y += g_input.mouse.delta_position.y;
         g_input.mouse.wheel += g_input.mouse.delta_wheel;
 
         POINT mouse_position;
@@ -593,10 +594,12 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
         }
 
         // NOTE(xkazu0x): update and render
-        thread_context thread = {};
-        g_clock.delta = target_seconds_per_frame;
-        if (game.update_and_render) {
-            game.update_and_render(&thread, &g_memory, &g_clock, &g_input, &g_bitmap);
+        if (!pause) {
+            thread_t thread = {};
+            g_clock.delta = target_seconds_per_frame;
+            if (game.update_and_render) {
+                game.update_and_render(&thread, &g_memory, &g_clock, &g_input, &g_bitmap);
+            }
         }
         
         // NOTE(xkazu0x): time update
@@ -648,7 +651,7 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
         ReleaseDC(window_handle, window_device);
         
         // NOTE(xkazu0x): input reset
-        for (u32 i = 0; i < KK_MAX; i++) {
+        for (u32 i = 0; i < KEY_MAX; i++) {
             g_input.keyboard[i].pressed = EX_FALSE;
             g_input.keyboard[i].released = EX_FALSE;
         }

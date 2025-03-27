@@ -69,11 +69,27 @@ vec2i_create(s32 x, s32 y) {
     return(result);
 }
 
+internal inline vec2i
+vec2i_create(s32 s) {
+    vec2i result;
+    result.x = s;
+    result.y = s;
+    return(result);
+}
+
 internal inline vec2f
 vec2f_create(f32 x, f32 y) {
     vec2f result;
     result.x = x;
     result.y = y;
+    return(result);
+}
+
+internal inline vec2f
+vec2f_create(f32 f) {
+    vec2f result;
+    result.x = f;
+    result.y = f;
     return(result);
 }
 
@@ -86,6 +102,24 @@ vec3f_create(f32 x, f32 y, f32 z) {
     return(result);
 }
 
+internal inline vec3f
+vec3f_create(vec2f v, f32 z) {
+    vec3f result;
+    result.x = v.x;
+    result.y = v.y;
+    result.z = z;
+    return(result);
+}
+
+internal inline vec3f
+vec3f_create(f32 f) {
+    vec3f result;
+    result.x = f;
+    result.y = f;
+    result.z = f;
+    return(result);
+}
+
 internal inline vec4f
 vec4f_create(f32 x, f32 y, f32 z, f32 w) {
     vec4f result;
@@ -93,6 +127,52 @@ vec4f_create(f32 x, f32 y, f32 z, f32 w) {
     result.y = y;
     result.z = z;
     result.w = w;
+    return(result);
+}
+
+internal inline vec4f
+vec4f_create(vec2f v, f32 z, f32 w) {
+    vec4f result;
+    result.x = v.x;
+    result.y = v.y;
+    result.z = z;
+    result.w = w;
+    return(result);
+}
+
+internal inline vec4f
+vec4f_create(vec3f v, f32 w) {
+    vec4f result;
+    result.x = v.x;
+    result.y = v.y;
+    result.z = v.z;
+    result.w = w;
+    return(result);
+}
+
+internal inline vec4f
+vec4f_create(f32 f) {
+    vec4f result;
+    result.x = f;
+    result.y = f;
+    result.z = f;
+    result.w = f;
+    return(result);
+}
+
+internal inline vec2i
+vec2i_from_vec2f(vec2f v) {
+    vec2i result;
+    result.x = truncate_f32_to_s32(v.x);
+    result.y = truncate_f32_to_s32(v.y);
+    return(result);
+}
+
+internal inline vec2f
+vec2f_from_vec2i(vec2i v) {
+    vec2f result;
+    result.x = (f32)v.x;
+    result.y = (f32)v.y;
     return(result);
 }
 

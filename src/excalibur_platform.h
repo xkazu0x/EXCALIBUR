@@ -8,27 +8,27 @@ extern "C" {
 ///////////////////////////////////////////////////////////////////////
 // NOTE(xkazu0x): services that the platform layer provides to the game
 
-typedef struct thread_context {
+typedef struct thread_t {
     u32 handle;
-} thread_context;
+} thread_t;
 
 #if EXCALIBUR_INTERNAL
 // IMPORTANT(xkazu0x):
 // These are NOT for doing anything in the shipping game - they are
 // blocking and the write doesn't protect against lost data
     
-typedef struct debug_file_handle {
+typedef struct debug_file_t {
     u32 data_size;
     void *data;
-} debug_file_handle;
+} debug_file_t;
 
-#define DEBUG_PLATFORM_FREE_FILE(name) void name(thread_context *thread, void *memory)
+#define DEBUG_PLATFORM_FREE_FILE(name) void name(thread_t *thread, void *memory)
 typedef DEBUG_PLATFORM_FREE_FILE(DEBUGPLATFORMFREEFILE);
 
-#define DEBUG_PLATFORM_READ_FILE(name) debug_file_handle name(thread_context *thread, char *filename)
+#define DEBUG_PLATFORM_READ_FILE(name) debug_file_t name(thread_t *thread, char *filename)
 typedef DEBUG_PLATFORM_READ_FILE(DEBUGPLATFORMREADFILE);
 
-#define DEBUG_PLATFORM_WRITE_FILE(name) b32 name(thread_context *thread, char *filename, u32 memory_size, void *memory)
+#define DEBUG_PLATFORM_WRITE_FILE(name) b32 name(thread_t *thread, char *filename, u32 memory_size, void *memory)
 typedef DEBUG_PLATFORM_WRITE_FILE(DEBUGPLATFORMWRITEFILE);
 
 #endif
@@ -37,140 +37,153 @@ typedef DEBUG_PLATFORM_WRITE_FILE(DEBUGPLATFORMWRITEFILE);
 // NOTE(xkazu0x): services that the game provides to the platform layer
 // TODO(xkazu0x): key codes for keyboard input
 
-enum keyboard_key {
-    KK_ESCAPE = 0x1B,
-    KK_LEFT   = 0x25,
-    KK_UP     = 0x26,
-    KK_RIGHT  = 0x27,
-    KK_DOWN   = 0x28,
+typedef enum keyboard_key {
+    KEY_ESCAPE = 0x1B,
     
-    KK_0 = 0x30,
-    KK_1 = 0x31,
-    KK_2 = 0x32,
-    KK_3 = 0x33,
-    KK_4 = 0x34,
-    KK_5 = 0x35,
-    KK_6 = 0x36,
-    KK_7 = 0x37,
-    KK_8 = 0x38,
-    KK_9 = 0x39,
+    KEY_LEFT   = 0x25,
+    KEY_UP     = 0x26,
+    KEY_RIGHT  = 0x27,
+    KEY_DOWN   = 0x28,
+    
+    KEY_0 = 0x30,
+    KEY_1 = 0x31,
+    KEY_2 = 0x32,
+    KEY_3 = 0x33,
+    KEY_4 = 0x34,
+    KEY_5 = 0x35,
+    KEY_6 = 0x36,
+    KEY_7 = 0x37,
+    KEY_8 = 0x38,
+    KEY_9 = 0x39,
 
-    KK_A = 0x41,
-    KK_B = 0x42,
-    KK_C = 0x43,
-    KK_D = 0x44,
-    KK_E = 0x45,
-    KK_F = 0x46,
-    KK_G = 0x47,
-    KK_H = 0x48,
-    KK_I = 0x49,
-    KK_J = 0x4A,
-    KK_K = 0x4B,
-    KK_L = 0x4C,
-    KK_M = 0x4D,
-    KK_N = 0x4E,
-    KK_O = 0x4F,
-    KK_P = 0x50,
-    KK_Q = 0x51,
-    KK_R = 0x52,
-    KK_S = 0x53,
-    KK_T = 0x54,
-    KK_U = 0x55,
-    KK_V = 0x56,
-    KK_W = 0x57,
-    KK_X = 0x58,
-    KK_Y = 0x59,
-    KK_Z = 0x5A,
+    KEY_A = 0x41,
+    KEY_B = 0x42,
+    KEY_C = 0x43,
+    KEY_D = 0x44,
+    KEY_E = 0x45,
+    KEY_F = 0x46,
+    KEY_G = 0x47,
+    KEY_H = 0x48,
+    KEY_I = 0x49,
+    KEY_J = 0x4A,
+    KEY_K = 0x4B,
+    KEY_L = 0x4C,
+    KEY_M = 0x4D,
+    KEY_N = 0x4E,
+    KEY_O = 0x4F,
+    KEY_P = 0x50,
+    KEY_Q = 0x51,
+    KEY_R = 0x52,
+    KEY_S = 0x53,
+    KEY_T = 0x54,
+    KEY_U = 0x55,
+    KEY_V = 0x56,
+    KEY_W = 0x57,
+    KEY_X = 0x58,
+    KEY_Y = 0x59,
+    KEY_Z = 0x5A,
 
-    KK_MAX = 256,
-};
+    KEY_F1 = 0x70,
+    KEY_F2 = 0x71,
+    KEY_F3 = 0x72,
+    KEY_F4 = 0x73,
+    KEY_F5 = 0x74,
+    KEY_F6 = 0x75,
+    KEY_F7 = 0x76,
+    KEY_F8 = 0x77,
+    KEY_F9 = 0x78,
+    KEY_F10 = 0x79,
+    KEY_F11 = 0x7A,
+    KEY_F12 = 0x7B,
+    KEY_F13 = 0x7C,
+    KEY_F14 = 0x7D,
+    KEY_F15 = 0x7E,
+    KEY_F16 = 0x7F,
+    KEY_F17 = 0x80,
+    KEY_F18 = 0x81,
+    KEY_F19 = 0x82,
+    KEY_F20 = 0x83,
+    KEY_F21 = 0x84,
+    KEY_F22 = 0x85,
+    KEY_F23 = 0x86,
+    KEY_F24 = 0x87,
 
-enum mouse_button {
-    MB_LEFT,
-    MB_RIGHT,
-    MB_MIDDLE,
-    MB_X1,
-    MB_X2,
-    MB_MAX,
-};
+    KEY_MAX = 256,
+} keyboard_key;
 
-typedef struct digital_button {
+typedef struct digital_button_t {
     b32 down;
     b32 pressed;
     b32 released;
-} digital_button;
+} digital_button_t;
 
-typedef struct mouse_input {
-    union {
-        struct {
-            digital_button left;
-            digital_button right;
-            digital_button middle;
-            digital_button x1;
-            digital_button x2;
-        };
-        digital_button buttons[MB_MAX];
-    };
-    s32 wheel;
-    s32 delta_wheel;
-    vec2i position;
-    vec2i delta_position;
-} mouse_input;
-
-typedef struct analog_button {
+typedef struct analog_button_t {
     f32 threshold;
     f32 value;
     b32 down;
     b32 pressed;
     b32 released;
-} analog_button;
+} analog_button_t;
 
-typedef struct stick {
+typedef struct stick_t {
     f32 threshold;
     f32 x;
     f32 y;
-} stick;
+} stick_t;
 
-typedef struct gamepad_input {
-    digital_button up;
-    digital_button down;
-    digital_button left;
-    digital_button right;
-    digital_button start;
-    digital_button back;
-    digital_button left_thumb;
-    digital_button right_thumb;
-    digital_button left_shoulder;
-    digital_button right_shoulder;
-    digital_button a;
-    digital_button b;
-    digital_button x;
-    digital_button y;
-    analog_button left_trigger;
-    analog_button right_trigger;
-    stick left_stick;
-    stick right_stick;
-} gamepad_input;
+typedef struct mouse_t {
+    digital_button_t left;
+    digital_button_t right;
+    digital_button_t middle;
+    digital_button_t x1;
+    digital_button_t x2;
+    s32 wheel;
+    s32 delta_wheel;
+    vec2i position;
+    vec2i delta_position;
+} mouse_t;
+
+typedef struct gamepad_t {
+    digital_button_t up;
+    digital_button_t down;
+    digital_button_t left;
+    digital_button_t right;
+    digital_button_t start;
+    digital_button_t back;
+    digital_button_t left_thumb;
+    digital_button_t right_thumb;
+    digital_button_t left_shoulder;
+    digital_button_t right_shoulder;
+    digital_button_t a;
+    digital_button_t b;
+    digital_button_t x;
+    digital_button_t y;
+    analog_button_t left_trigger;
+    analog_button_t right_trigger;
+    stick_t left_stick;
+    stick_t right_stick;
+} gamepad_t;
 
 #define GAMEPAD_COUNT_MAX 4
-typedef struct game_input {
-    mouse_input mouse;
-    gamepad_input gamepads[GAMEPAD_COUNT_MAX];
-    digital_button keyboard[KK_MAX];
-} game_input;
+    
+typedef struct os_input_t {
+    mouse_t mouse;
+    digital_button_t keyboard[KEY_MAX];
+    gamepad_t gamepads[GAMEPAD_COUNT_MAX];
+} os_input_t;
 
-typedef struct game_bitmap {
+typedef struct os_bitmap_t {
     vec2i size;
     s32 bytes_per_pixel;
     s32 pitch;
     void *memory;
-} game_bitmap;
+} os_bitmap_t;
 
-typedef struct game_clock {
+typedef struct os_clock_t {
     f32 delta;
-} game_clock;
+} os_clock_t;
 
-typedef struct game_memory {
+typedef struct os_memory_t {
     b32 initialized;
     
     u64 permanent_storage_size;
@@ -182,9 +195,9 @@ typedef struct game_memory {
     DEBUGPLATFORMFREEFILE *debug_platform_free_file;
     DEBUGPLATFORMREADFILE *debug_platform_read_file;
     DEBUGPLATFORMWRITEFILE *debug_platform_write_file;
-} game_memory;
+} os_memory_t;
 
-#define GAME_UPDATE_AND_RENDER(name) void name(thread_context *thread, game_memory *memory, game_clock *clock, game_input *input, game_bitmap *bitmap)
+#define GAME_UPDATE_AND_RENDER(name) void name(thread_t *thread, os_memory_t *memory, os_clock_t *clock, os_input_t *input, os_bitmap_t *bitmap)
 typedef GAME_UPDATE_AND_RENDER(GAMEUPDATEANDRENDER);
 
 #ifdef __cplusplus

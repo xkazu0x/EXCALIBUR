@@ -19,21 +19,21 @@
 // > 0 - not slow code allowed
 // > 1 - slow code welcome
 
-struct tile_map {
-    vec2i tile_count;
-    
-    vec2f offset;
-    f32 tile_size;
-    
+struct tile_map {    
     u32 *tiles;
 };
 
 struct world_map {
+    vec2i tile_count;
+    vec2f offset;
+    f32 tile_size;
+    
     vec2i tile_map_count;
     tile_map *tile_maps;
 };
 
 struct game_state {
+    vec2i player_tile_map_pos;
     vec2f player_pos;
 };
 

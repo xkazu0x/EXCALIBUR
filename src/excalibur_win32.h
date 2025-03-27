@@ -9,7 +9,7 @@
 ///////////////////////////////
 // NOTE(xkazu0x): win32 structs
 
-struct win32_game_code {
+struct win32_game_t {
     b32 loaded;
     HMODULE library;
     FILETIME last_write_time;
@@ -20,7 +20,7 @@ struct win32_game_code {
 };
 
 #define WIN32_STATE_FILENAME_MAX MAX_PATH
-struct win32_state {
+struct win32_t {
     BITMAPINFO bitmap_info;
     WINDOWPLACEMENT window_placement;
     s64 time_frequency;
@@ -32,8 +32,8 @@ struct win32_state {
     char *one_past_last_exe_filename_slash;
 };
 
-////////////////////////////////////////////
-// NOTE(xkazu0x): win32 macros and functions
+//////////////////////////////////////////
+// NOTE(xkazu0x): win32 macros and helpers
 
 #define WIN32_GET_PROC_ADDR(v, m, s) (*(PROC*)(&(v))) = GetProcAddress((m), (s))
 
@@ -42,6 +42,9 @@ struct win32_state {
 
 typedef X_INPUT_GET_STATE(XINPUTGETSTATE);
 typedef X_INPUT_SET_STATE(XINPUTSETSTATE);
+
+////////////////////////////////////////
+// NOTE(xkazu0x): win32 global functions
 
 XINPUTGETSTATE *xinput_get_state;
 XINPUTSETSTATE *xinput_set_state;
