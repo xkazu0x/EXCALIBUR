@@ -63,6 +63,14 @@ internal f64 sin_f64(f64 x);
 internal f64 cos_f64(f64 x);
 internal f64 tan_f64(f64 x);
 
+internal inline s32 round_f32_to_s32(f32 f);
+internal inline u32 round_f32_to_u32(f32 f);
+
+internal inline s32 truncate_f32_to_s32(f32 f);
+internal inline u32 truncate_f32_to_u32(f32 f);
+
+internal inline s32 floor_f32_to_s32(f32 f);
+
 /////////////////////////////////////////
 // NOTE(xkazu0x): compound type functions
 

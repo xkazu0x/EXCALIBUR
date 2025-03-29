@@ -69,69 +69,40 @@ get_tile_map(world_map *world, vec2i index) {
     return(result);
 }
 
-struct canonical_position {
-    vec2i tile_map_index;
-    vec2i tile_index;
-    vec2f tile_point; // NOTE(xkazu0x): tile relative point
-};
+inline void
+recanonicalize_coord(world_map *world, s32 tile_count, s32 *tile_map_index, s32 *tile_index, f32 *tile_rel) {
+    // TODO(xkazu0x): floorf does not fucking work
+    s32 offset = floor_f32_to_s32(*tile_rel / world->tile_size_in_meters);
+    *tile_index += offset;
+    *tile_rel -= offset*world->tile_size_in_meters;
 
-struct raw_position {
-    vec2i tile_map_index;
-    vec2f point; // NOTE(xkazu0x): tile-map relative point
-};
+    EX_ASSERT(*tile_rel >= 0);
+    // TODO(xkazu0x):
+    EX_ASSERT(*tile_rel <= world->tile_size_in_meters);
+
+    if (*tile_index < 0) {
+        *tile_index = tile_count + *tile_index;
+        --*tile_map_index;
+    }
+
+    if (*tile_index >= tile_count) {
+        *tile_index = *tile_index - tile_count;
+        ++*tile_map_index;
+    }
+}
 
 inline canonical_position
-get_canonical_position(world_map *world, raw_position raw) {
-    canonical_position result;
-    
-    result.tile_map_index = raw.tile_map_index;
-    
-    vec2f point = raw.point - world->offset;
-    result.tile_index.x = floor_f32_to_s32(point.x) / world->tile_size;
-    result.tile_index.y = floor_f32_to_s32(point.y) / world->tile_size;
-
-    EXDEBUG("POINT: x:%.02f y:%.02f", point.x / world->tile_size, point.y / world->tile_size);
-    EXDEBUG("TILE: x:%d y:%d", result.tile_index.x, result.tile_index.y);
-    
-    result.tile_point.x = point.x - result.tile_index.x*world->tile_size;
-    result.tile_point.y = point.y - result.tile_index.y*world->tile_size;
-
-    //EX_ASSERT(result.tile_point.x >= 0);
-    //EX_ASSERT(result.tile_point.y >= 0);
-    //EX_ASSERT(result.tile_point.x < world->tile_size);
-    //EX_ASSERT(result.tile_point.y < world->tile_size);
-    
-    if (result.tile_index.x < 0) {
-        result.tile_index.x = world->tile_count.x + result.tile_index.x;
-        --result.tile_map_index.x;
-    }
-
-    if (result.tile_index.y < 0) {
-        result.tile_index.y = world->tile_count.y + result.tile_index.y;
-        --result.tile_map_index.y;
-    }
-        
-    if (result.tile_index.x >= world->tile_count.x) {
-        result.tile_index.x = result.tile_index.x - world->tile_count.x;
-        ++result.tile_map_index.x;
-    }
-
-    if (result.tile_index.y >= world->tile_count.y) {
-        result.tile_index.y = result.tile_index.y - world->tile_count.y;
-        ++result.tile_map_index.y;
-    }
-    
+recanonicalize_position(world_map *world, canonical_position pos) {
+    canonical_position result = pos;
+    recanonicalize_coord(world, world->tile_count.x, &result.tile_map_index.x, &result.tile_index.x, &result.tile_rel.x);
+    recanonicalize_coord(world, world->tile_count.y, &result.tile_map_index.y, &result.tile_index.y, &result.tile_rel.y);
     return(result);
 }
 
 internal b32
-is_world_point_empty(world_map *world, raw_position raw_pos) {
-    b32 result = EX_FALSE;
-
-    canonical_position can_pos = get_canonical_position(world, raw_pos);
-    tile_map *tile_map = get_tile_map(world, can_pos.tile_map_index);
-    result = is_tile_empty(world, tile_map, can_pos.tile_index);
-    
+is_world_point_empty(world_map *world, canonical_position pos) {
+    tile_map *tile_map = get_tile_map(world, pos.tile_map_index);
+    b32 result = is_tile_empty(world, tile_map, pos.tile_index);
     return(result);
 }
 
@@ -196,14 +167,19 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     tile_maps[1][1].tiles = (u32 *)tiles11;
 
     world_map world;
-    world.tile_count = vec2i_create(TILE_MAP_COUNT_X, TILE_MAP_COUNT_Y);
-    world.offset = vec2f_create(-30, 0);
-    world.tile_size = 60.0f;
-
     world.tile_map_count = vec2i_create(2, 2);
+    world.tile_count = vec2i_create(TILE_MAP_COUNT_X, TILE_MAP_COUNT_Y);
+
+    world.tile_size_in_meters = 1.4f;
+    world.tile_size_in_pixels = 60;
+    world.meters_to_pixels = (f32)world.tile_size_in_pixels / (f32)world.tile_size_in_meters;
+    
+    world.offset = vec2f_create(-(f32)world.tile_size_in_pixels/2, 0.0f);
+
     world.tile_maps = (tile_map *)tile_maps;
     
-    vec2f player_size = vec2f_create(world.tile_size*0.75f, world.tile_size);
+    vec2f player_size = vec2f_create(world.tile_size_in_meters*0.75f,
+                                     world.tile_size_in_meters);
     vec2f player_delta = vec2f_create(0.0f, 0.0f);
         
     game_state *state = (game_state *)memory->permanent_storage;
@@ -214,12 +190,14 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         //     memory->debug_platform_write_file(thread, "test.out", file.size, file.memory);
         //     memory->debug_platform_free_file(thread, file.memory);
         // }
-        state->player_tile_map_pos = vec2i_create(0, 0);
-        state->player_pos = vec2f_create(world.tile_size * 2, world.tile_size * 3);
+        state->player_pos.tile_map_index = vec2i_create(0);
+        state->player_pos.tile_index = vec2i_create(3);
+        state->player_pos.tile_rel = vec2f_create(5.0f);
+        
         memory->initialized = EX_TRUE;
     }
     
-    tile_map *tile_map = get_tile_map(&world, state->player_tile_map_pos);
+    tile_map *tile_map = get_tile_map(&world, state->player_pos.tile_map_index);
     EX_ASSERT(tile_map);
     
     // NOTE(xkazu0x): update
@@ -236,28 +214,26 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         player_delta.x = 1.0f;
     }
     
-    player_delta = player_delta * 128.0f;
-    vec2f new_player_pos = state->player_pos + player_delta * clock->delta;
+    player_delta = player_delta*3.0f;
 
-    raw_position player_bottom = {};
-    player_bottom.tile_map_index = state->player_tile_map_pos;
-    player_bottom.point = new_player_pos;
+    canonical_position new_player_pos = state->player_pos;
+    new_player_pos.tile_rel = new_player_pos.tile_rel + player_delta*clock->delta;
+    new_player_pos = recanonicalize_position(&world, new_player_pos);
     
-    raw_position player_left = player_bottom;
-    player_left.point.x -= player_size.x*0.5f;
+    canonical_position player_left = new_player_pos;
+    player_left.tile_rel.x = player_left.tile_rel.x - player_size.x*0.5;
+    player_left = recanonicalize_position(&world, player_left);
     
-    raw_position player_right = player_bottom;
-    player_right.point.x += player_size.x*0.5f;
+    canonical_position player_right = new_player_pos;
+    player_right.tile_rel.x = player_right.tile_rel.x + player_size.x*0.5;
+    player_right = recanonicalize_position(&world, player_right);
     
-    if (is_world_point_empty(&world, player_bottom) &&
+    if (is_world_point_empty(&world, new_player_pos) &&
         is_world_point_empty(&world, player_left) &&
         is_world_point_empty(&world, player_right)) {
-        canonical_position can_pos = get_canonical_position(&world, player_bottom);
-        
-        state->player_tile_map_pos = can_pos.tile_map_index;
-        state->player_pos = world.offset + world.tile_size*vec2f_from_vec2i(can_pos.tile_index) + can_pos.tile_point;
+        state->player_pos = new_player_pos;
     }
-    
+
     // NOTE(xkazu0x): render
     draw_rectangle(bitmap,
                    vec2f_create(0.0f),
@@ -271,15 +247,23 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             if (tile == 1) {
                 gray = 1.0f;
             }
-            vec2f min = vec2f_create(world.offset.x + ((f32)column)*world.tile_size,
-                                     world.offset.y + ((f32)row)*world.tile_size);
-            vec2f max = vec2f_create(min.x + world.tile_size,
-                                     min.y + world.tile_size);
+
+            if ((column == state->player_pos.tile_index.x) &&
+                (row == state->player_pos.tile_index.y)) {
+                gray = 0.0f;
+            }
+            
+            vec2f min = vec2f_create(world.offset.x + ((f32)column)*world.tile_size_in_pixels,
+                                     world.offset.y + ((f32)row)*world.tile_size_in_pixels);
+            vec2f max = vec2f_create(min.x + world.tile_size_in_pixels,
+                                     min.y + world.tile_size_in_pixels);
             draw_rectangle(bitmap, min, max, vec3f_create(gray, gray, gray));
         }
     }
-    
-    vec2f player_min = vec2f_create(state->player_pos.x - 0.5f*player_size.x, state->player_pos.y - player_size.y);
-    vec2f player_max = player_min + player_size;
+
+    f32 player_left_dim = world.offset.x + world.tile_size_in_pixels*state->player_pos.tile_index.x + world.meters_to_pixels*state->player_pos.tile_rel.x - 0.5f*world.meters_to_pixels*player_size.x;
+    f32 player_right_dim = world.offset.y + world.tile_size_in_pixels*state->player_pos.tile_index.y + world.meters_to_pixels*state->player_pos.tile_rel.y - world.meters_to_pixels*player_size.y;
+    vec2f player_min = vec2f_create(player_left_dim, player_right_dim);
+    vec2f player_max = player_min + player_size*world.meters_to_pixels;
     draw_rectangle(bitmap, player_min, player_max, vec3f_create(1.0f, 1.0f, 0.0f));
 }

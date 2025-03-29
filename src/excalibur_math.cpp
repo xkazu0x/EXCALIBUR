@@ -58,6 +58,36 @@ tan_f64(f64 x) {
     return(tanf(x));
 }
 
+internal inline s32
+round_f32_to_s32(f32 f) {
+    s32 result = (s32)(f + 0.5f);
+    return(result);
+}
+
+internal inline u32
+round_f32_to_u32(f32 f) {
+    u32 result = (u32)(f + 0.5f);
+    return(result);
+}
+
+internal inline s32
+truncate_f32_to_s32(f32 f) {
+    s32 result = (s32)f;
+    return(result);
+}
+
+internal inline u32
+truncate_f32_to_u32(f32 f) {
+    u32 result = (u32)f;
+    return(result);
+}
+
+internal inline s32
+floor_f32_to_s32(f32 f) {
+    s32 result = (s32)floorf(f);
+    return(result);
+}
+
 /////////////////////////////////////////
 // NOTE(xkazu0x): compound type functions
 

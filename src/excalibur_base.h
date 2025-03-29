@@ -234,14 +234,6 @@ internal char *string_from_architecture(ARCHITECTURE arch);
 
 internal inline u32 safe_truncate_u64(u64 value);
 
-internal inline s32 round_f32_to_s32(f32 f);
-internal inline u32 round_f32_to_u32(f32 f);
-
-internal inline s32 floor_f32_to_s32(f32 f);
-
-internal inline s32 truncate_f32_to_s32(f32 f);
-internal inline u32 truncate_f32_to_u32(f32 f);
-
 ///////////////////////////////////////
 // TODO(xkazu0x): temp string functions
 

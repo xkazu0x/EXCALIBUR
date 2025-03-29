@@ -424,8 +424,8 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
         return(1);
     }
     EXDEBUG("> memory allocated:");
-    EXTRACE("\t> permanent storage: %llu", g_memory.permanent_storage_size);
-    EXTRACE("\t> transient storage: %llu", g_memory.transient_storage_size);
+    EXTRACE(" - permanent storage size: %llu", g_memory.permanent_storage_size);
+    EXTRACE(" - transient storage size: %llu", g_memory.transient_storage_size);
     
     /////////////////////////////////
     // NOTE(xkazu0x): time initialize
@@ -443,8 +443,8 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
 
     // TODO(xkazu0x): maybe there is something wrong how fast it is updating per frame
     // personally, i don't think so
-    // f32 game_update_hz = ((f32)monitor_frame_rate / 1.0f);
-    f32 game_update_hz = (60.0f / 2.0f);
+    f32 game_update_hz = (f32)monitor_frame_rate;
+    // f32 game_update_hz = (60.0f / 2.0f);
     f32 target_seconds_per_frame = 1.0f / game_update_hz;
 
     ///////////////////////////

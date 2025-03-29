@@ -82,39 +82,6 @@ safe_truncate_u64(u64 value) {
     return(result);
 }
 
-internal inline s32
-round_f32_to_s32(f32 f) {
-    s32 result = (s32)(f + 0.5f);
-    return(result);
-}
-
-internal inline u32
-round_f32_to_u32(f32 f) {
-    u32 result = (u32)(f + 0.5f);
-    return(result);
-}
-
-// TODO(xkazu0x): implement math functions
-// this shit do not fucking work
-#include <math.h>
-internal inline s32
-floor_f32_to_s32(f32 f) {
-    s32 result = (s32)floorf(f);
-    return(result);
-}
-
-internal inline s32
-truncate_f32_to_s32(f32 f) {
-    s32 result = (s32)f;
-    return(result);
-}
-
-internal inline u32
-truncate_f32_to_u32(f32 f) {
-    u32 result = (u32)f;
-    return(result);
-}
-
 ///////////////////////////////////////
 // NOTE(xkazu0x): temp string functions
 
