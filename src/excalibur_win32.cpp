@@ -302,6 +302,8 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     vec2i window_size = vec2i_create(960, 540);
     vec2i window_position = (monitor_size - window_size) / 2;
     EXDEBUG("> window size: %dx%d", window_size.x, window_size.y);
+
+    vec2i fixed_window_size = vec2i_create(0);
     
     RECT window_rectangle = {};
     window_rectangle.left = 0;
@@ -309,8 +311,8 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     window_rectangle.top = 0;
     window_rectangle.bottom = window_size.y;
     if (AdjustWindowRect(&window_rectangle, WS_OVERLAPPEDWINDOW, 0)) {
-        window_size.x = window_rectangle.right - window_rectangle.left;
-        window_size.y = window_rectangle.bottom - window_rectangle.top;
+        fixed_window_size.x = window_rectangle.right - window_rectangle.left;
+        fixed_window_size.y = window_rectangle.bottom - window_rectangle.top;
     }
 
     WNDCLASSA window_class = {};
@@ -341,7 +343,7 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     HWND window_handle = CreateWindowExA(window_style_ex, MAKEINTATOM(window_atom),
                                          window_title, window_style,
                                          window_position.x, window_position.y,
-                                         window_size.x, window_size.y,
+                                         fixed_window_size.x, fixed_window_size.y,
                                          0, 0, instance, 0);
     if (!window_handle) {
         EXFATAL("< failed to create win32 window");
@@ -465,6 +467,26 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
             win32_unload_game(&game);
             game = win32_load_game(source_game_code_dll_fullpath, temp_game_code_dll_fullpath);
         }
+                
+        // NOTE(xkazu0x): input reset
+        for (u32 i = 0; i < KEY_MAX; i++) {
+            g_input.keyboard[i].pressed = EX_FALSE;
+            g_input.keyboard[i].released = EX_FALSE;
+        }
+
+        g_input.mouse.left.pressed = EX_FALSE;
+        g_input.mouse.left.released = EX_FALSE;
+        g_input.mouse.right.pressed = EX_FALSE;
+        g_input.mouse.right.released = EX_FALSE;
+        g_input.mouse.middle.pressed = EX_FALSE;
+        g_input.mouse.middle.released = EX_FALSE;
+        g_input.mouse.x1.pressed = EX_FALSE;
+        g_input.mouse.x1.released = EX_FALSE;
+        g_input.mouse.x2.pressed = EX_FALSE;
+        g_input.mouse.x2.released = EX_FALSE;
+        g_input.mouse.delta_wheel = 0;
+        g_input.mouse.delta_position.x = 0;
+        g_input.mouse.delta_position.y = 0;
 
         // NOTE(xkazu0x): window message loop
         MSG message;
@@ -533,16 +555,6 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
                 }
             }
         }
-        
-        if (g_input.keyboard[KEY_ESCAPE].pressed) {
-            quit = EX_TRUE;
-        }
-        if (g_input.keyboard[KEY_F1].pressed) {
-            pause = !pause;
-        }
-        if (g_input.keyboard[KEY_F11].pressed) {
-            win32_window_toggle_fullscreen(window_handle, &g_win32.window_placement);
-        }
 
         // NOTE(xkazu0x): mouse update
         g_input.mouse.wheel += g_input.mouse.delta_wheel;
@@ -593,6 +605,17 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
             }
         }
 
+        // NOTE(xkazu0x): key presses
+        if (g_input.keyboard[KEY_ESCAPE].pressed) {
+            quit = EX_TRUE;
+        }
+        if (g_input.keyboard[KEY_F1].pressed) {
+            pause = !pause;
+        }
+        if (g_input.keyboard[KEY_F11].pressed) {
+            win32_window_toggle_fullscreen(window_handle, &g_win32.window_placement);
+        }
+
         // NOTE(xkazu0x): update and render
         if (!pause) {
             thread_t thread = {};
@@ -603,14 +626,17 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
         }
         
         // NOTE(xkazu0x): time update
-        s64 end_cycle_count = __rdtsc();
-        s64 cycles_per_frame = end_cycle_count - last_cycle_count;
+        s64 raw_end_cycle_count = __rdtsc();
+        s64 raw_cycles_per_frame = raw_end_cycle_count - last_cycle_count;
+        f32 raw_mega_cycles_per_frame = ((f32)raw_cycles_per_frame/(1000.0f*1000.0f));
         
-        LARGE_INTEGER work_counter = win32_get_time();
-        f32 work_delta_seconds = win32_get_delta_seconds(last_counter, work_counter);
+        LARGE_INTEGER raw_end_counter = win32_get_time();
+        f32 raw_seconds_per_frame = win32_get_delta_seconds(last_counter, raw_end_counter);
+        f32 raw_ms_per_frame = 1000.0f*raw_seconds_per_frame;
+        f32 raw_frames_per_second = (f32)g_win32.time_frequency/(f32)(raw_end_counter.QuadPart - last_counter.QuadPart);
 
         // TODO(xkazu0x): PROBRABLY BUGGY
-        f32 seconds_elapsed_for_frame = work_delta_seconds;
+        f32 seconds_elapsed_for_frame = raw_seconds_per_frame;
         if (seconds_elapsed_for_frame < target_seconds_per_frame) {
             if (sleep_is_granular) {
                 DWORD sleep_ms = (DWORD)(1000.0f * (target_seconds_per_frame - seconds_elapsed_for_frame));
@@ -633,13 +659,13 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
         }
         
         // NOTE(xkazu0x): compute time
+        s64 end_cycle_count = __rdtsc();
+        s64 cycles_per_frame = end_cycle_count - last_cycle_count;
+        f32 mega_cycles_per_frame = ((f32)cycles_per_frame/(1000.0f*1000.0f));
+        
         LARGE_INTEGER end_counter = win32_get_time();
-        f32 ms_per_frame = 1000.0f * win32_get_delta_seconds(last_counter, end_counter);
-
-        s64 counts_per_frame = end_counter.QuadPart - last_counter.QuadPart;
-        f32 frames_per_second = (f32)g_win32.time_frequency / (f32)counts_per_frame;
-
-        f32 mega_cycles_per_frame = ((f32)cycles_per_frame / (1000.0f * 1000.0f));
+        f32 ms_per_frame = 1000.0f*win32_get_delta_seconds(last_counter, end_counter);
+        f32 frames_per_second = (f32)g_win32.time_frequency/(f32)(end_counter.QuadPart - last_counter.QuadPart);
 
         last_counter = end_counter;
         last_cycle_count = end_cycle_count;
@@ -649,40 +675,22 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
         HDC window_device = GetDC(window_handle);
         win32_display_bitmap(g_bitmap, window_size, window_device);
         ReleaseDC(window_handle, window_device);
-        
-        // NOTE(xkazu0x): input reset
-        for (u32 i = 0; i < KEY_MAX; i++) {
-            g_input.keyboard[i].pressed = EX_FALSE;
-            g_input.keyboard[i].released = EX_FALSE;
-        }
-
-        g_input.mouse.left.pressed = EX_FALSE;
-        g_input.mouse.left.released = EX_FALSE;
-        g_input.mouse.right.pressed = EX_FALSE;
-        g_input.mouse.right.released = EX_FALSE;
-        g_input.mouse.middle.pressed = EX_FALSE;
-        g_input.mouse.middle.released = EX_FALSE;
-        g_input.mouse.delta_position.x = 0;
-        g_input.mouse.delta_position.y = 0;
-        g_input.mouse.delta_wheel = 0;
 
 #if 1
         // NOTE(xkazu0x): log time
         // TODO(xkazu0x): this is debug code only
         local f64 time_seconds = 0.0;
         local f64 last_print_time = 0.0;
-        time_seconds += work_delta_seconds;
-        if (time_seconds - last_print_time > 0.1f) {
+        time_seconds += ms_per_frame;
+        if (time_seconds - last_print_time > 500.0f) {
             //EXDEBUG("%.02fms, %.02ffps, %.02fmc", ms_per_frame, frames_per_second, mega_cycles_per_frame);
             char new_window_title[512];
-            sprintf(new_window_title, "%s - %.02ff/s, %.02fms/f, %.02fmc/f", window_title, frames_per_second, ms_per_frame, mega_cycles_per_frame);
+            sprintf(new_window_title, "%s - fixed: %.02ff/s, %.02fms/f, %.02fmc/f | raw: %.02ff/s, %.02fms/f, %.02fmc/f", window_title, frames_per_second, ms_per_frame, mega_cycles_per_frame, raw_frames_per_second, raw_ms_per_frame, raw_mega_cycles_per_frame);
             SetWindowTextA(window_handle, new_window_title);
             last_print_time = time_seconds;
         }
 #endif        
     }
     EXINFO("EXCALIBUR : SHUTDOWN");
-    UnregisterClassA(MAKEINTATOM(window_atom), instance);
-    DestroyWindow(window_handle);
     return(0);
 }

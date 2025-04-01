@@ -20,6 +20,7 @@ struct win32_game_t {
 };
 
 #define WIN32_STATE_FILENAME_MAX MAX_PATH
+
 struct win32_t {
     BITMAPINFO bitmap_info;
     WINDOWPLACEMENT window_placement;

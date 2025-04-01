@@ -19,30 +19,41 @@
 // > 0 - not slow code allowed
 // > 1 - slow code welcome
 
-struct canonical_position {
-    vec2i tile_map_index;
-    vec2i tile_index;
-    vec2f tile_rel; // NOTE(xkazu0x): tile relative point
+struct tile_chunk_position {
+    u32 tile_chunk_x;
+    u32 tile_chunk_y;
+
+    u32 tile_x;
+    u32 tile_y;
 };
 
-struct tile_map {
+struct tile_chunk {
     u32 *tiles;
 };
 
+struct world_position {
+    u32 tile_x;
+    u32 tile_y;
+
+    vec2f tile_rel; // NOTE(xkazu0x): tile relative point
+};
+
 struct world_map {
+    u32 chunk_shift;
+    u32 chunk_mask;
+    u32 chunk_dim;
+    
     f32 tile_size_in_meters;
     s32 tile_size_in_pixels;
     f32 meters_to_pixels;
     
-    vec2i tile_count;
-    vec2f offset;
-    
-    vec2i tile_map_count;
-    tile_map *tile_maps;
+    s32 tile_chunk_count_x;
+    s32 tile_chunk_count_y;
+    tile_chunk *tile_chunks;
 };
 
 struct game_state {
-    canonical_position player_pos;
+    world_position player_pos;
 };
 
 #endif // EXCALIBUR_H

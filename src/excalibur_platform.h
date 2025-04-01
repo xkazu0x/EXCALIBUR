@@ -37,7 +37,7 @@ typedef DEBUG_PLATFORM_WRITE_FILE(DEBUGPLATFORMWRITEFILE);
 // NOTE(xkazu0x): services that the game provides to the platform layer
 // TODO(xkazu0x): key codes for keyboard input
 
-typedef enum keyboard_key {
+typedef enum key_t {
     KEY_ESCAPE = 0x1B,
     
     KEY_LEFT   = 0x25,
@@ -109,7 +109,7 @@ typedef enum keyboard_key {
     KEY_F24 = 0x87,
 
     KEY_MAX = 256,
-} keyboard_key;
+} key_t;
 
 typedef struct digital_button_t {
     b32 down;
