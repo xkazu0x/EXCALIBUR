@@ -58,36 +58,6 @@ tan_f64(f64 x) {
     return(tanf(x));
 }
 
-internal inline s32
-round_f32_to_s32(f32 f) {
-    s32 result = (s32)(f + 0.5f);
-    return(result);
-}
-
-internal inline u32
-round_f32_to_u32(f32 f) {
-    u32 result = (u32)(f + 0.5f);
-    return(result);
-}
-
-internal inline s32
-truncate_f32_to_s32(f32 f) {
-    s32 result = (s32)f;
-    return(result);
-}
-
-internal inline u32
-truncate_f32_to_u32(f32 f) {
-    u32 result = (u32)f;
-    return(result);
-}
-
-internal inline s32
-floor_f32_to_s32(f32 f) {
-    s32 result = (s32)floorf(f);
-    return(result);
-}
-
 /////////////////////////////////////////
 // NOTE(xkazu0x): compound type functions
 
@@ -187,22 +157,6 @@ vec4f_create(f32 f) {
     result.y = f;
     result.z = f;
     result.w = f;
-    return(result);
-}
-
-internal inline vec2i
-vec2i_from_vec2f(vec2f v) {
-    vec2i result;
-    result.x = truncate_f32_to_s32(v.x);
-    result.y = truncate_f32_to_s32(v.y);
-    return(result);
-}
-
-internal inline vec2f
-vec2f_from_vec2i(vec2i v) {
-    vec2f result;
-    result.x = (f32)v.x;
-    result.y = (f32)v.y;
     return(result);
 }
 

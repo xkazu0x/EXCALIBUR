@@ -1,9 +1,6 @@
 #ifndef EXCALIBUR_BASE_H
 #define EXCALIBUR_BASE_H
 
-//////////////////////////////////
-// NOTE(xkazu0x): context cracking
-
 #if defined(__clang__)
 #define COMPILER_CLANG 1
 
@@ -114,9 +111,6 @@
 #define ARCH_ARM64 0
 #endif
 
-///////////////////////////////
-// NOTE(xkazu0x): helper macros
-
 #define EX_STMNT(x) do { x } while(0)
 #define EX_ASSERT_BREAK() (*(int *)0 = 0)
 
@@ -133,19 +127,6 @@
 
 #define EX_ARRAY_COUNT(x) (sizeof(x)/sizeof(*(x)))
 
-#define EX_INT_FROM_PTR(p) (unsigned long long)((char*)p - (char*)0)
-#define EX_PTR_FROM_INT(n) (void*)((char*)0 + (n))
-
-#define EX_MEMBER(T, m) (((T*)0)->m)
-#define EX_OFFSETOF(T, m) EX_INT_FROM_PTR(&EX_MEMBER(T, m))
-
-#define EX_MIN(a, b) (((a)<(b))?(a):(b))
-#define EX_MAX(a, b) (((a)>(b))?(a):(b))
-#define EX_CLAMP(a, x, b) (((x)<(a))?(a):\
-                           ((b)<(x))?(b):(x))
-#define EX_CLAMP_TOP(a, b) EXM_MIN(a, b)
-#define EX_CLAMP_BOT(a, b) EXM_MAX(a, b)
-
 #define EX_FALSE 0
 #define EX_TRUE 1
 
@@ -153,8 +134,6 @@
 #define local static
 #define internal static
 
-/////////////////////////////
-// NOTE(xkazu0x): basic types
 #include <stdint.h>
 
 typedef int8_t s8;
@@ -174,9 +153,6 @@ typedef s64 b64;
 
 typedef float f32;
 typedef double f64;
-
-/////////////////////////////////
-// NOTE(xkazu0x): basic constants
 
 global s8  s8_min  = (s8) 0x80;
 global s16 s16_min = (s16)0x8000;
@@ -200,10 +176,7 @@ global f32 f32_min = -FLT_MAX;
 global f32 pi32 = 3.14159265359f;
 global f64 pi64 = 3.14159265359;
 
-////////////////////////////////////
-// NOTE(xkazu0x): symbolic constants
-
-enum OPERATING_SYSTEM {
+enum operating_system_t {
     OPERATING_SYSTEM_UNDEFINED,
     OPERATING_SYSTEM_WINDOWS,
     OPERATING_SYSTEM_LINUX,
@@ -211,7 +184,7 @@ enum OPERATING_SYSTEM {
     OPERATING_SYSTEM_MAX,
 };
 
-enum ARCHITECTURE {
+enum architecture_t {
     ARCHITECTURE_UNDEFINED,
     ARCHITECTURE_X64,
     ARCHITECTURE_X86,
@@ -220,26 +193,10 @@ enum ARCHITECTURE {
     ARCHITECTURE_MAX,
 };
 
-/////////////////////////////////////////////
-// NOTE(xkazu0x): symbolic constant functions
+internal operating_system_t operating_system_from_context(void);
+internal architecture_t architecture_from_context(void);
 
-internal OPERATING_SYSTEM operating_system_from_context(void);
-internal ARCHITECTURE architecture_from_context(void);
-
-internal char *string_from_operating_system(OPERATING_SYSTEM os);
-internal char *string_from_architecture(ARCHITECTURE arch);
-
-////////////////////////////////
-// NOTE(xkazu0x): safe functions
-
-internal inline u32 safe_truncate_u64(u64 value);
-
-///////////////////////////////////////
-// TODO(xkazu0x): temp string functions
-
-internal u32 string_length(char *string);
-internal void cat_strings(size_t src_a_count, char *src_a,
-                          size_t src_b_count, char *src_b,
-                          size_t dest_count, char *dest);
+internal char *string_from_operating_system(operating_system_t os);
+internal char *string_from_architecture(architecture_t arch);
 
 #endif // EXCALIBUR_BASE_H

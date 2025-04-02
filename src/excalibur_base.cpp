@@ -1,9 +1,6 @@
-/////////////////////////////////////////////
-// NOTE(xkazu0x): symbolic constant functions
-
-internal OPERATING_SYSTEM
+internal operating_system_t
 operating_system_from_context(void) {
-    OPERATING_SYSTEM result = OPERATING_SYSTEM_UNDEFINED;
+    operating_system_t result = OPERATING_SYSTEM_UNDEFINED;
 #if OS_WINDOWS
     result = OPERATING_SYSTEM_WINDOWS;
 #elif OS_LINUX
@@ -14,9 +11,9 @@ operating_system_from_context(void) {
     return(result);
 }
 
-internal ARCHITECTURE
+internal architecture_t
 architecture_from_context(void) {
-    ARCHITECTURE result = ARCHITECTURE_UNDEFINED;
+    architecture_t result = ARCHITECTURE_UNDEFINED;
 #if ARCH_X64
     result = ARCHITECTURE_X64;
 #elif ARCH_X86
@@ -30,7 +27,7 @@ architecture_from_context(void) {
 }
 
 internal char *
-string_from_operating_system(OPERATING_SYSTEM os) {
+string_from_operating_system(operating_system_t os) {
     char *result;
     switch(os) {
         case OPERATING_SYSTEM_WINDOWS: {
@@ -50,7 +47,7 @@ string_from_operating_system(OPERATING_SYSTEM os) {
 }
 
 internal char *
-string_from_architecture(ARCHITECTURE arch) {
+string_from_architecture(architecture_t arch) {
     char *result;
     switch(arch) {
         case ARCHITECTURE_X64: {
@@ -71,39 +68,3 @@ string_from_architecture(ARCHITECTURE arch) {
     }
     return(result);
 }
-
-////////////////////////////////
-// NOTE(xkazu0x): safe functions
-
-internal inline u32
-safe_truncate_u64(u64 value) {
-    EX_ASSERT(value <= u32_max);
-    u32 result = (u32)value;
-    return(result);
-}
-
-///////////////////////////////////////
-// NOTE(xkazu0x): temp string functions
-
-internal u32
-string_length(char *string) {
-    u32 count = 0;
-    while (*string++) {
-        ++count;
-    }
-    return(count);
-}
-
-internal void
-cat_strings(size_t src_a_count, char *src_a,
-            size_t src_b_count, char *src_b,
-            size_t dest_count, char *dest) {
-    for (u32 i = 0; i < src_a_count; ++i) {
-        *dest++ = *src_a++;
-    }
-    for (u32 i = 0; i < src_b_count; ++i) {
-        *dest++ = *src_b++;
-    }
-    *dest++ = 0;
-}
-

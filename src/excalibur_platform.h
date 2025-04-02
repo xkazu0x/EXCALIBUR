@@ -131,18 +131,6 @@ typedef struct stick_t {
     f32 y;
 } stick_t;
 
-typedef struct mouse_t {
-    digital_button_t left;
-    digital_button_t right;
-    digital_button_t middle;
-    digital_button_t x1;
-    digital_button_t x2;
-    s32 wheel;
-    s32 delta_wheel;
-    vec2i position;
-    vec2i delta_position;
-} mouse_t;
-
 typedef struct gamepad_t {
     digital_button_t up;
     digital_button_t down;
@@ -164,11 +152,23 @@ typedef struct gamepad_t {
     stick_t right_stick;
 } gamepad_t;
 
+typedef struct mouse_t {
+    digital_button_t left;
+    digital_button_t right;
+    digital_button_t middle;
+    digital_button_t x1;
+    digital_button_t x2;
+    s32 wheel;
+    s32 delta_wheel;
+    vec2i position;
+    vec2i delta_position;
+} mouse_t;
+
 #define GAMEPAD_COUNT_MAX 4
     
 typedef struct os_input_t {
-    mouse_t mouse;
     digital_button_t keyboard[KEY_MAX];
+    mouse_t mouse;
     gamepad_t gamepads[GAMEPAD_COUNT_MAX];
 } os_input_t;
 
@@ -180,7 +180,7 @@ typedef struct os_bitmap_t {
 } os_bitmap_t;
 
 typedef struct os_clock_t {
-    f32 delta;
+    f32 delta_seconds;
 } os_clock_t;
 
 typedef struct os_memory_t {

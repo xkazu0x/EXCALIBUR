@@ -63,14 +63,6 @@ internal f64 sin_f64(f64 x);
 internal f64 cos_f64(f64 x);
 internal f64 tan_f64(f64 x);
 
-internal inline s32 round_f32_to_s32(f32 f);
-internal inline u32 round_f32_to_u32(f32 f);
-
-internal inline s32 truncate_f32_to_s32(f32 f);
-internal inline u32 truncate_f32_to_u32(f32 f);
-
-internal inline s32 floor_f32_to_s32(f32 f);
-
 /////////////////////////////////////////
 // NOTE(xkazu0x): compound type functions
 
@@ -88,9 +80,6 @@ internal inline vec4f vec4f_create(f32 x, f32 y, f32 z, f32 w);
 internal inline vec4f vec4f_create(vec2f v, f32 z, f32 w);
 internal inline vec4f vec4f_create(vec3f v, f32 w);
 internal inline vec4f vec4f_create(f32 f);
-
-internal inline vec2i vec2i_from_vec2f(vec2f v);
-internal inline vec2f vec2f_from_vec2i(vec2i v);
 
 internal inline vec2i operator+(vec2i a, vec2i b);
 internal inline vec2f operator+(vec2f a, vec2f b);

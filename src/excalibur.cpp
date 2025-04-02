@@ -1,5 +1,38 @@
 #include "excalibur.h"
 
+////////////////////////////////
+// TODO(xkazu0x): temp functions
+internal inline s32
+round_f32_to_s32(f32 f) {
+    s32 result = (s32)(f + 0.5f);
+    return(result);
+}
+
+internal inline u32
+round_f32_to_u32(f32 f) {
+    u32 result = (u32)(f + 0.5f);
+    return(result);
+}
+
+internal inline s32
+truncate_f32_to_s32(f32 f) {
+    s32 result = (s32)f;
+    return(result);
+}
+
+internal inline u32
+truncate_f32_to_u32(f32 f) {
+    u32 result = (u32)f;
+    return(result);
+}
+
+internal inline s32
+floor_f32_to_s32(f32 f) {
+    s32 result = (s32)floorf(f);
+    return(result);
+}
+////////////////////////////////
+
 internal void
 draw_rectangle(os_bitmap_t *bitmap, vec2f min, vec2f max, vec3f color) {
     vec2i mini = vec2i_create(0, 0);
@@ -193,7 +226,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     player_delta = player_delta*3.0f;
 
     world_position new_player_pos = state->player_pos;
-    new_player_pos.tile_rel = new_player_pos.tile_rel + player_delta*clock->delta;
+    new_player_pos.tile_rel = new_player_pos.tile_rel + player_delta*clock->delta_seconds;
     new_player_pos = recanonicalize_position(&world, new_player_pos);
     
     world_position player_left = new_player_pos;
@@ -213,7 +246,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     // NOTE(xkazu0x): render
     draw_rectangle(bitmap,
                    vec2f_create(0.0f),
-                   vec2f_from_vec2i(bitmap->size),
+                   vec2f_create(bitmap->size.x, bitmap->size.y),
                    vec3f_create(0.2f, 0.3f, 0.3f));
 
     f32 center_x = 0.5f*((f32)bitmap->size.x);
