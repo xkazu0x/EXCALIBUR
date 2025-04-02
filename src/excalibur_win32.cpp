@@ -1,14 +1,20 @@
 #include "excalibur_base.h"
+#include "excalibur_intrinsics.h"
 #include "excalibur_math.h"
 #include "excalibur_log.h"
 
 #include "excalibur_base.cpp"
+#include "excalibur_intrinsics.cpp"
 #include "excalibur_math.cpp"
 #include "excalibur_log.cpp"
 
-#include "excalibur_platform.h"
-#include "excalibur_platform_helper.h"
-#include "excalibur_platform_helper.cpp"
+#include "excalibur_os.h"
+
+////////////////////////////////////////////////
+// NOTE(xkazu0x): exclusive includes
+
+#include "excalibur_os_helper.h"
+#include "excalibur_os_helper.cpp"
 
 #include "excalibur_win32.h"
 
@@ -508,7 +514,7 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
                 case WM_KEYUP: {
                     u32 key_code = (u32)message.wParam;
                     b32 down = ((message.lParam & (1 << 31)) == 0);
-                    platform_process_digital_button(&g_input.keyboard[key_code], down);
+                    os_process_digital_button(&g_input.keyboard[key_code], down);
                     TranslateMessage(&message);
                     DispatchMessageA(&message);
                 } break;
@@ -526,27 +532,27 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
                             b32 left_button_down = g_input.mouse.left.down;
                             if (button_flags & RI_MOUSE_LEFT_BUTTON_DOWN) left_button_down = EX_TRUE;
                             if (button_flags & RI_MOUSE_LEFT_BUTTON_UP) left_button_down = EX_FALSE;
-                            platform_process_digital_button(&g_input.mouse.left, left_button_down);
+                            os_process_digital_button(&g_input.mouse.left, left_button_down);
 
                             b32 right_button_down = g_input.mouse.right.down;
                             if (button_flags & RI_MOUSE_RIGHT_BUTTON_DOWN) right_button_down = EX_TRUE;
                             if (button_flags & RI_MOUSE_RIGHT_BUTTON_UP) right_button_down = EX_FALSE;
-                            platform_process_digital_button(&g_input.mouse.right, right_button_down);
+                            os_process_digital_button(&g_input.mouse.right, right_button_down);
                             
                             b32 middle_button_down = g_input.mouse.middle.down;
                             if (button_flags & RI_MOUSE_MIDDLE_BUTTON_DOWN) middle_button_down = EX_TRUE;
                             if (button_flags & RI_MOUSE_MIDDLE_BUTTON_UP) middle_button_down = EX_FALSE;
-                            platform_process_digital_button(&g_input.mouse.middle, middle_button_down);
+                            os_process_digital_button(&g_input.mouse.middle, middle_button_down);
 
                             b32 x1_button_down = g_input.mouse.x1.down;
                             if (button_flags & RI_MOUSE_BUTTON_4_DOWN) x1_button_down = EX_TRUE;
                             if (button_flags & RI_MOUSE_BUTTON_4_UP) x1_button_down = EX_FALSE;
-                            platform_process_digital_button(&g_input.mouse.x1, x1_button_down);
+                            os_process_digital_button(&g_input.mouse.x1, x1_button_down);
                             
                             b32 x2_button_down = g_input.mouse.x2.down;
                             if (button_flags & RI_MOUSE_BUTTON_5_DOWN) x2_button_down = EX_TRUE;
                             if (button_flags & RI_MOUSE_BUTTON_5_UP) x2_button_down = EX_FALSE;
-                            platform_process_digital_button(&g_input.mouse.x2, x2_button_down);
+                            os_process_digital_button(&g_input.mouse.x2, x2_button_down);
                             
                             if (raw_input->data.mouse.usButtonFlags & RI_MOUSE_WHEEL) {
                                 g_input.mouse.delta_wheel += ((SHORT)raw_input->data.mouse.usButtonData) / WHEEL_DELTA;
@@ -587,25 +593,25 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
             XINPUT_STATE xinput_state = {};
             DWORD xinput_result = xinput_get_state(i, &xinput_state);
             if (xinput_result == ERROR_SUCCESS) {
-                platform_process_digital_button(&g_input.gamepads[i].up, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_UP) != 0);
-                platform_process_digital_button(&g_input.gamepads[i].down, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN) != 0);
-                platform_process_digital_button(&g_input.gamepads[i].left, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT) != 0);
-                platform_process_digital_button(&g_input.gamepads[i].right, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) != 0);
-                platform_process_digital_button(&g_input.gamepads[i].start, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_START) != 0);
-                platform_process_digital_button(&g_input.gamepads[i].back, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_BACK) != 0);
-                platform_process_digital_button(&g_input.gamepads[i].left_thumb,(xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_THUMB) != 0);
-                platform_process_digital_button(&g_input.gamepads[i].right_thumb, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) != 0);
-                platform_process_digital_button(&g_input.gamepads[i].left_shoulder, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0);
-                platform_process_digital_button(&g_input.gamepads[i].right_shoulder, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0);
-                platform_process_digital_button(&g_input.gamepads[i].a, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_A) != 0);
-                platform_process_digital_button(&g_input.gamepads[i].b, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_B) != 0);
-                platform_process_digital_button(&g_input.gamepads[i].x, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_X) != 0);
-                platform_process_digital_button(&g_input.gamepads[i].y, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_Y) != 0);
-                platform_process_analog_button(&g_input.gamepads[i].left_trigger, xinput_state.Gamepad.bLeftTrigger / 255.0f);
-                platform_process_analog_button(&g_input.gamepads[i].right_trigger, xinput_state.Gamepad.bRightTrigger / 255.0f);
+                os_process_digital_button(&g_input.gamepads[i].up, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_UP) != 0);
+                os_process_digital_button(&g_input.gamepads[i].down, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN) != 0);
+                os_process_digital_button(&g_input.gamepads[i].left, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT) != 0);
+                os_process_digital_button(&g_input.gamepads[i].right, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) != 0);
+                os_process_digital_button(&g_input.gamepads[i].start, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_START) != 0);
+                os_process_digital_button(&g_input.gamepads[i].back, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_BACK) != 0);
+                os_process_digital_button(&g_input.gamepads[i].left_thumb,(xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_THUMB) != 0);
+                os_process_digital_button(&g_input.gamepads[i].right_thumb, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) != 0);
+                os_process_digital_button(&g_input.gamepads[i].left_shoulder, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0);
+                os_process_digital_button(&g_input.gamepads[i].right_shoulder, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0);
+                os_process_digital_button(&g_input.gamepads[i].a, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_A) != 0);
+                os_process_digital_button(&g_input.gamepads[i].b, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_B) != 0);
+                os_process_digital_button(&g_input.gamepads[i].x, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_X) != 0);
+                os_process_digital_button(&g_input.gamepads[i].y, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_Y) != 0);
+                os_process_analog_button(&g_input.gamepads[i].left_trigger, xinput_state.Gamepad.bLeftTrigger / 255.0f);
+                os_process_analog_button(&g_input.gamepads[i].right_trigger, xinput_state.Gamepad.bRightTrigger / 255.0f);
 #define CONVERT(x) (2.0f * (((x + 32768) / 65535.0f) - 0.5f))
-                platform_process_stick(&g_input.gamepads[i].left_stick, CONVERT(xinput_state.Gamepad.sThumbLX), CONVERT(xinput_state.Gamepad.sThumbLY));
-                platform_process_stick(&g_input.gamepads[i].right_stick, CONVERT(xinput_state.Gamepad.sThumbRX), CONVERT(xinput_state.Gamepad.sThumbRY));
+                os_process_stick(&g_input.gamepads[i].left_stick, CONVERT(xinput_state.Gamepad.sThumbLX), CONVERT(xinput_state.Gamepad.sThumbLY));
+                os_process_stick(&g_input.gamepads[i].right_stick, CONVERT(xinput_state.Gamepad.sThumbRX), CONVERT(xinput_state.Gamepad.sThumbRY));
 #undef CONVERT
             } else {
                 break;

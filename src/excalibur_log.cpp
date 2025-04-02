@@ -4,9 +4,9 @@
 internal void
 log_output(log_level_t level, char *message, ...) {
     const char *levels[LOG_LEVEL_MAX] {
-        "[FATAL]: < ",
-        "[ERROR]: < ",
-        "[WARN]: ! ",
+        "[FATAL]: ! ",
+        "[ERROR]: ! ",
+        "[WARN]: < ",
         "[INFO]: > ",
         "[DEBUG]: > ",
         "[TRACE]: - ",

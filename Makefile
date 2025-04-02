@@ -15,13 +15,13 @@ all: $(BUILD_DIR) $(BUILD_DIR)/$(DLL) $(BUILD_DIR)/$(EXEC)
 $(BUILD_DIR):
 	mkdir $@
 
-$(BUILD_DIR)/$(DLL): $(SRC_DIR)/excalibur.cpp
+$(BUILD_DIR)/$(DLL): $(SRC_DIR)/excalibur_game.cpp
 	$(CC) $(CFLAGS) -shared -o $@ $^ $(DEFINES)
 
 $(BUILD_DIR)/$(EXEC): $(SRC_DIR)/excalibur_win32.cpp
 	$(CC) $(CFLAGS) -mconsole -o $@ $^ $(DEFINES) $(INCLUDES) $(LIBS)
 
-run: build
+run: all
 	$(BUILD_DIR)/$(EXEC)
 
 remake: clean all

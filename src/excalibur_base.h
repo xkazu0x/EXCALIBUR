@@ -146,6 +146,8 @@ typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
 
+typedef size_t memi;
+
 typedef s8 b8;
 typedef s16 b16;
 typedef s32 b32;

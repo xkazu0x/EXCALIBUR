@@ -1,5 +1,5 @@
-#ifndef EXCALIBUR_PLATFORM_H
-#define EXCALIBUR_PLATFORM_H
+#ifndef EXCALIBUR_OS_H
+#define EXCALIBUR_OS_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -38,8 +38,9 @@ typedef DEBUG_PLATFORM_WRITE_FILE(DEBUGPLATFORMWRITEFILE);
 // TODO(xkazu0x): key codes for keyboard input
 
 typedef enum key_t {
+    KEY_SHIFT  = 0x10,
     KEY_ESCAPE = 0x1B,
-    
+
     KEY_LEFT   = 0x25,
     KEY_UP     = 0x26,
     KEY_RIGHT  = 0x27,
@@ -204,4 +205,4 @@ typedef GAME_UPDATE_AND_RENDER(GAMEUPDATEANDRENDER);
 }
 #endif
 
-#endif
+#endif // EXCALIBUR_OS_H
