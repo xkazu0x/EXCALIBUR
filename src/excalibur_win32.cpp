@@ -323,7 +323,7 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     EXINFO("monitor refresh rate: %dHz", monitor_frame_rate);
     
     char *window_title = "EXCALIBUR";
-    vec2i window_size = vec2i_create(960, 540);
+    vec2i window_size = vec2i_create(1920*0.5f, 1080*0.5f);
     vec2i window_position = (monitor_size - window_size) / 2;
     u32 window_style = WS_OVERLAPPEDWINDOW;
     u32 window_style_ex = 0;

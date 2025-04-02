@@ -17,6 +17,26 @@ struct memory_arena_t {
     u8 *base;
 };
 
+internal memory_arena_t
+memory_arena_init(memi size, u8 *base) {
+    memory_arena_t result;
+    result.size = size;
+    result.used = 0;
+    result.base = base;
+    return(result);
+}
+
+internal void *
+memory_arena_push(memory_arena_t *arena, memi size) {
+    EX_ASSERT((arena->used + size) <= arena->size);
+    void *result = arena->base + arena->used;
+    arena->used += size;
+    return(result);
+}
+
+#define MEMA_PUSH_STRUCT(arena, type) (type *)memory_arena_push(arena, sizeof(type))
+#define MEMA_PUSH_ARRAY(arena, count, type) (type *)memory_arena_push(arena, (count)*sizeof(type))
+
 struct world_t {
     tile_map_t *tile_map;
 };

@@ -15,6 +15,7 @@
 
 #include "excalibur_game.h"
 #include "excalibur_tile.cpp"
+#include "excalibur_random.h"
 
 internal void
 draw_rectangle(os_bitmap_t *bitmap, vec2f min, vec2f max, vec3f color) {
@@ -50,26 +51,6 @@ draw_rectangle(os_bitmap_t *bitmap, vec2f min, vec2f max, vec3f color) {
     }
 }
 
-internal memory_arena_t
-memory_arena_init(memi size, u8 *base) {
-    memory_arena_t result;
-    result.size = size;
-    result.used = 0;
-    result.base = base;
-    return(result);
-}
-
-internal void *
-memory_arena_push(memory_arena_t *arena, memi size) {
-    EX_ASSERT((arena->used + size) <= arena->size);
-    void *result = arena->base + arena->used;
-    arena->used += size;
-    return(result);
-}
-
-#define MEMA_PUSH_STRUCT(arena, type) (type *)memory_arena_push(arena, sizeof(type))
-#define MEMA_PUSH_ARRAY(arena, count, type) (type *)memory_arena_push(arena, (count)*sizeof(type))
-
 extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     EX_ASSERT(sizeof(game_state_t) <= memory->permanent_storage_size);
     game_state_t *state = (game_state_t *)memory->permanent_storage;
@@ -91,36 +72,119 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         tile_map->chunk_shift = 4;
         tile_map->chunk_mask = (1 << tile_map->chunk_shift) - 1;
         tile_map->chunk_dim = (1 << tile_map->chunk_shift);
-
-        tile_map->tile_size_in_meters = 1.4f;
-        tile_map->tile_size_in_pixels = 60;
-        tile_map->meters_to_pixels = (f32)tile_map->tile_size_in_pixels / (f32)tile_map->tile_size_in_meters;
         
         tile_map->tile_chunk_count_x = 128;
         tile_map->tile_chunk_count_y = 128;
+        tile_map->tile_chunk_count_z = 2;
         tile_map->tile_chunks = MEMA_PUSH_ARRAY(&state->world_arena,
-                                                tile_map->tile_chunk_count_x*tile_map->tile_chunk_count_y,
+                                                tile_map->tile_chunk_count_x*
+                                                tile_map->tile_chunk_count_y*
+                                                tile_map->tile_chunk_count_z,
                                                 tile_chunk_t);
         
-        for (u32 y = 0; y < tile_map->tile_chunk_count_y; y++) {
-            for (u32 x = 0; x < tile_map->tile_chunk_count_x; x++) {
-                tile_map->tile_chunks[y*tile_map->tile_chunk_count_x + x].tiles =
-                    MEMA_PUSH_ARRAY(&state->world_arena, tile_map->chunk_dim*tile_map->chunk_dim, u32);
-            }
-        }
+        tile_map->tile_size_in_meters = 1.4f;
+        u32 random_number_index = 0;
         
         u32 tile_count_x = 17;
         u32 tile_count_y = 9;
-        for (u32 screen_y = 0; screen_y < 32; screen_y++) {
-            for (u32 screen_x = 0; screen_x < 32; screen_x++) {
-                for (u32 tile_y = 0; tile_y < tile_count_y; tile_y++) {
-                    for (u32 tile_x = 0; tile_x < tile_count_x; tile_x++) {
-                        u32 abs_tile_x = screen_x*tile_count_x + tile_x;
-                        u32 abs_tile_y = screen_y*tile_count_y + tile_y;
-                        set_tile_map_tile_value(&state->world_arena, tile_map, abs_tile_x, abs_tile_y,
-                                                (tile_x == tile_y) && (tile_y % 2) ? 1 : 0);
-                    }
+        u32 screen_x = 0;
+        u32 screen_y = 0;
+        
+        u32 abs_tile_z = 0;
+                    
+        b32 door_left = EX_FALSE;
+        b32 door_right = EX_FALSE;
+        b32 door_top = EX_FALSE;
+        b32 door_bottom = EX_FALSE;
+
+        b32 door_up = EX_FALSE;
+        b32 door_down = EX_FALSE;
+        
+        for (u32 screen_index = 0; screen_index < 100; screen_index++) {
+            // TODO(xkazu0x): random number generator
+            EX_ASSERT(random_number_index < EX_ARRAY_COUNT(random_number_table));
+            u32 random_choice;
+            if (door_up || door_down) {
+                random_choice = random_number_table[random_number_index++] % 2;
+            } else {
+                random_choice = random_number_table[random_number_index++] % 3;
+            }
+
+            if (random_choice == 2) {
+                if (abs_tile_z == 0) {
+                    door_up = EX_TRUE;
+                } else {
+                    door_down = EX_TRUE;
                 }
+            } else if (random_choice == 1) {
+                door_right = EX_TRUE;
+            } else {
+                door_top = EX_TRUE;
+            }
+            
+            for (u32 tile_y = 0; tile_y < tile_count_y; tile_y++) {
+                for (u32 tile_x = 0; tile_x < tile_count_x; tile_x++) {
+                    u32 abs_tile_x = screen_x*tile_count_x + tile_x;
+                    u32 abs_tile_y = screen_y*tile_count_y + tile_y;
+                    
+                    u32 tile_value = 1;
+                    if ((tile_x == 0) && (!door_left || (tile_y != (tile_count_y/2)))) {
+                        tile_value = 2;
+                    }
+                    
+                    if ((tile_x == (tile_count_x - 1)) && (!door_right || (tile_y != (tile_count_y/2)))) {
+                        tile_value = 2;
+                    }
+                    
+                    if ((tile_y == 0) && (!door_bottom || (tile_x != (tile_count_x/2)))) {
+                        tile_value = 2;
+                    }
+                    
+                    if ((tile_y == (tile_count_y - 1)) && (!door_top || (tile_x != (tile_count_x/2)))) {
+                        tile_value = 2;
+                    }
+
+                    if ((tile_x == 10) && (tile_y == 6)) {
+                        if (door_up) {
+                            tile_value = 3;
+                        }
+                        
+                        if (door_down) {
+                            tile_value = 4;
+                        }
+                    }
+                        
+                    set_tile_map_tile_value(&state->world_arena, tile_map, abs_tile_x, abs_tile_y, abs_tile_z, tile_value);
+                }
+            }
+
+            door_left = door_right;
+            door_bottom = door_top;
+            
+            door_right = EX_FALSE;
+            door_top = EX_FALSE;
+
+            if (door_up) {
+                door_down = EX_TRUE;
+                door_up = EX_FALSE;
+            } else if (door_down) {
+                door_up = EX_TRUE;
+                door_down = EX_FALSE;
+            } else {
+                door_up = EX_FALSE;
+                door_down = EX_FALSE;
+            }
+
+            if (random_choice == 2) {
+                if (abs_tile_z == 0) {
+                    abs_tile_z = 1;
+                } else {
+                    abs_tile_z = 0;
+                }
+            } else if (random_choice == 1) {
+                screen_x++;
+            } else {
+                screen_y++;
             }
         }
                 
@@ -129,6 +193,9 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
 
     world_t *world = state->world;
     tile_map_t *tile_map = world->tile_map;
+
+    s32 tile_size_in_pixels = 60;
+    f32 meters_to_pixels = (f32)tile_size_in_pixels / (f32)tile_map->tile_size_in_meters;
     
     vec2f player_size = vec2f_create(tile_map->tile_size_in_meters*0.75f, tile_map->tile_size_in_meters);
     vec2f player_delta = vec2f_create(0.0f, 0.0f);
@@ -186,31 +253,40 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         for (s32 rel_column = -20; rel_column < 20; rel_column++) {
             u32 column = state->player_pos.tile_x + rel_column;
             u32 row = state->player_pos.tile_y + rel_row;
-            u32 tile_value = get_tile_map_tile_value(tile_map, column, row);
             
-            f32 gray = 0.5f;
-            if (tile_value == 1) {
-                gray = 1.0f;
-            }
+            u32 tile_value = get_tile_map_tile_value(tile_map, column, row, state->player_pos.tile_z);
 
-            if ((column == state->player_pos.tile_x) &&
-                (row == state->player_pos.tile_y)) {
-                gray = 0.0f;
-            }
+            vec3f tile_color = vec3f_create(0.5f);
+            if (tile_value > 0) {
+                if (tile_value == 2) {
+                    tile_color = vec3f_create(1.0f);
+                }
 
-            f32 center_x = screen_center_x - tile_map->meters_to_pixels*state->player_pos.tile_rel_x + ((f32)rel_column)*tile_map->tile_size_in_pixels;
-            f32 center_y = screen_center_y + tile_map->meters_to_pixels*state->player_pos.tile_rel_y - ((f32)rel_row)*tile_map->tile_size_in_pixels;
-            f32 min_x = center_x - 0.5f*tile_map->tile_size_in_pixels;
-            f32 min_y = center_y - 0.5f*tile_map->tile_size_in_pixels;
-            f32 max_x = center_x + 0.5f*tile_map->tile_size_in_pixels;
-            f32 max_y = center_y + 0.5f*tile_map->tile_size_in_pixels;
-            draw_rectangle(bitmap, {min_x, min_y}, {max_x, max_y}, vec3f_create(gray, gray, gray));
+                if (tile_value > 2) {
+                    tile_color = vec3f_create(0.25f);
+                }
+                
+                if ((column == state->player_pos.tile_x) &&
+                    (row == state->player_pos.tile_y)) {
+                    tile_color = vec3f_create(0.0f);
+                }
+            } else {
+                tile_color = vec3f_create(1.0f, 0.5f, 0.2f);
+            }
+            
+            f32 center_x = screen_center_x - meters_to_pixels*state->player_pos.tile_rel_x + ((f32)rel_column)*tile_size_in_pixels;
+            f32 center_y = screen_center_y + meters_to_pixels*state->player_pos.tile_rel_y - ((f32)rel_row)*tile_size_in_pixels;
+            f32 min_x = center_x - 0.5f*tile_size_in_pixels;
+            f32 min_y = center_y - 0.5f*tile_size_in_pixels;
+            f32 max_x = center_x + 0.5f*tile_size_in_pixels;
+            f32 max_y = center_y + 0.5f*tile_size_in_pixels;
+            draw_rectangle(bitmap, {min_x, min_y}, {max_x, max_y}, tile_color);
         }
     }
 
-    f32 player_left_dim = screen_center_x - 0.5f*tile_map->meters_to_pixels*player_size.x;
-    f32 player_right_dim = screen_center_y - tile_map->meters_to_pixels*player_size.y;
+    f32 player_left_dim = screen_center_x - 0.5f*meters_to_pixels*player_size.x;
+    f32 player_right_dim = screen_center_y - meters_to_pixels*player_size.y;
     vec2f player_min = vec2f_create(player_left_dim, player_right_dim);
-    vec2f player_max = player_min + player_size*tile_map->meters_to_pixels;
+    vec2f player_max = player_min + player_size*meters_to_pixels;
     draw_rectangle(bitmap, player_min, player_max, vec3f_create(1.0f, 1.0f, 0.0f));
 }
