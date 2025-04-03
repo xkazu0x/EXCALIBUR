@@ -1,5 +1,5 @@
 CC := g++
-CFLAGS := -g -Wall -Wextra -Wpadded -O0 -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -Wno-write-strings
+CFLAGS := -O0 -g -Wall -Wextra -Wno-padded -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -Wno-write-strings
 DEFINES := -DEXCALIBUR_INTERNAL=1 -DEXCALIBUR_DEBUG=1
 INCLUDES := -I.
 LIBS := -lkernel32 -luser32 -lgdi32 -lwinmm
@@ -27,7 +27,7 @@ run: all
 remake: clean all
 
 clean:
-	rmdir /s /q $(BUILD_DIR)
+	del /q $(BUILD_DIR)\*.*
 
 asm:
 	objdump -D $(BUILD_DIR)/$(EXEC)

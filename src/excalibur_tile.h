@@ -22,8 +22,9 @@ struct tile_map_position_t {
     u32 tile_y;
     u32 tile_z;
 
-    f32 tile_rel_x;
-    f32 tile_rel_y;
+    // NOTE(xkazu0x): offset from the tile center
+    f32 tile_offset_x;
+    f32 tile_offset_y;
 };
 
 struct tile_map_t {

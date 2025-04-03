@@ -5,38 +5,33 @@
 extern "C" {
 #endif
 
-///////////////////////////////////////////////////////////////////////
-// NOTE(xkazu0x): services that the platform layer provides to the game
-
-typedef struct thread_t {
+typedef struct os_thread_t {
     u32 handle;
-} thread_t;
+} os_thread_t;
 
 #if EXCALIBUR_INTERNAL
 // IMPORTANT(xkazu0x):
 // These are NOT for doing anything in the shipping game - they are
 // blocking and the write doesn't protect against lost data
-    
 typedef struct debug_file_t {
-    u32 data_size;
+    u32 size;
     void *data;
 } debug_file_t;
 
-#define DEBUG_PLATFORM_FREE_FILE(name) void name(thread_t *thread, void *memory)
-typedef DEBUG_PLATFORM_FREE_FILE(DEBUGPLATFORMFREEFILE);
+#define DEBUG_OS_FREE_FILE(name) void name(os_thread_t *thread, void *memory)
+typedef DEBUG_OS_FREE_FILE(debug_os_free_file_t);
 
-#define DEBUG_PLATFORM_READ_FILE(name) debug_file_t name(thread_t *thread, char *filename)
-typedef DEBUG_PLATFORM_READ_FILE(DEBUGPLATFORMREADFILE);
+#define DEBUG_OS_READ_FILE(name) debug_file_t name(os_thread_t *thread, char *filename)
+typedef DEBUG_OS_READ_FILE(debug_os_read_file_t);
 
-#define DEBUG_PLATFORM_WRITE_FILE(name) b32 name(thread_t *thread, char *filename, u32 memory_size, void *memory)
-typedef DEBUG_PLATFORM_WRITE_FILE(DEBUGPLATFORMWRITEFILE);
-
+#define DEBUG_OS_WRITE_FILE(name) b32 name(os_thread_t *thread, char *filename, u32 memory_size, void *memory)
+typedef DEBUG_OS_WRITE_FILE(debug_os_write_file_t);
 #endif
 
 ///////////////////////////////////////////////////////////////////////
 // NOTE(xkazu0x): services that the game provides to the platform layer
 // TODO(xkazu0x): key codes for keyboard input
-
+    
 typedef enum key_t {
     KEY_SHIFT  = 0x10,
     KEY_ESCAPE = 0x1B,
@@ -119,7 +114,6 @@ typedef struct digital_button_t {
 } digital_button_t;
 
 typedef struct analog_button_t {
-    f32 threshold;
     f32 value;
     b32 down;
     b32 pressed;
@@ -127,7 +121,6 @@ typedef struct analog_button_t {
 } analog_button_t;
 
 typedef struct stick_t {
-    f32 threshold;
     f32 x;
     f32 y;
 } stick_t;
@@ -166,7 +159,6 @@ typedef struct mouse_t {
 } mouse_t;
 
 #define GAMEPAD_COUNT_MAX 4
-    
 typedef struct os_input_t {
     digital_button_t keyboard[KEY_MAX];
     mouse_t mouse;
@@ -177,12 +169,8 @@ typedef struct os_bitmap_t {
     vec2i size;
     s32 bytes_per_pixel;
     s32 pitch;
-    void *memory;
+    void *pixels;
 } os_bitmap_t;
-
-typedef struct os_clock_t {
-    f32 delta_seconds;
-} os_clock_t;
 
 typedef struct os_memory_t {
     b32 initialized;
@@ -193,12 +181,16 @@ typedef struct os_memory_t {
     void *permanent_storage; // NOTE(xkazu0x): required to be cleared to zero at startup
     void *transient_storage; // NOTE(xkazu0x): required to be cleared to zero at startup
 
-    DEBUGPLATFORMFREEFILE *debug_platform_free_file;
-    DEBUGPLATFORMREADFILE *debug_platform_read_file;
-    DEBUGPLATFORMWRITEFILE *debug_platform_write_file;
+    debug_os_free_file_t *debug_os_free_file;
+    debug_os_read_file_t *debug_os_read_file;
+    debug_os_write_file_t *debug_os_write_file;
 } os_memory_t;
 
-#define GAME_UPDATE_AND_RENDER(name) void name(thread_t *thread, os_memory_t *memory, os_clock_t *clock, os_input_t *input, os_bitmap_t *bitmap)
+typedef struct os_clock_t {
+    f32 delta_seconds;
+} os_clock_t;
+
+#define GAME_UPDATE_AND_RENDER(name) void name(os_bitmap_t *bitmap, os_input_t *input, os_memory_t *memory, os_clock_t *clock, os_thread_t *thread)
 typedef GAME_UPDATE_AND_RENDER(GAMEUPDATEANDRENDER);
 
 #ifdef __cplusplus
