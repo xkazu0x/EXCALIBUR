@@ -325,18 +325,19 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     s32 monitor_frame_rate = monitor_info.dmDisplayFrequency;
     EXINFO("monitor size: %dx%d", monitor_width, monitor_height);
     EXINFO("monitor refresh rate: %dHz", monitor_frame_rate);
-
+    
     //////////////////////////////////
     // NOTE(xkazu0x): framebuffer init
+    s32 scale = 4;
+    
     os_framebuffer_t framebuffer = {};
-    win32_resize_framebuffer(&framebuffer, 240, 160);
+    win32_resize_framebuffer(&framebuffer, 240*scale, 160*scale);
     EXINFO("framebuffer size: %dx%d", framebuffer.width, framebuffer.height);
     
     /////////////////////////////
     // NOTE(xkazu0x): window init
-    s32 window_scale = 4;
-    s32 window_width = framebuffer.width*window_scale;
-    s32 window_height = framebuffer.height*window_scale;
+    s32 window_width = framebuffer.width;
+    s32 window_height = framebuffer.height;
     s32 window_x = (monitor_width - window_width)/2;
     s32 window_y = (monitor_height - window_height)/2;
     EXINFO("window size: %dx%d", window_width, window_height);

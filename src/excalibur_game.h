@@ -47,6 +47,7 @@ struct bitmap_t {
 struct game_state_t {
     tile_map_position_t player_pos;
     bitmap_t test_bitmap;
+    bitmap_t test_bitmap1;
     
     memory_arena_t world_arena;
     world_t *world;

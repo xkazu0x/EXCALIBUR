@@ -72,7 +72,25 @@ draw_bitmap(os_framebuffer_t *framebuffer, bitmap_t *bitmap, f32 xf, f32 yf) {
         u32 *dest = (u32 *)dest_row;
         u32 *source = source_row;
         for (s32 x = x_min; x < x_max; x++) {
-            *dest++ = *source++;
+            f32 alpha = (f32)((*source >> 24) & 0xFF)/255.0f;
+            f32 src_red = (f32)((*source >> 16) & 0xFF);
+            f32 src_green = (f32)((*source >> 8) & 0xFF);
+            f32 src_blue = (f32)((*source >> 0) & 0xFF);
+
+            f32 dest_red = (f32)((*dest >> 16) & 0xFF);
+            f32 dest_green = (f32)((*dest >> 8) & 0xFF);
+            f32 dest_blue = (f32)((*dest >> 0) & 0xFF);
+            
+            f32 red = (1.0f-alpha)*dest_red + alpha*src_red;
+            f32 green = (1.0f-alpha)*dest_green + alpha*src_green;
+            f32 blue = (1.0f-alpha)*dest_blue + alpha*src_blue;
+
+            *dest = (((u32)(red + 0.5f) << 16) |
+                     ((u32)(green + 0.5f) << 8) |
+                     ((u32)(blue + 0.5f) << 0));
+            
+            ++dest;
+            ++source;
         }
         dest_row += framebuffer->pitch;
         source_row -= bitmap->width;
@@ -93,8 +111,8 @@ struct bitmap_header_t {
     u16 bits_per_pixel;
     u32 compression;
     u32 size_of_bitmap;
-    s16 horz_resolution;
-    s16 vert_resolution;
+    s32 horz_resolution;
+    s32 vert_resolution;
     u32 colors_used;
     u32 colors_important;
 
@@ -106,9 +124,6 @@ struct bitmap_header_t {
 
 internal bitmap_t
 debug_load_bitmap(debug_os_read_file_t *debug_os_read_file, os_thread_t *thread, char *filename) {
-    // NOTE(xkazu0x): this functions may not load a bitmap because
-    // of its pixel values order
-    // 0xAARRGGBB - bottom up
     bitmap_t result = {};
     
     debug_file_t file = debug_os_read_file(thread, filename);
@@ -119,18 +134,36 @@ debug_load_bitmap(debug_os_read_file_t *debug_os_read_file, os_thread_t *thread,
         result.width = header->width;
         result.height = header->height;
 
-        // u8 *source_dest = (u8 *)pixels;
-        // for (s32 y = 0; y < header->height; y++) {
-        //     for (s32 x = 0; x < header->width; x++) {
-        //         u8 c0 = source_dest[0]; // blue
-        //         u8 c1 = source_dest[1]; // green
-        //         u8 c2 = source_dest[2]; // red
-        //         u8 c3 = source_dest[3]; // alpha
+        EX_ASSERT(header->compression == 3);
+        
+        // NOTE(xkazu0x): byte order in memory is determined bu the header itself,
+        // so we have to read out the masks and convert the pixels ourselves.
+        u32 red_mask = header->red_mask;
+        u32 green_mask = header->green_mask;
+        u32 blue_mask = header->blue_mask;
+        u32 alpha_mask = ~(red_mask | green_mask | blue_mask);
+        
+        bit_scan_result_t red_shift = find_least_significant_set_bit(red_mask);
+        bit_scan_result_t green_shift = find_least_significant_set_bit(green_mask);
+        bit_scan_result_t blue_shift = find_least_significant_set_bit(blue_mask);
+        bit_scan_result_t alpha_shift = find_least_significant_set_bit(alpha_mask);
 
-        //         *(u32 *)source_dest = ((c3 << 24) | (c2 << 16) | (c1 << 8) | c0);
-        //         source_dest += 4;
-        //     }
-        // }
+        EX_ASSERT(red_shift.found);
+        EX_ASSERT(green_shift.found);
+        EX_ASSERT(blue_shift.found);
+        EX_ASSERT(alpha_shift.found);
+        
+        u32 *source_dest = pixels;
+        for (s32 y = 0; y < header->height; y++) {
+            for (s32 x = 0; x < header->width; x++) {
+                u32 c = *source_dest;
+                *source_dest = ((((c >> alpha_shift.index) & 0xFF) << 24) |
+                                (((c >> red_shift.index) & 0xFF) << 16) |
+                                (((c >> green_shift.index) & 0xFF) << 8) |
+                                (((c >> blue_shift.index) & 0xFF) << 0));
+                ++source_dest;
+            }
+        }
     }
     
     return(result);
@@ -143,6 +176,8 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     if (!memory->initialized) {
         state->test_bitmap = debug_load_bitmap(memory->debug_os_read_file,
                                                thread, "res/spritesheet.bmp");
+        state->test_bitmap1 = debug_load_bitmap(memory->debug_os_read_file,
+                                                thread, "res/cross.bmp");
         
         state->player_pos.tile_x = 1;
         state->player_pos.tile_y = 3;
@@ -281,7 +316,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     world_t *world = state->world;
     tile_map_t *tile_map = world->tile_map;
 
-    s32 tile_size_in_pixels = 16;
+    s32 tile_size_in_pixels = 16*4;
     f32 meters_to_pixels = (f32)tile_size_in_pixels / (f32)tile_map->tile_size_in_meters;
     
     vec2f player_size = vec2f_create(tile_map->tile_size_in_meters*0.75f, tile_map->tile_size_in_meters);
@@ -389,4 +424,6 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     vec2f player_min = vec2f_create(player_left_dim, player_right_dim);
     vec2f player_max = player_min + player_size*meters_to_pixels;
     draw_rectangle(framebuffer, player_min, player_max, vec3f_create(1.0f, 1.0f, 0.0f));
+
+    draw_bitmap(framebuffer, &state->test_bitmap1, player_min.x, player_min.y);
 }

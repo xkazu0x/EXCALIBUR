@@ -1,35 +1,5 @@
 #include <math.h>
 
-internal s32
-round_f32_to_s32(f32 f) {
-    s32 result = (s32)roundf(f);
-    return(result);
-}
-
-internal u32
-round_f32_to_u32(f32 f) {
-    u32 result = (u32)roundf(f);
-    return(result);
-}
-
-internal s32
-truncate_f32_to_s32(f32 f) {
-    s32 result = (s32)f;
-    return(result);
-}
-
-internal u32
-truncate_f32_to_u32(f32 f) {
-    u32 result = (u32)f;
-    return(result);
-}
-
-internal s32
-floor_f32_to_s32(f32 f) {
-    s32 result = (s32)floorf(f);
-    return(result);
-}
-
 internal f32
 abs_f32(f32 x) {
     union { f32 f; u32 u; } result;
@@ -84,4 +54,55 @@ cos_f64(f64 x) {
 internal f64
 tan_f64(f64 x) {
     return(tanf(x));
+}
+
+inline s32
+round_f32_to_s32(f32 f) {
+    s32 result = (s32)roundf(f);
+    return(result);
+}
+
+inline u32
+round_f32_to_u32(f32 f) {
+    u32 result = (u32)roundf(f);
+    return(result);
+}
+
+inline s32
+truncate_f32_to_s32(f32 f) {
+    s32 result = (s32)f;
+    return(result);
+}
+
+inline u32
+truncate_f32_to_u32(f32 f) {
+    u32 result = (u32)f;
+    return(result);
+}
+
+inline s32
+floor_f32_to_s32(f32 f) {
+    s32 result = (s32)floorf(f);
+    return(result);
+}
+
+#if COMPILER_CL
+#include <intrin.h>
+#endif
+
+inline bit_scan_result_t
+find_least_significant_set_bit(u32 value) {
+    bit_scan_result_t result = {};
+#if COMPILER_CL
+    result.found = _BitScanForward((unsigned long *)&result.index, value);
+#else
+    for (u32 test = 0; test < 32; test++) {
+        if (value & (1 << test)) {
+            result.index = test;
+            result.found = EX_TRUE;
+            break;
+        }
+    }
+#endif
+    return(result);
 }
