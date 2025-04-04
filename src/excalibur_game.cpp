@@ -18,7 +18,7 @@
 #include "excalibur_tile.cpp"
 
 internal void
-draw_rectangle(os_bitmap_t *bitmap, vec2f min, vec2f max, vec3f color) {
+draw_rectangle(os_framebuffer_t *framebuffer, vec2f min, vec2f max, vec3f color) {
     vec2i mini = vec2i_create(0, 0);
     vec2i maxi = vec2i_create(0, 0);
     
@@ -31,22 +31,51 @@ draw_rectangle(os_bitmap_t *bitmap, vec2f min, vec2f max, vec3f color) {
     if (mini.x < 0) mini.x = 0;
     if (mini.y < 0) mini.y = 0;
     
-    if (maxi.x > bitmap->size.x) maxi.x = bitmap->size.x;
-    if (maxi.y > bitmap->size.y) maxi.y = bitmap->size.y;
+    if (maxi.x > framebuffer->width) maxi.x = framebuffer->width;
+    if (maxi.y > framebuffer->height) maxi.y = framebuffer->height;
 
     u32 out_color = ((round_f32_to_u32(color.r * 255.0f) << 16) |
                      (round_f32_to_u32(color.g * 255.0f) << 8) |
                      (round_f32_to_u32(color.b * 255.0f) << 0));
     
-    u8 *row = ((u8 *)bitmap->pixels +
-                 (mini.x * bitmap->bytes_per_pixel) +
-                 (mini.y * bitmap->pitch));
+    u8 *row = ((u8 *)framebuffer->pixels +
+                 (mini.x * framebuffer->bytes_per_pixel) +
+                 (mini.y * framebuffer->pitch));
     for (s32 y = mini.y; y < maxi.y; y++) {
         u32 *pixel = (u32 *)row;
         for (s32 x = mini.x; x < maxi.x; ++x) {
             *pixel++ = out_color;
         }
-        row += bitmap->pitch;
+        row += framebuffer->pitch;
+    }
+}
+
+internal void
+draw_bitmap(os_framebuffer_t *framebuffer, bitmap_t *bitmap, f32 xf, f32 yf) {
+    s32 x_min = round_f32_to_s32(xf);
+    s32 y_min = round_f32_to_s32(yf);
+    s32 x_max = round_f32_to_s32(xf + (f32)bitmap->width);
+    s32 y_max = round_f32_to_s32(yf + (f32)bitmap->height);
+    
+    if (x_min < 0) x_min = 0;
+    if (y_min < 0) y_min = 0;
+    if (x_max > framebuffer->width) x_max = framebuffer->width;
+    if (y_max > framebuffer->height) y_max = framebuffer->height;
+
+    // TODO(xkazu0x): source_row needs to be changed based on cliping
+    u32 *source_row = bitmap->pixels + bitmap->width*(bitmap->height - 1);
+    u8 *dest_row = ((u8 *)framebuffer->pixels +
+                    x_min*framebuffer->bytes_per_pixel +
+                    y_min*framebuffer->pitch);
+    
+    for (s32 y = y_min; y < y_max; y++) {
+        u32 *dest = (u32 *)dest_row;
+        u32 *source = source_row;
+        for (s32 x = x_min; x < x_max; x++) {
+            *dest++ = *source++;
+        }
+        dest_row += framebuffer->pitch;
+        source_row -= bitmap->width;
     }
 }
 
@@ -62,20 +91,48 @@ struct bitmap_header_t {
     s32 height;
     u16 planes;
     u16 bits_per_pixel;
+    u32 compression;
+    u32 size_of_bitmap;
+    s16 horz_resolution;
+    s16 vert_resolution;
+    u32 colors_used;
+    u32 colors_important;
+
+    u32 red_mask;
+    u32 green_mask;
+    u32 blue_mask;
 };
 #pragma pack(pop)
 
-internal u32 *
+internal bitmap_t
 debug_load_bitmap(debug_os_read_file_t *debug_os_read_file, os_thread_t *thread, char *filename) {
-    u32 *result = 0;
+    // NOTE(xkazu0x): this functions may not load a bitmap because
+    // of its pixel values order
+    // 0xAARRGGBB - bottom up
+    bitmap_t result = {};
     
     debug_file_t file = debug_os_read_file(thread, filename);
     if (file.size != 0) {
         bitmap_header_t *header = (bitmap_header_t *)file.data;
         u32 *pixels = (u32 *)((u8 *)file.data + header->bitmap_offset);
-        result = pixels;
-    }
+        result.pixels = pixels;
+        result.width = header->width;
+        result.height = header->height;
 
+        // u8 *source_dest = (u8 *)pixels;
+        // for (s32 y = 0; y < header->height; y++) {
+        //     for (s32 x = 0; x < header->width; x++) {
+        //         u8 c0 = source_dest[0]; // blue
+        //         u8 c1 = source_dest[1]; // green
+        //         u8 c2 = source_dest[2]; // red
+        //         u8 c3 = source_dest[3]; // alpha
+
+        //         *(u32 *)source_dest = ((c3 << 24) | (c2 << 16) | (c1 << 8) | c0);
+        //         source_dest += 4;
+        //     }
+        // }
+    }
+    
     return(result);
 }
 
@@ -84,7 +141,8 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     game_state_t *state = (game_state_t *)memory->permanent_storage;
     
     if (!memory->initialized) {
-        state->bmp_pixels = debug_load_bitmap(memory->debug_os_read_file, thread, "res/sprite_sheet.bmp");
+        state->test_bitmap = debug_load_bitmap(memory->debug_os_read_file,
+                                               thread, "res/spritesheet.bmp");
         
         state->player_pos.tile_x = 1;
         state->player_pos.tile_y = 3;
@@ -280,13 +338,15 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     }
 
     // NOTE(xkazu0x): render
-    draw_rectangle(bitmap,
+    draw_rectangle(framebuffer,
                    vec2f_create(0.0f),
-                   vec2f_create(bitmap->size.x, bitmap->size.y),
+                   vec2f_create(framebuffer->width, framebuffer->height),
                    vec3f_create(0.2f, 0.3f, 0.3f));
 
-    f32 screen_center_x = 0.5f*((f32)bitmap->size.x);
-    f32 screen_center_y = 0.5f*((f32)bitmap->size.y);
+    draw_bitmap(framebuffer, &state->test_bitmap, 0, 0);
+    
+    f32 screen_center_x = 0.5f*((f32)framebuffer->width);
+    f32 screen_center_y = 0.5f*((f32)framebuffer->height);
     
     for (s32 rel_row = -5; rel_row < 6; rel_row++) {
         for (s32 rel_column = -7; rel_column < 8; rel_column++) {
@@ -296,7 +356,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             u32 tile_value = get_tile_map_tile_value(tile_map, column, row, state->player_pos.tile_z);
 
             vec3f tile_color = vec3f_create(0.5f);
-            if (tile_value > 0) {
+            if (tile_value > 1) {
                 if (tile_value == 2) {
                     tile_color = vec3f_create(1.0f);
                 }
@@ -309,17 +369,18 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     (row == state->player_pos.tile_y)) {
                     tile_color = vec3f_create(0.0f);
                 }
-            } else {
-                tile_color = vec3f_create(1.0f, 0.5f, 0.2f);
-            }
+            // } else {
+            //     tile_color = vec3f_create(1.0f, 0.5f, 0.2f);
+            // }
             
-            f32 center_x = screen_center_x - meters_to_pixels*state->player_pos.tile_offset_x + ((f32)rel_column)*tile_size_in_pixels;
-            f32 center_y = screen_center_y + meters_to_pixels*state->player_pos.tile_offset_y - ((f32)rel_row)*tile_size_in_pixels;
-            f32 min_x = center_x - 0.5f*tile_size_in_pixels;
-            f32 min_y = center_y - 0.5f*tile_size_in_pixels;
-            f32 max_x = center_x + 0.5f*tile_size_in_pixels;
-            f32 max_y = center_y + 0.5f*tile_size_in_pixels;
-            draw_rectangle(bitmap, {min_x, min_y}, {max_x, max_y}, tile_color);
+                f32 center_x = screen_center_x - meters_to_pixels*state->player_pos.tile_offset_x + ((f32)rel_column)*tile_size_in_pixels;
+                f32 center_y = screen_center_y + meters_to_pixels*state->player_pos.tile_offset_y - ((f32)rel_row)*tile_size_in_pixels;
+                f32 min_x = center_x - 0.5f*tile_size_in_pixels;
+                f32 min_y = center_y - 0.5f*tile_size_in_pixels;
+                f32 max_x = center_x + 0.5f*tile_size_in_pixels;
+                f32 max_y = center_y + 0.5f*tile_size_in_pixels;
+                draw_rectangle(framebuffer, {min_x, min_y}, {max_x, max_y}, tile_color);
+            }
         }
     }
 
@@ -327,14 +388,5 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     f32 player_right_dim = screen_center_y - meters_to_pixels*player_size.y;
     vec2f player_min = vec2f_create(player_left_dim, player_right_dim);
     vec2f player_max = player_min + player_size*meters_to_pixels;
-    draw_rectangle(bitmap, player_min, player_max, vec3f_create(1.0f, 1.0f, 0.0f));
-#if 0
-    u32 *source = state->bmp_pixels;
-    u32 *dest = (u32 *)bitmap->memory;
-    for (s32 y = 0; y < bitmap->size.y; y++) {
-        for (s32 x = 0; x < bitmap->size.x; x++) {
-            *dest++ = *source++;
-        }
-    }
-#endif
+    draw_rectangle(framebuffer, player_min, player_max, vec3f_create(1.0f, 1.0f, 0.0f));
 }

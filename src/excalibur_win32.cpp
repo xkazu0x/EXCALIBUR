@@ -232,35 +232,35 @@ win32_window_toggle_fullscreen(HWND window, WINDOWPLACEMENT *placement) {
 }
 
 internal void
-win32_display_bitmap(os_bitmap_t bitmap, vec2i window_size, HDC device_context) {
+win32_display_framebuffer(HDC device_context, os_framebuffer_t framebuffer, s32 window_width, s32 window_height) {
     StretchDIBits(device_context,
-                  0, 0, window_size.x, window_size.y, // NOTE(xkazu0x): stretch
-                  //0, 0, bitmap.size.x, bitmap.size.y,
-                  0, 0, bitmap.size.x, bitmap.size.y,
-                  bitmap.pixels,
+                  0, 0, window_width, window_height,
+                  0, 0, framebuffer.width, framebuffer.height,
+                  framebuffer.pixels,
                   &global_win32.bitmap_info,
                   DIB_RGB_COLORS, SRCCOPY);
 }
 
 internal void
-win32_resize_bitmap(os_bitmap_t *bitmap, vec2i size) {
-    if (bitmap->pixels) {
-        VirtualFree(bitmap->pixels, 0, MEM_RELEASE);
+win32_resize_framebuffer(os_framebuffer_t *framebuffer, s32 width, s32 height) {
+    if (framebuffer->pixels) {
+        VirtualFree(framebuffer->pixels, 0, MEM_RELEASE);
     }
 
-    bitmap->size = size;
-    bitmap->bytes_per_pixel = 4;
-    bitmap->pitch = bitmap->size.x * bitmap->bytes_per_pixel;
+    framebuffer->width = width;
+    framebuffer->height = height;
+    framebuffer->bytes_per_pixel = 4;
+    framebuffer->pitch = framebuffer->width * framebuffer->bytes_per_pixel;
     
     global_win32.bitmap_info.bmiHeader.biSize = sizeof(global_win32.bitmap_info.bmiHeader);
-    global_win32.bitmap_info.bmiHeader.biWidth = bitmap->size.x;
-    global_win32.bitmap_info.bmiHeader.biHeight = -bitmap->size.y;
+    global_win32.bitmap_info.bmiHeader.biWidth = framebuffer->width;
+    global_win32.bitmap_info.bmiHeader.biHeight = -framebuffer->height;
     global_win32.bitmap_info.bmiHeader.biPlanes = 1;
-    global_win32.bitmap_info.bmiHeader.biBitCount = bitmap->bytes_per_pixel*8;
+    global_win32.bitmap_info.bmiHeader.biBitCount = 8*framebuffer->bytes_per_pixel;
     global_win32.bitmap_info.bmiHeader.biCompression = BI_RGB;
 
-    s32 bitmap_memory_size = (bitmap->size.x*bitmap->size.y)*bitmap->bytes_per_pixel;
-    bitmap->pixels = VirtualAlloc(0, bitmap_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    s32 framebuffer_memory_size = (framebuffer->width*framebuffer->height)*framebuffer->bytes_per_pixel;
+    framebuffer->pixels = VirtualAlloc(0, framebuffer_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 }
 
 internal vec2i
@@ -283,7 +283,7 @@ win32_window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
         } break;
         case WM_SIZE: {
             //vec2i window_size = win32_get_window_size(window);
-            //win32_resize_bitmap(&g_bitmap, window_size);
+            //win32_resize_framebuffer(&g_bitmap, window_size);
         } break;
         default: {
             result = DefWindowProcA(window, message, wparam, lparam);
@@ -320,38 +320,41 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     monitor_info.dmSize = sizeof(DEVMODE);
     EnumDisplaySettings(0, ENUM_CURRENT_SETTINGS, &monitor_info);
     
-    vec2i monitor_size = vec2i_create(monitor_info.dmPelsWidth, monitor_info.dmPelsHeight);
+    s32 monitor_width = monitor_info.dmPelsWidth;
+    s32 monitor_height = monitor_info.dmPelsHeight;
     s32 monitor_frame_rate = monitor_info.dmDisplayFrequency;
-    EXINFO("monitor size: %dx%d", monitor_size.x, monitor_size.y);
+    EXINFO("monitor size: %dx%d", monitor_width, monitor_height);
     EXINFO("monitor refresh rate: %dHz", monitor_frame_rate);
 
-    /////////////////////////////
-    // NOTE(xkazu0x): bitmap init
-    os_bitmap_t bitmap = {};
-    win32_resize_bitmap(&bitmap, vec2i_create(240, 160));
-    EXINFO("bitmap size: %dx%d", bitmap.size.x, bitmap.size.y);
+    //////////////////////////////////
+    // NOTE(xkazu0x): framebuffer init
+    os_framebuffer_t framebuffer = {};
+    win32_resize_framebuffer(&framebuffer, 240, 160);
+    EXINFO("framebuffer size: %dx%d", framebuffer.width, framebuffer.height);
     
     /////////////////////////////
     // NOTE(xkazu0x): window init
-        
     s32 window_scale = 4;
-    vec2i window_size = bitmap.size*window_scale;
-    vec2i window_position = (monitor_size - window_size) / 2;
-    EXINFO("window size: %dx%d", window_size.x, window_size.y);
+    s32 window_width = framebuffer.width*window_scale;
+    s32 window_height = framebuffer.height*window_scale;
+    s32 window_x = (monitor_width - window_width)/2;
+    s32 window_y = (monitor_height - window_height)/2;
+    EXINFO("window size: %dx%d", window_width, window_height);
     
     char *window_title = "EXCALIBUR";
-    vec2i fixed_window_size = window_size;
+    s32 fixed_window_width = window_width;
+    s32 fixed_window_height = window_height;
     u32 window_style = WS_OVERLAPPEDWINDOW;
     u32 window_style_ex = 0;
     
     RECT window_rectangle = {};
     window_rectangle.left = 0;
-    window_rectangle.right = window_size.x;
+    window_rectangle.right = window_width;
     window_rectangle.top = 0;
-    window_rectangle.bottom = window_size.y;
+    window_rectangle.bottom = window_height;
     if (AdjustWindowRect(&window_rectangle, window_style, 0)) {
-        fixed_window_size.x = window_rectangle.right - window_rectangle.left;
-        fixed_window_size.y = window_rectangle.bottom - window_rectangle.top;
+        fixed_window_width = window_rectangle.right - window_rectangle.left;
+        fixed_window_height = window_rectangle.bottom - window_rectangle.top;
     }
 
     WNDCLASSA window_class = {};
@@ -374,8 +377,8 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     
     HWND window_handle = CreateWindowExA(window_style_ex, MAKEINTATOM(window_atom),
                                          window_title, window_style,
-                                         window_position.x, window_position.y,
-                                         fixed_window_size.x, fixed_window_size.y,
+                                         window_x, window_y,
+                                         fixed_window_width, fixed_window_height,
                                          0, 0, instance, 0);
     if (!window_handle) {
         EXFATAL("failed to create win32 window");
@@ -585,8 +588,8 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
         if (mouse_position.y < 0) mouse_position.y = 0;
         
         // TODO(xkazu0x): query new window size before this happens
-        if (mouse_position.x > window_size.x) mouse_position.x = window_size.x;
-        if (mouse_position.y > window_size.y) mouse_position.y = window_size.y;
+        if (mouse_position.x > window_width) mouse_position.x = window_width;
+        if (mouse_position.y > window_height) mouse_position.y = window_height;
         
         input.mouse.position.x = mouse_position.x;
         input.mouse.position.y = mouse_position.y;
@@ -635,7 +638,7 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
             os_thread_t thread = {};
             clock.delta_seconds = target_seconds_per_frame;
             if (game.update_and_render) {
-                game.update_and_render(&bitmap, &input, &memory, &clock, &thread);
+                game.update_and_render(&framebuffer, &input, &memory, &clock, &thread);
             }
         }
         
@@ -684,10 +687,10 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
         last_counter = end_counter;
         last_cycle_count = end_cycle_count;
 
-        // NOTE(xkazu0x): display bitmap
+        // NOTE(xkazu0x): display framebuffer
         //window_size = win32_get_window_size(window_handle);
         HDC window_device = GetDC(window_handle);
-        win32_display_bitmap(bitmap, window_size, window_device);
+        win32_display_framebuffer(window_device, framebuffer, window_width, window_height);
         ReleaseDC(window_handle, window_device);
 
 #if 1

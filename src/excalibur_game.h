@@ -38,9 +38,15 @@ struct world_t {
     tile_map_t *tile_map;
 };
 
+struct bitmap_t {
+    s32 width;
+    s32 height;
+    u32 *pixels;
+};
+
 struct game_state_t {
     tile_map_position_t player_pos;
-    u32 *bmp_pixels;
+    bitmap_t test_bitmap;
     
     memory_arena_t world_arena;
     world_t *world;

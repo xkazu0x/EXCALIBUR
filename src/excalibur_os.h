@@ -165,12 +165,13 @@ typedef struct os_input_t {
     gamepad_t gamepads[GAMEPAD_COUNT_MAX];
 } os_input_t;
 
-typedef struct os_bitmap_t {
-    vec2i size;
+typedef struct os_framebuffer_t {
+    s32 width;
+    s32 height;
     s32 bytes_per_pixel;
     s32 pitch;
     void *pixels;
-} os_bitmap_t;
+} os_framebuffer_t;
 
 typedef struct os_memory_t {
     b32 initialized;
@@ -190,7 +191,7 @@ typedef struct os_clock_t {
     f32 delta_seconds;
 } os_clock_t;
 
-#define GAME_UPDATE_AND_RENDER(name) void name(os_bitmap_t *bitmap, os_input_t *input, os_memory_t *memory, os_clock_t *clock, os_thread_t *thread)
+#define GAME_UPDATE_AND_RENDER(name) void name(os_framebuffer_t *framebuffer, os_input_t *input, os_memory_t *memory, os_clock_t *clock, os_thread_t *thread)
 typedef GAME_UPDATE_AND_RENDER(GAMEUPDATEANDRENDER);
 
 #ifdef __cplusplus
