@@ -128,3 +128,18 @@ are_on_the_same_tile(tile_map_position_t *a, tile_map_position_t *b) {
                   (a->tile_z == b->tile_z));
     return(result);
 }
+
+inline tile_map_difference_t
+subtract(tile_map_t *tile_map, tile_map_position_t *a, tile_map_position_t *b) {
+    tile_map_difference_t result = {};
+
+    f32 tile_dx = (f32)a->tile_x - (f32)b->tile_x;
+    f32 tile_dy = (f32)a->tile_y - (f32)b->tile_y;
+    f32 tile_dz = (f32)a->tile_z - (f32)b->tile_z;
+    
+    result.dx = tile_map->tile_size_in_meters*tile_dx + (a->tile_offset_x - b->tile_offset_x);
+    result.dy = tile_map->tile_size_in_meters*tile_dy + (a->tile_offset_y - b->tile_offset_y);
+    result.dz = tile_map->tile_size_in_meters*tile_dz;
+
+    return(result);
+}

@@ -45,12 +45,14 @@ struct bitmap_t {
 };
 
 struct game_state_t {
-    tile_map_position_t player_pos;
-    bitmap_t test_bitmap;
-    bitmap_t test_bitmap1;
-    
     memory_arena_t world_arena;
     world_t *world;
+    
+    tile_map_position_t camera_pos;
+    tile_map_position_t player_pos;
+
+    u32 player_direction;
+    bitmap_t player_sprites[4];
 };
 
 #endif // EXCALIBUR_GAME_H

@@ -56,14 +56,24 @@ draw_bitmap(os_framebuffer_t *framebuffer, bitmap_t *bitmap, f32 xf, f32 yf) {
     s32 y_min = round_f32_to_s32(yf);
     s32 x_max = round_f32_to_s32(xf + (f32)bitmap->width);
     s32 y_max = round_f32_to_s32(yf + (f32)bitmap->height);
+
+    s32 source_offset_x = 0;
+    s32 source_offset_y = 0;
     
-    if (x_min < 0) x_min = 0;
-    if (y_min < 0) y_min = 0;
+    if (x_min < 0) {
+        source_offset_x = -x_min;
+        x_min = 0;
+    }
+    if (y_min < 0) {
+        source_offset_y = -y_min;
+        y_min = 0;
+    }
     if (x_max > framebuffer->width) x_max = framebuffer->width;
     if (y_max > framebuffer->height) y_max = framebuffer->height;
 
     // TODO(xkazu0x): source_row needs to be changed based on cliping
     u32 *source_row = bitmap->pixels + bitmap->width*(bitmap->height - 1);
+    source_row += -source_offset_y*bitmap->width + source_offset_x;
     u8 *dest_row = ((u8 *)framebuffer->pixels +
                     x_min*framebuffer->bytes_per_pixel +
                     y_min*framebuffer->pitch);
@@ -174,16 +184,27 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     game_state_t *state = (game_state_t *)memory->permanent_storage;
     
     if (!memory->initialized) {
-        state->test_bitmap = debug_load_bitmap(memory->debug_os_read_file,
-                                               thread, "res/spritesheet.bmp");
-        state->test_bitmap1 = debug_load_bitmap(memory->debug_os_read_file,
-                                                thread, "res/cross.bmp");
+        state->player_sprites[0] =
+            debug_load_bitmap(memory->debug_os_read_file, thread, "res/skull_back.bmp");
+        state->player_sprites[1] =
+            debug_load_bitmap(memory->debug_os_read_file, thread, "res/skull_right.bmp");
+        state->player_sprites[2] =
+            debug_load_bitmap(memory->debug_os_read_file, thread, "res/skull_front.bmp");
+        state->player_sprites[3] =
+            debug_load_bitmap(memory->debug_os_read_file, thread, "res/skull_left.bmp");
+
+        state->player_direction = 0;
         
-        state->player_pos.tile_x = 1;
+        state->player_pos.tile_x = 3;
         state->player_pos.tile_y = 3;
         state->player_pos.tile_offset_x = 0.0f;
         state->player_pos.tile_offset_y = 0.0f;
 
+        state->camera_pos.tile_x = 7;
+        state->camera_pos.tile_y = 5;
+        state->camera_pos.tile_offset_x = 0.0f;
+        state->camera_pos.tile_offset_y = 0.0f;
+        
         state->world_arena = memory_arena_create(memory->permanent_storage_size - sizeof(game_state_t),
                                                (u8 *)memory->permanent_storage + sizeof(game_state_t));
         state->world = (world_t *)memory_arena_push(&state->world_arena, sizeof(world_t));
@@ -209,7 +230,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         u32 random_number_index = 0;
         
         u32 tile_count_x = 15;
-        u32 tile_count_y = 10;
+        u32 tile_count_y = 11;
         u32 screen_x = 0;
         u32 screen_y = 0;
         
@@ -316,7 +337,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     world_t *world = state->world;
     tile_map_t *tile_map = world->tile_map;
 
-    s32 tile_size_in_pixels = 16*4;
+    s32 tile_size_in_pixels = 16;
     f32 meters_to_pixels = (f32)tile_size_in_pixels / (f32)tile_map->tile_size_in_meters;
     
     vec2f player_size = vec2f_create(tile_map->tile_size_in_meters*0.75f, tile_map->tile_size_in_meters);
@@ -324,15 +345,19 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
 
     // NOTE(xkazu0x): update
     if (input->keyboard[KEY_W].down) {
+        state->player_direction = 0;
         player_delta.y = 1.0f;
     }
     if (input->keyboard[KEY_S].down) {
+        state->player_direction = 2;
         player_delta.y = -1.0f;
     }
     if (input->keyboard[KEY_A].down) {
+        state->player_direction = 3;
         player_delta.x = -1.0f;
     }
     if (input->keyboard[KEY_D].down) {
+        state->player_direction = 1;
         player_delta.x = 1.0f;
     }
 
@@ -372,26 +397,40 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         state->player_pos = new_player_pos;
     }
 
+    state->camera_pos.tile_z = state->player_pos.tile_z;
+
+    tile_map_difference_t cam_diff = subtract(tile_map, &state->player_pos, &state->camera_pos);
+    if (cam_diff.dx > (7.5f*tile_map->tile_size_in_meters)) {
+        state->camera_pos.tile_x += 15;
+    }
+    if (cam_diff.dx < -(7.5f*tile_map->tile_size_in_meters)) {
+        state->camera_pos.tile_x -= 15;
+    }
+    if (cam_diff.dy > (5.5f*tile_map->tile_size_in_meters)) {
+        state->camera_pos.tile_y += 11;
+    }
+    if (cam_diff.dy < -(5.5f*tile_map->tile_size_in_meters)) {
+        state->camera_pos.tile_y -= 11;
+    }
+
     // NOTE(xkazu0x): render
     draw_rectangle(framebuffer,
                    vec2f_create(0.0f),
                    vec2f_create(framebuffer->width, framebuffer->height),
                    vec3f_create(0.2f, 0.3f, 0.3f));
-
-    draw_bitmap(framebuffer, &state->test_bitmap, 0, 0);
     
     f32 screen_center_x = 0.5f*((f32)framebuffer->width);
     f32 screen_center_y = 0.5f*((f32)framebuffer->height);
     
     for (s32 rel_row = -5; rel_row < 6; rel_row++) {
         for (s32 rel_column = -7; rel_column < 8; rel_column++) {
-            u32 column = state->player_pos.tile_x + rel_column;
-            u32 row = state->player_pos.tile_y + rel_row;
+            u32 column = state->camera_pos.tile_x + rel_column;
+            u32 row = state->camera_pos.tile_y + rel_row;
             
-            u32 tile_value = get_tile_map_tile_value(tile_map, column, row, state->player_pos.tile_z);
+            u32 tile_value = get_tile_map_tile_value(tile_map, column, row, state->camera_pos.tile_z);
 
             vec3f tile_color = vec3f_create(0.5f);
-            if (tile_value > 1) {
+            if (tile_value > 0) {
                 if (tile_value == 2) {
                     tile_color = vec3f_create(1.0f);
                 }
@@ -400,30 +439,35 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     tile_color = vec3f_create(0.25f);
                 }
                 
-                if ((column == state->player_pos.tile_x) &&
-                    (row == state->player_pos.tile_y)) {
+                if ((column == state->camera_pos.tile_x) &&
+                    (row == state->camera_pos.tile_y)) {
                     tile_color = vec3f_create(0.0f);
                 }
-            // } else {
-            //     tile_color = vec3f_create(1.0f, 0.5f, 0.2f);
-            // }
-            
-                f32 center_x = screen_center_x - meters_to_pixels*state->player_pos.tile_offset_x + ((f32)rel_column)*tile_size_in_pixels;
-                f32 center_y = screen_center_y + meters_to_pixels*state->player_pos.tile_offset_y - ((f32)rel_row)*tile_size_in_pixels;
-                f32 min_x = center_x - 0.5f*tile_size_in_pixels;
-                f32 min_y = center_y - 0.5f*tile_size_in_pixels;
-                f32 max_x = center_x + 0.5f*tile_size_in_pixels;
-                f32 max_y = center_y + 0.5f*tile_size_in_pixels;
-                draw_rectangle(framebuffer, {min_x, min_y}, {max_x, max_y}, tile_color);
+            } else {
+                tile_color = vec3f_create(1.0f, 0.5f, 0.2f);
             }
+            
+            f32 center_x = screen_center_x - meters_to_pixels*state->camera_pos.tile_offset_x + ((f32)rel_column)*tile_size_in_pixels;
+            f32 center_y = screen_center_y + meters_to_pixels*state->camera_pos.tile_offset_y - ((f32)rel_row)*tile_size_in_pixels;
+            f32 min_x = center_x - 0.5f*tile_size_in_pixels;
+            f32 min_y = center_y - 0.5f*tile_size_in_pixels;
+            f32 max_x = center_x + 0.5f*tile_size_in_pixels;
+            f32 max_y = center_y + 0.5f*tile_size_in_pixels;
+            draw_rectangle(framebuffer, {min_x, min_y}, {max_x, max_y}, tile_color);
         }
     }
 
-    f32 player_left_dim = screen_center_x - 0.5f*meters_to_pixels*player_size.x;
-    f32 player_right_dim = screen_center_y - meters_to_pixels*player_size.y;
+    tile_map_difference_t diff = subtract(tile_map, &state->player_pos, &state->camera_pos);
+    
+    f32 player_ground_point_x = screen_center_x + meters_to_pixels*diff.dx;
+    f32 player_ground_point_y = screen_center_y - meters_to_pixels*diff.dy;
+    
+    f32 player_left_dim = player_ground_point_x - 0.5f*meters_to_pixels*player_size.x;
+    f32 player_right_dim = player_ground_point_y - meters_to_pixels*player_size.y;
     vec2f player_min = vec2f_create(player_left_dim, player_right_dim);
     vec2f player_max = player_min + player_size*meters_to_pixels;
     draw_rectangle(framebuffer, player_min, player_max, vec3f_create(1.0f, 1.0f, 0.0f));
 
-    draw_bitmap(framebuffer, &state->test_bitmap1, player_min.x, player_min.y);
+    bitmap_t *player_sprite = &state->player_sprites[state->player_direction];
+    draw_bitmap(framebuffer, player_sprite, player_ground_point_x - (tile_size_in_pixels/2), player_ground_point_y - tile_size_in_pixels);
 }

@@ -14,6 +14,12 @@ struct tile_chunk_t {
     u32 *tiles;
 };
 
+struct tile_map_difference_t {
+    f32 dx;
+    f32 dy;
+    f32 dz;
+};
+
 struct tile_map_position_t {
     // NOTE(xkazu0x): fixed point tile location. the high
     // bits are the tile chunk index, and the low bits are
