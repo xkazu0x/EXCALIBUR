@@ -439,8 +439,8 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     tile_color = vec3f_create(0.25f);
                 }
                 
-                if ((column == state->camera_pos.tile_x) &&
-                    (row == state->camera_pos.tile_y)) {
+                if ((column == state->player_pos.tile_x) &&
+                    (row == state->player_pos.tile_y)) {
                     tile_color = vec3f_create(0.0f);
                 }
             } else {

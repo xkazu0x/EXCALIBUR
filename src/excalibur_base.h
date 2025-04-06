@@ -135,6 +135,7 @@
 #define internal static
 
 #include <stdint.h>
+#include <stddef.h>
 
 typedef int8_t s8;
 typedef int16_t s16;

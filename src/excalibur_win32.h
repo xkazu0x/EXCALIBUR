@@ -18,7 +18,7 @@ struct win32_game_t {
 
 #define WIN32_FILENAME_MAX MAX_PATH
 
-struct win32_t {
+struct win32_state_t {
     BITMAPINFO bitmap_info;
     WINDOWPLACEMENT window_placement;
     s64 time_frequency;

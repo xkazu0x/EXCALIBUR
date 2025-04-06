@@ -22,13 +22,14 @@
   TODO(xkazu0x):
   > key codes for keyboard input
   > sound system
-  > hardware render
+  > Hardware acceleration (OpenGL)
+  > ChangeDisplaySettings option
 */
 
-global win32_t global_win32;
+global win32_state_t global_win32;
 
-XINPUTGETSTATE *xinput_get_state;
-XINPUTSETSTATE *xinput_set_state;
+global XINPUTGETSTATE *xinput_get_state;
+global XINPUTSETSTATE *xinput_set_state;
 
 X_INPUT_GET_STATE(_xinput_get_state) {
     return(ERROR_DEVICE_NOT_CONNECTED);
@@ -176,7 +177,7 @@ win32_unload_game(win32_game_t *game) {
 }
 
 internal void
-win32_build_exe_path_filename(win32_t *win32, char *filename,
+win32_build_exe_path_filename(win32_state_t *win32, char *filename,
                               u32 dest_count, char *dest) {
     cat_strings(win32->one_past_last_exe_filename_slash - win32->exe_filename, win32->exe_filename,
                 string_length(filename), filename,
@@ -184,7 +185,7 @@ win32_build_exe_path_filename(win32_t *win32, char *filename,
 }
 
 internal void
-win32_get_exe_filename(win32_t *win32) {
+win32_get_exe_filename(win32_state_t *win32) {
     DWORD size_of_filename = GetModuleFileName(0, win32->exe_filename, sizeof(win32->exe_filename));
     win32->one_past_last_exe_filename_slash = win32->exe_filename;
     for (char *scan = win32->exe_filename; *scan; ++scan) {
@@ -205,40 +206,6 @@ inline f32
 win32_get_delta_seconds(LARGE_INTEGER start, LARGE_INTEGER end) {
     f32 result = ((f32)(end.QuadPart - start.QuadPart)) / ((f32)(global_win32.time_frequency));
     return(result);
-}
-
-internal void
-win32_window_toggle_fullscreen(HWND window, WINDOWPLACEMENT *placement) {
-    DWORD window_style = GetWindowLong(window, GWL_STYLE);
-    if (window_style & WS_OVERLAPPEDWINDOW) {
-        MONITORINFO monitor_info = {};
-        monitor_info.cbSize = sizeof(monitor_info);
-        if (GetWindowPlacement(window, placement) &&
-            GetMonitorInfo(MonitorFromWindow(window, MONITOR_DEFAULTTOPRIMARY), &monitor_info)) {
-            SetWindowLong(window, GWL_STYLE, (window_style & ~(WS_OVERLAPPEDWINDOW)) | WS_POPUP);
-            SetWindowPos(window, HWND_TOP,
-                         monitor_info.rcMonitor.left, monitor_info.rcMonitor.top,
-                         monitor_info.rcMonitor.right - monitor_info.rcMonitor.left,
-                         monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top,
-                         SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
-        }
-    } else {
-        SetWindowLongPtr(window, GWL_STYLE, (window_style & ~(WS_POPUP)) | WS_OVERLAPPEDWINDOW);
-        SetWindowPlacement(window, placement);
-        SetWindowPos(window, 0, 0, 0, 0, 0,
-                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
-                     SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
-    }
-}
-
-internal void
-win32_display_framebuffer(HDC device_context, os_framebuffer_t framebuffer, s32 window_width, s32 window_height) {
-    StretchDIBits(device_context,
-                  0, 0, window_width, window_height,
-                  0, 0, framebuffer.width, framebuffer.height,
-                  framebuffer.pixels,
-                  &global_win32.bitmap_info,
-                  DIB_RGB_COLORS, SRCCOPY);
 }
 
 internal void
@@ -273,6 +240,47 @@ win32_get_window_size(HWND window) {
     return(result);
 }
 
+internal void
+win32_window_toggle_fullscreen(HWND window, WINDOWPLACEMENT *placement) {
+    DWORD window_style = GetWindowLong(window, GWL_STYLE);
+    if (window_style & WS_OVERLAPPEDWINDOW) {
+        MONITORINFO monitor_info = {};
+        monitor_info.cbSize = sizeof(monitor_info);
+        if (GetWindowPlacement(window, placement) &&
+            GetMonitorInfo(MonitorFromWindow(window, MONITOR_DEFAULTTOPRIMARY), &monitor_info)) {
+            SetWindowLong(window, GWL_STYLE, (window_style & ~(WS_OVERLAPPEDWINDOW)) | WS_POPUP);
+            SetWindowPos(window, HWND_TOP,
+                         monitor_info.rcMonitor.left, monitor_info.rcMonitor.top,
+                         monitor_info.rcMonitor.right - monitor_info.rcMonitor.left,
+                         monitor_info.rcMonitor.bottom - monitor_info.rcMonitor.top,
+                         SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+        }
+    } else {
+        SetWindowLongPtr(window, GWL_STYLE, (window_style & ~(WS_POPUP)) | WS_OVERLAPPEDWINDOW);
+        SetWindowPlacement(window, placement);
+        SetWindowPos(window, 0, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                     SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+    }
+}
+
+internal void
+win32_display_framebuffer(HWND window_handle, os_framebuffer_t framebuffer, vec2i window_size) {
+    s32 display_width = ((f32)framebuffer.width/(f32)framebuffer.height)*window_size.y;
+    s32 display_height = window_size.y;
+
+    s32 display_x = (window_size.x - display_width)/2;
+        
+    HDC window_device = GetDC(window_handle);
+    StretchDIBits(window_device,
+                  display_x, 0, display_width, display_height,
+                  0, 0, framebuffer.width, framebuffer.height,
+                  framebuffer.pixels,
+                  &global_win32.bitmap_info,
+                  DIB_RGB_COLORS, SRCCOPY);
+    ReleaseDC(window_handle, window_device);
+}
+
 internal LRESULT CALLBACK
 win32_window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
     LRESULT result = 0;
@@ -281,9 +289,12 @@ win32_window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
         case WM_DESTROY: {
             PostQuitMessage(0);
         } break;
-        case WM_SIZE: {
-            //vec2i window_size = win32_get_window_size(window);
-            //win32_resize_framebuffer(&g_bitmap, window_size);
+        case WM_SETCURSOR: {
+#if EXCALIBUR_INTERNAL
+            result = DefWindowProcA(window, message, wparam, lparam);
+#else
+            SetCursor(0);
+#endif
         } break;
         default: {
             result = DefWindowProcA(window, message, wparam, lparam);
@@ -689,11 +700,10 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
         last_cycle_count = end_cycle_count;
 
         // NOTE(xkazu0x): display framebuffer
-        //window_size = win32_get_window_size(window_handle);
-        HDC window_device = GetDC(window_handle);
-        win32_display_framebuffer(window_device, framebuffer, window_width, window_height);
-        ReleaseDC(window_handle, window_device);
-
+        vec2i window_size = win32_get_window_size(window_handle);
+        window_width = window_size.x;
+        window_height = window_size.y;
+        win32_display_framebuffer(window_handle, framebuffer, window_size);
 #if 1
         // NOTE(xkazu0x): log time
         // TODO(xkazu0x): this is debug code only
