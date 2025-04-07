@@ -13,8 +13,10 @@
 ////////////////////////////////////////////////
 // NOTE(xkazu0x): exclusive includes
 
+#include "excalibur_tile.h"
 #include "excalibur_game.h"
 #include "excalibur_random.h"
+
 #include "excalibur_tile.cpp"
 
 internal void
@@ -183,6 +185,9 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     EX_ASSERT(sizeof(game_state_t) <= memory->permanent_storage_size);
     game_state_t *state = (game_state_t *)memory->permanent_storage;
     
+    u32 tile_count_x = 15;
+    u32 tile_count_y = 11;
+    
     if (!memory->initialized) {
         state->player_sprites[0] =
             debug_load_bitmap(memory->debug_os_read_file, thread, "res/skull_back.bmp");
@@ -197,13 +202,11 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         
         state->player_pos.tile_x = 3;
         state->player_pos.tile_y = 3;
-        state->player_pos.tile_offset_x = 0.0f;
-        state->player_pos.tile_offset_y = 0.0f;
+        state->player_pos.tile_offset = {};
 
         state->camera_pos.tile_x = 7;
         state->camera_pos.tile_y = 5;
-        state->camera_pos.tile_offset_x = 0.0f;
-        state->camera_pos.tile_offset_y = 0.0f;
+        state->camera_pos.tile_offset = {};
         
         state->world_arena = memory_arena_create(memory->permanent_storage_size - sizeof(game_state_t),
                                                (u8 *)memory->permanent_storage + sizeof(game_state_t));
@@ -229,8 +232,6 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         tile_map->tile_size_in_meters = 1.4f;
         u32 random_number_index = 0;
         
-        u32 tile_count_x = 15;
-        u32 tile_count_y = 11;
         u32 screen_x = 0;
         u32 screen_y = 0;
         
@@ -341,46 +342,55 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     f32 meters_to_pixels = (f32)tile_size_in_pixels / (f32)tile_map->tile_size_in_meters;
     
     vec2f player_size = vec2f_create(tile_map->tile_size_in_meters*0.75f, tile_map->tile_size_in_meters);
-    vec2f player_delta = vec2f_create(0.0f, 0.0f);
+    
+    vec2f dd_player = {};
 
     // NOTE(xkazu0x): update
     if (input->keyboard[KEY_W].down) {
         state->player_direction = 0;
-        player_delta.y = 1.0f;
+        dd_player.y = 1.0f;
     }
     if (input->keyboard[KEY_S].down) {
         state->player_direction = 2;
-        player_delta.y = -1.0f;
+        dd_player.y = -1.0f;
     }
     if (input->keyboard[KEY_A].down) {
         state->player_direction = 3;
-        player_delta.x = -1.0f;
+        dd_player.x = -1.0f;
     }
     if (input->keyboard[KEY_D].down) {
         state->player_direction = 1;
-        player_delta.x = 1.0f;
+        dd_player.x = 1.0f;
     }
 
-    f32 player_speed = 3.0f;
-    if (input->keyboard[KEY_SHIFT].down) {
-        player_speed = 10.0f;
+    if ((dd_player.x != 0.0f) && (dd_player.y != 0.0f)) {
+        dd_player *= 0.707106781187f;
     }
+
+    f32 player_speed = 20.0f; // m/s^2
+    if (input->keyboard[KEY_SHIFT].down) {
+        player_speed = 50.0f; // m/s^2
+    }
+    dd_player *= player_speed;
     
-    player_delta = player_delta*player_speed;
+    // TODO(xkazu0x): ODE here!
+    dd_player += 2.0f*vec2f{-state->d_player.x, -state->d_player.y};
 
     tile_map_position_t new_player_pos = state->player_pos;
-    new_player_pos.tile_offset_x = new_player_pos.tile_offset_x + player_delta.x*clock->delta_seconds;
-    new_player_pos.tile_offset_y = new_player_pos.tile_offset_y + player_delta.y*clock->delta_seconds;
+    new_player_pos.tile_offset = (0.5f*dd_player*sqr(clock->delta_seconds) +
+                                  state->d_player*clock->delta_seconds +
+                                  new_player_pos.tile_offset);
+    state->d_player = dd_player*clock->delta_seconds + state->d_player;    
     new_player_pos = recanonicalize_position(tile_map, new_player_pos);
     
     tile_map_position_t player_left = new_player_pos;
-    player_left.tile_offset_x = player_left.tile_offset_x - player_size.x*0.5;
+    player_left.tile_offset.x -= player_size.x*0.5;
     player_left = recanonicalize_position(tile_map, player_left);
     
     tile_map_position_t player_right = new_player_pos;
-    player_right.tile_offset_x = player_right.tile_offset_x + player_size.x*0.5;
+    player_right.tile_offset.x += player_size.x*0.5;
     player_right = recanonicalize_position(tile_map, player_right);
-    
+
     if (is_tile_map_point_empty(tile_map, new_player_pos) &&
         is_tile_map_point_empty(tile_map, player_left) &&
         is_tile_map_point_empty(tile_map, player_right)) {
@@ -400,17 +410,17 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     state->camera_pos.tile_z = state->player_pos.tile_z;
 
     tile_map_difference_t cam_diff = subtract(tile_map, &state->player_pos, &state->camera_pos);
-    if (cam_diff.dx > (7.5f*tile_map->tile_size_in_meters)) {
-        state->camera_pos.tile_x += 15;
+    if (cam_diff.dx > ((((f32)tile_count_x)/2)*tile_map->tile_size_in_meters)) {
+        state->camera_pos.tile_x += tile_count_x;
     }
-    if (cam_diff.dx < -(7.5f*tile_map->tile_size_in_meters)) {
-        state->camera_pos.tile_x -= 15;
+    if (cam_diff.dx < -((((f32)tile_count_x)/2)*tile_map->tile_size_in_meters)) {
+        state->camera_pos.tile_x -= tile_count_x;
     }
-    if (cam_diff.dy > (5.5f*tile_map->tile_size_in_meters)) {
-        state->camera_pos.tile_y += 11;
+    if (cam_diff.dy > ((((f32)tile_count_y)/2)*tile_map->tile_size_in_meters)) {
+        state->camera_pos.tile_y += tile_count_y;
     }
-    if (cam_diff.dy < -(5.5f*tile_map->tile_size_in_meters)) {
-        state->camera_pos.tile_y -= 11;
+    if (cam_diff.dy < -((((f32)tile_count_y)/2)*tile_map->tile_size_in_meters)) {
+        state->camera_pos.tile_y -= tile_count_y;
     }
 
     // NOTE(xkazu0x): render
@@ -422,8 +432,8 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     f32 screen_center_x = 0.5f*((f32)framebuffer->width);
     f32 screen_center_y = 0.5f*((f32)framebuffer->height);
     
-    for (s32 rel_row = -5; rel_row < 6; rel_row++) {
-        for (s32 rel_column = -7; rel_column < 8; rel_column++) {
+    for (s32 rel_row = -6; rel_row < 7; rel_row++) {
+        for (s32 rel_column = -8; rel_column < 9; rel_column++) {
             u32 column = state->camera_pos.tile_x + rel_column;
             u32 row = state->camera_pos.tile_y + rel_row;
             
@@ -447,8 +457,8 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 tile_color = vec3f_create(1.0f, 0.5f, 0.2f);
             }
             
-            f32 center_x = screen_center_x - meters_to_pixels*state->camera_pos.tile_offset_x + ((f32)rel_column)*tile_size_in_pixels;
-            f32 center_y = screen_center_y + meters_to_pixels*state->camera_pos.tile_offset_y - ((f32)rel_row)*tile_size_in_pixels;
+            f32 center_x = screen_center_x - meters_to_pixels*state->camera_pos.tile_offset.x + ((f32)rel_column)*tile_size_in_pixels;
+            f32 center_y = screen_center_y + meters_to_pixels*state->camera_pos.tile_offset.y - ((f32)rel_row)*tile_size_in_pixels;
             f32 min_x = center_x - 0.5f*tile_size_in_pixels;
             f32 min_y = center_y - 0.5f*tile_size_in_pixels;
             f32 max_x = center_x + 0.5f*tile_size_in_pixels;

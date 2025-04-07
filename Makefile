@@ -24,8 +24,6 @@ $(BUILD_DIR)/$(EXEC): $(SRC_DIR)/excalibur_win32.cpp
 run: all
 	$(BUILD_DIR)/$(EXEC)
 
-remake: clean all
-
 clean:
 	del /q $(BUILD_DIR)\*.*
 

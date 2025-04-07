@@ -9,8 +9,6 @@
 // > 0 - not slow code allowed
 // > 1 - slow code welcome
 
-#include "excalibur_tile.h"
-
 struct memory_arena_t {
     memi size;
     memi used;
@@ -50,7 +48,8 @@ struct game_state_t {
     
     tile_map_position_t camera_pos;
     tile_map_position_t player_pos;
-
+    vec2f d_player;
+    
     u32 player_direction;
     bitmap_t player_sprites[4];
 };

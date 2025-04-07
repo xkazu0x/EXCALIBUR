@@ -339,10 +339,10 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     
     //////////////////////////////////
     // NOTE(xkazu0x): framebuffer init
-    s32 scale = 4;
+    s32 scale = 3;
     
     os_framebuffer_t framebuffer = {};
-    win32_resize_framebuffer(&framebuffer, 240, 160);
+    win32_resize_framebuffer(&framebuffer, 320, 240);
     EXINFO("framebuffer size: %dx%d", framebuffer.width, framebuffer.height);
     
     /////////////////////////////

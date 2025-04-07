@@ -64,20 +64,35 @@ internal inline vec2f operator+(vec2f a, vec2f b);
 internal inline vec3f operator+(vec3f a, vec3f b);
 internal inline vec4f operator+(vec4f a, vec4f b);
 
+internal inline vec2i &operator+=(vec2i &a, vec2i b);
+internal inline vec2f &operator+=(vec2f &a, vec2f b);
+internal inline vec3f &operator+=(vec3f &a, vec3f b);
+internal inline vec4f &operator+=(vec4f &a, vec4f b);
+
 internal inline vec2i operator-(vec2i a, vec2i b);
 internal inline vec2f operator-(vec2f a, vec2f b);
 internal inline vec3f operator-(vec3f a, vec3f b);
 internal inline vec4f operator-(vec4f a, vec4f b);
+
+internal inline vec2i &operator-=(vec2i &a, vec2i b);
+internal inline vec2f &operator-=(vec2f &a, vec2f b);
+internal inline vec3f &operator-=(vec3f &a, vec3f b);
+internal inline vec4f &operator-=(vec4f &a, vec4f b);
+
+internal inline vec2i operator*(s32 s, vec2i v);
+internal inline vec2f operator*(f32 s, vec2f v);
+internal inline vec3f operator*(f32 s, vec3f v);
+internal inline vec4f operator*(f32 s, vec4f v);
 
 internal inline vec2i operator*(vec2i v, s32 s);
 internal inline vec2f operator*(vec2f v, f32 s);
 internal inline vec3f operator*(vec3f v, f32 s);
 internal inline vec4f operator*(vec4f v, f32 s);
 
-internal inline vec2i operator*(s32 s, vec2i v);
-internal inline vec2f operator*(f32 s, vec2f v);
-internal inline vec3f operator*(f32 s, vec3f v);
-internal inline vec4f operator*(f32 s, vec4f v);
+internal inline vec2i &operator*=(vec2i &v, s32 s);
+internal inline vec2f &operator*=(vec2f &v, f32 s);
+internal inline vec3f &operator*=(vec3f &v, f32 s);
+internal inline vec4f &operator*=(vec4f &v, f32 s);
 
 internal inline vec2i operator/(vec2i v, s32 s);
 internal inline vec2f operator/(vec2f v, f32 s);
@@ -91,5 +106,7 @@ internal inline vec4f vec4f_hadamard(vec4f a, vec4f b);
 internal inline f32 vec2f_dot(vec2f a, vec2f b);
 internal inline f32 vec3f_dot(vec3f a, vec3f b);
 internal inline f32 vec4f_dot(vec4f a, vec4f b);
+
+internal inline f32 sqr(f32 f);
 
 #endif // EXCALIBUR_MATH_H

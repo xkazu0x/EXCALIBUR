@@ -132,6 +132,30 @@ operator+(vec4f a, vec4f b) {
     return(result);
 }
 
+internal inline vec2i &
+operator+=(vec2i &a, vec2i b) {
+    a = a + b;
+    return(a);
+}
+
+internal inline vec2f &
+operator+=(vec2f &a, vec2f b) {
+    a = a + b;
+    return(a);
+}
+
+internal inline vec3f &
+operator+=(vec3f &a, vec3f b) {
+    a = a + b;
+    return(a);
+}
+
+internal inline vec4f &
+operator+=(vec4f &a, vec4f b) {
+    a = a + b;
+    return(a);
+}
+
 internal inline vec2i
 operator-(vec2i a, vec2i b) {
     vec2i result;
@@ -164,6 +188,65 @@ operator-(vec4f a, vec4f b) {
     result.x = a.y - b.y;
     result.x = a.z - b.z;
     result.x = a.w - b.w;
+    return(result);
+}
+
+internal inline vec2i &
+operator-=(vec2i &a, vec2i b) {
+    a = a - b;
+    return(a);
+}
+
+internal inline vec2f &
+operator-=(vec2f &a, vec2f b) {
+    a = a - b;
+    return(a);
+}
+
+internal inline vec3f &
+operator-=(vec3f &a, vec3f b) {
+    a = a - b;
+    return(a);
+}
+
+internal inline vec4f &
+operator-=(vec4f &a, vec4f b) {
+    a = a - b;
+    return(a);
+}
+
+internal inline vec2i
+operator*(s32 s, vec2i v) {
+    vec2i result;
+    result.x = v.x * s;
+    result.y = v.y * s;
+    return(result);
+}
+
+internal inline vec2f
+operator*(f32 s, vec2f v) {
+    vec2f result;
+    result.x = v.x * s;
+    result.y = v.y * s;
+    return(result);
+}
+
+internal inline vec3f
+operator*(f32 s, vec3f v) {
+    vec3f result;
+    result.x = v.x * s;
+    result.y = v.y * s;
+    result.z = v.z * s;
+    return(result);
+}
+
+internal inline vec4f
+operator*(f32 s, vec4f v) {
+    vec4f result;
+    result.x = v.x * s;
+    result.y = v.y * s;
+    result.z = v.z * s;
+    result.w = v.w * s;
     return(result);
 }
 
@@ -202,39 +285,28 @@ operator*(vec4f v, f32 s) {
     return(result);
 }
 
-internal inline vec2i
-operator*(s32 s, vec2i v) {
-    vec2i result;
-    result.x = v.x * s;
-    result.y = v.y * s;
-    return(result);
+internal inline vec2i &
+operator*=(vec2i &v, s32 s) {
+    v = v*s;
+    return(v);
 }
 
-internal inline vec2f
-operator*(f32 s, vec2f v) {
-    vec2f result;
-    result.x = v.x * s;
-    result.y = v.y * s;
-    return(result);
+internal inline vec2f &
+operator*=(vec2f &v, f32 s) {
+    v = v*s;
+    return(v);
 }
 
-internal inline vec3f
-operator*(f32 s, vec3f v) {
-    vec3f result;
-    result.x = v.x * s;
-    result.y = v.y * s;
-    result.z = v.z * s;
-    return(result);
+internal inline vec3f &
+operator*=(vec3f &v, f32 s) {
+    v = v*s;
+    return(v);
 }
 
-internal inline vec4f
-operator*(f32 s, vec4f v) {
-    vec4f result;
-    result.x = v.x * s;
-    result.y = v.y * s;
-    result.z = v.z * s;
-    result.w = v.w * s;
-    return(result);
+internal inline vec4f &
+operator*=(vec4f &v, f32 s) {
+    v = v*s;
+    return(v);
 }
 
 internal inline vec2i
@@ -314,5 +386,11 @@ vec3f_dot(vec3f a, vec3f b) {
 internal inline f32
 vec4f_dot(vec4f a, vec4f b) {
     f32 result = a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
+    return(result);
+}
+
+internal inline f32
+sqr(f32 f) {
+    f32 result = f*f;
     return(result);
 }

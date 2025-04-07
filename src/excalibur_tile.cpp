@@ -116,8 +116,8 @@ recanonicalize_coord(tile_map_t *tile_map, u32 *tile_index, f32 *tile_rel) {
 inline tile_map_position_t
 recanonicalize_position(tile_map_t *tile_map, tile_map_position_t pos) {
     tile_map_position_t result = pos;
-    recanonicalize_coord(tile_map, &result.tile_x, &result.tile_offset_x);
-    recanonicalize_coord(tile_map, &result.tile_y, &result.tile_offset_y);
+    recanonicalize_coord(tile_map, &result.tile_x, &result.tile_offset.x);
+    recanonicalize_coord(tile_map, &result.tile_y, &result.tile_offset.y);
     return(result);
 }
 
@@ -137,8 +137,8 @@ subtract(tile_map_t *tile_map, tile_map_position_t *a, tile_map_position_t *b) {
     f32 tile_dy = (f32)a->tile_y - (f32)b->tile_y;
     f32 tile_dz = (f32)a->tile_z - (f32)b->tile_z;
     
-    result.dx = tile_map->tile_size_in_meters*tile_dx + (a->tile_offset_x - b->tile_offset_x);
-    result.dy = tile_map->tile_size_in_meters*tile_dy + (a->tile_offset_y - b->tile_offset_y);
+    result.dx = tile_map->tile_size_in_meters*tile_dx + (a->tile_offset.x - b->tile_offset.x);
+    result.dy = tile_map->tile_size_in_meters*tile_dy + (a->tile_offset.y - b->tile_offset.y);
     result.dz = tile_map->tile_size_in_meters*tile_dz;
 
     return(result);
