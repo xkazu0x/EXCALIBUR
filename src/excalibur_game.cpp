@@ -346,6 +346,19 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     vec2f dd_player = {};
 
     // NOTE(xkazu0x): update
+    // if (input->keyboard[KEY_UP].down) {
+    //     state->player_direction = 0;
+    // }
+    // if (input->keyboard[KEY_DOWN].down) {
+    //     state->player_direction = 2;
+    // }
+    // if (input->keyboard[KEY_LEFT].down) {
+    //     state->player_direction = 3;
+    // }
+    // if (input->keyboard[KEY_RIGHT].down) {
+    //     state->player_direction = 1;
+    // }
+
     if (input->keyboard[KEY_W].down) {
         state->player_direction = 0;
         dd_player.y = 1.0f;
@@ -374,7 +387,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     dd_player *= player_speed;
     
     // TODO(xkazu0x): ODE here!
-    dd_player += 2.0f*vec2f{-state->d_player.x, -state->d_player.y};
+    dd_player += 2.0f*(-state->d_player);
 
     tile_map_position_t new_player_pos = state->player_pos;
     new_player_pos.tile_offset = (0.5f*dd_player*sqr(clock->delta_seconds) +
@@ -383,30 +396,56 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     state->d_player = dd_player*clock->delta_seconds + state->d_player;    
     new_player_pos = recanonicalize_position(tile_map, new_player_pos);
     
-    tile_map_position_t player_left = new_player_pos;
-    player_left.tile_offset.x -= player_size.x*0.5;
-    player_left = recanonicalize_position(tile_map, player_left);
+    tile_map_position_t player_left_pos = new_player_pos;
+    player_left_pos.tile_offset.x -= player_size.x*0.5;
+    player_left_pos = recanonicalize_position(tile_map, player_left_pos);
     
-    tile_map_position_t player_right = new_player_pos;
-    player_right.tile_offset.x += player_size.x*0.5;
-    player_right = recanonicalize_position(tile_map, player_right);
+    tile_map_position_t player_right_pos = new_player_pos;
+    player_right_pos.tile_offset.x += player_size.x*0.5;
+    player_right_pos = recanonicalize_position(tile_map, player_right_pos);
 
-    if (is_tile_map_point_empty(tile_map, new_player_pos) &&
-        is_tile_map_point_empty(tile_map, player_left) &&
-        is_tile_map_point_empty(tile_map, player_right)) {
+    b32 collided = EX_FALSE;
+    tile_map_position_t col_pos = {};
+    if (!is_tile_map_point_empty(tile_map, new_player_pos)) {
+        col_pos = new_player_pos;
+        collided = EX_TRUE;
+    }
+    if (!is_tile_map_point_empty(tile_map, player_left_pos)) {
+        col_pos = player_left_pos;
+        collided = EX_TRUE;
+    }
+    if (!is_tile_map_point_empty(tile_map, player_right_pos)) {
+        col_pos = player_right_pos;
+        collided = EX_TRUE;
+    }
+    
+    if (collided) {
+        vec2f r = {0, 0};
+        if (col_pos.tile_x < state->player_pos.tile_x) {
+            r = vec2f{1, 0};
+        }
+        if (col_pos.tile_x > state->player_pos.tile_x) {
+            r = vec2f{-1, 0};
+        }
+        if (col_pos.tile_y < state->player_pos.tile_y) {
+            r = vec2f{0, 1};
+        }
+        if (col_pos.tile_y > state->player_pos.tile_y) {
+            r = vec2f{0, -1};
+        }
+        state->d_player = 0.75f*(state->d_player - 2*vec2f_dot(state->d_player, r)*r);
+        //state->d_player = state->d_player - 1*vec2f_dot(state->d_player, r)*r;
+    } else {
         if (!are_on_the_same_tile(&state->player_pos, &new_player_pos)) {
             u32 new_tile_value = get_tile_map_tile_value(tile_map, new_player_pos);
-            
             if (new_tile_value == 3) {
                 ++new_player_pos.tile_z;
             } else if (new_tile_value == 4) {
                 --new_player_pos.tile_z;
             }
         }
-        
         state->player_pos = new_player_pos;
     }
-
     state->camera_pos.tile_z = state->player_pos.tile_z;
 
     tile_map_difference_t cam_diff = subtract(tile_map, &state->player_pos, &state->camera_pos);

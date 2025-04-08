@@ -69,6 +69,11 @@ internal inline vec2f &operator+=(vec2f &a, vec2f b);
 internal inline vec3f &operator+=(vec3f &a, vec3f b);
 internal inline vec4f &operator+=(vec4f &a, vec4f b);
 
+internal inline vec2i operator-(vec2i v);
+internal inline vec2f operator-(vec2f v);
+internal inline vec3f operator-(vec3f v);
+internal inline vec4f operator-(vec4f v);
+
 internal inline vec2i operator-(vec2i a, vec2i b);
 internal inline vec2f operator-(vec2f a, vec2f b);
 internal inline vec3f operator-(vec3f a, vec3f b);
