@@ -42,15 +42,26 @@ struct bitmap_t {
     u32 *pixels;
 };
 
+struct entity_t {
+    b32 exists;
+    tile_map_position_t pos;
+    vec2f d_pos;
+    u32 direction;
+    f32 width;
+    f32 height;
+};
+
 struct game_state_t {
     memory_arena_t world_arena;
     world_t *world;
-    
+
+    u32 camera_following_entity_index;
     tile_map_position_t camera_pos;
-    tile_map_position_t player_pos;
-    vec2f d_player;
+
+    u32 player_gamepad_index[GAMEPAD_COUNT_MAX];
+    u32 entity_count;
+    entity_t entities[256];
     
-    u32 player_direction;
     bitmap_t player_sprites[4];
 };
 

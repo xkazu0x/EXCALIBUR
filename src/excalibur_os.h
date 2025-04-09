@@ -36,6 +36,8 @@ typedef enum key_t {
     KEY_SHIFT  = 0x10,
     KEY_ESCAPE = 0x1B,
 
+    KEY_SPACE  = 0x20,
+
     KEY_LEFT   = 0x25,
     KEY_UP     = 0x26,
     KEY_RIGHT  = 0x27,
@@ -191,9 +193,10 @@ typedef struct os_clock_t {
     f32 delta_seconds;
 } os_clock_t;
 
-#define GAME_UPDATE_AND_RENDER(name) void name(os_framebuffer_t *framebuffer, os_input_t *input, os_memory_t *memory, os_clock_t *clock, os_thread_t *thread)
-typedef GAME_UPDATE_AND_RENDER(GAMEUPDATEANDRENDER);
 
+#define GAME_UPDATE_AND_RENDER(name) void name(os_framebuffer_t *framebuffer, os_input_t *input, os_memory_t *memory, os_clock_t *clock, os_thread_t *thread)
+typedef GAME_UPDATE_AND_RENDER(game_update_and_render_t);
+    
 #ifdef __cplusplus
 }
 #endif

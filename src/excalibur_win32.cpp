@@ -28,14 +28,14 @@
 
 global win32_state_t global_win32;
 
-global XINPUTGETSTATE *xinput_get_state;
-global XINPUTSETSTATE *xinput_set_state;
+global xinput_get_state_t *xinput_get_state;
+global xinput_set_state_t *xinput_set_state;
 
-X_INPUT_GET_STATE(_xinput_get_state) {
+XINPUT_GET_STATE(_xinput_get_state) {
     return(ERROR_DEVICE_NOT_CONNECTED);
 }
 
-X_INPUT_SET_STATE(_xinput_set_state) {
+XINPUT_SET_STATE(_xinput_set_state) {
     return(ERROR_DEVICE_NOT_CONNECTED);
 }
 

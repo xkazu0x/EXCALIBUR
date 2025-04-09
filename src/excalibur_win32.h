@@ -13,7 +13,7 @@ struct win32_game_t {
 
     // NOTE(xkazu0x): the callback can be 0
     // you must check before calling
-    GAMEUPDATEANDRENDER *update_and_render;
+    game_update_and_render_t *update_and_render;
 };
 
 #define WIN32_FILENAME_MAX MAX_PATH
@@ -32,10 +32,10 @@ struct win32_state_t {
 
 #define WIN32_GET_PROC_ADDR(v, m, s) (*(PROC*)(&(v))) = GetProcAddress((m), (s))
 
-#define X_INPUT_GET_STATE(name) DWORD WINAPI name(DWORD, XINPUT_STATE *)
-#define X_INPUT_SET_STATE(name) DWORD WINAPI name(DWORD, XINPUT_VIBRATION *)
+#define XINPUT_GET_STATE(name) DWORD WINAPI name(DWORD, XINPUT_STATE *)
+#define XINPUT_SET_STATE(name) DWORD WINAPI name(DWORD, XINPUT_VIBRATION *)
 
-typedef X_INPUT_GET_STATE(XINPUTGETSTATE);
-typedef X_INPUT_SET_STATE(XINPUTSETSTATE);
+typedef XINPUT_GET_STATE(xinput_get_state_t);
+typedef XINPUT_SET_STATE(xinput_set_state_t);
 
 #endif // EXCALIBUR_WIN32_H

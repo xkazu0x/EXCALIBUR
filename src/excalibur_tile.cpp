@@ -135,17 +135,17 @@ are_on_the_same_tile(tile_map_position_t *a, tile_map_position_t *b) {
     return(result);
 }
 
-inline tile_map_difference_t
+inline vec3f
 subtract(tile_map_t *tile_map, tile_map_position_t *a, tile_map_position_t *b) {
-    tile_map_difference_t result = {};
+    vec3f result = {};
 
     f32 tile_dx = (f32)a->tile_x - (f32)b->tile_x;
     f32 tile_dy = (f32)a->tile_y - (f32)b->tile_y;
     f32 tile_dz = (f32)a->tile_z - (f32)b->tile_z;
     
-    result.dx = tile_map->tile_size_in_meters*tile_dx + (a->tile_offset.x - b->tile_offset.x);
-    result.dy = tile_map->tile_size_in_meters*tile_dy + (a->tile_offset.y - b->tile_offset.y);
-    result.dz = tile_map->tile_size_in_meters*tile_dz;
+    result.x = tile_map->tile_size_in_meters*tile_dx + (a->tile_offset.x - b->tile_offset.x);
+    result.y = tile_map->tile_size_in_meters*tile_dy + (a->tile_offset.y - b->tile_offset.y);
+    result.z = tile_map->tile_size_in_meters*tile_dz;
 
     return(result);
 }
