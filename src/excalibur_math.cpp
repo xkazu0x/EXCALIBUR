@@ -425,6 +425,12 @@ vec4f_dot(vec4f a, vec4f b) {
 }
 
 internal inline f32
+length_sqr(vec2f v) {
+    f32 result = vec2f_dot(v, v);
+    return(result);
+}
+
+internal inline f32
 sqr(f32 f) {
     f32 result = f*f;
     return(result);

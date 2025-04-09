@@ -199,11 +199,11 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             debug_load_bitmap(memory->debug_os_read_file, thread, "res/skull_left.bmp");
 
         state->player_direction = 0;
-        
+
         state->player_pos.tile_x = 3;
         state->player_pos.tile_y = 3;
         state->player_pos.tile_offset = {};
-
+        
         state->camera_pos.tile_x = 7;
         state->camera_pos.tile_y = 5;
         state->camera_pos.tile_offset = {};
@@ -342,22 +342,11 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     f32 meters_to_pixels = (f32)tile_size_in_pixels / (f32)tile_map->tile_size_in_meters;
     
     vec2f player_size = vec2f_create(tile_map->tile_size_in_meters*0.75f, tile_map->tile_size_in_meters);
-    
-    vec2f dd_player = {};
 
-    // NOTE(xkazu0x): update
-    // if (input->keyboard[KEY_UP].down) {
-    //     state->player_direction = 0;
-    // }
-    // if (input->keyboard[KEY_DOWN].down) {
-    //     state->player_direction = 2;
-    // }
-    // if (input->keyboard[KEY_LEFT].down) {
-    //     state->player_direction = 3;
-    // }
-    // if (input->keyboard[KEY_RIGHT].down) {
-    //     state->player_direction = 1;
-    // }
+    /////////////////////////////////
+    // NOTE(xkazu0x): player movement
+    tile_map_position_t old_player_pos = state->player_pos;
+    vec2f dd_player = {};
 
     if (input->keyboard[KEY_W].down) {
         state->player_direction = 0;
@@ -385,17 +374,18 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         player_speed = 50.0f; // m/s^2
     }
     dd_player *= player_speed;
-    
     // TODO(xkazu0x): ODE here!
     dd_player += 2.0f*(-state->d_player);
-
+    
+    vec2f player_delta = (0.5f*dd_player*sqr(clock->delta_seconds) +
+                          state->d_player*clock->delta_seconds);
+    
     tile_map_position_t new_player_pos = state->player_pos;
-    new_player_pos.tile_offset = (0.5f*dd_player*sqr(clock->delta_seconds) +
-                                  state->d_player*clock->delta_seconds +
-                                  new_player_pos.tile_offset);
+    new_player_pos.tile_offset += player_delta;
     state->d_player = dd_player*clock->delta_seconds + state->d_player;    
     new_player_pos = recanonicalize_position(tile_map, new_player_pos);
     
+#if 1
     tile_map_position_t player_left_pos = new_player_pos;
     player_left_pos.tile_offset.x -= player_size.x*0.5;
     player_left_pos = recanonicalize_position(tile_map, player_left_pos);
@@ -433,19 +423,54 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         if (col_pos.tile_y > state->player_pos.tile_y) {
             r = vec2f{0, -1};
         }
-        state->d_player = 0.75f*(state->d_player - 2*vec2f_dot(state->d_player, r)*r);
-        //state->d_player = state->d_player - 1*vec2f_dot(state->d_player, r)*r;
+        //state->d_player = 0.75f*(state->d_player - 2*vec2f_dot(state->d_player, r)*r);
+        state->d_player = state->d_player - 1*vec2f_dot(state->d_player, r)*r;
     } else {
-        if (!are_on_the_same_tile(&state->player_pos, &new_player_pos)) {
-            u32 new_tile_value = get_tile_map_tile_value(tile_map, new_player_pos);
-            if (new_tile_value == 3) {
-                ++new_player_pos.tile_z;
-            } else if (new_tile_value == 4) {
-                --new_player_pos.tile_z;
-            }
-        }
         state->player_pos = new_player_pos;
     }
+#else
+    u32 min_tile_x = 0;
+    u32 min_tile_y = 0;
+    u32 one_past_max_tile_x = 0;
+    u32 one_past_max_tile_y = 0;
+    u32 tile_z = state->player_pos.tile_z;
+
+    tile_map_position_t best_point = state->player_pos;
+    f32 best_distance_sqr = length_sqr(player_delta);
+    
+    for (u32 tile_y = min_tile_y; tile_y != one_past_max_tile_y; tile_y++) {
+        for (u32 tile_x = min_tile_x; tile_x != one_past_max_tile_x; tile_x++) {
+            
+            tile_map_position_t test_tile_pos = centered_tile_point(tile_x, tile_y, tile_z);
+            u32 tile_value = get_tile_map_tile_value(tile_map, test_tile_pos);
+            
+            if (is_tile_value_empty(tile_value)) {
+                vec2f min_corner = vec2f_create(-0.5f*tile_map->tile_size_in_meters);
+                vec2f max_corner = vec2f_create(0.5f*tile_map->tile_size_in_meters);
+                
+                tile_map_difference rel_new_player_pos = subtract(tile_map, &test_tile_pos, &new_player_pos);
+                vec2f test_pos = closet_point_in_rectangle(min_corner, max_corner, rel_new_player_pos);
+                test_distance_sqr = length_sqr(test_pos);
+                if (best_distance_sqr > test_distance_sqr) {
+                    best_player_pos = test_pos;
+                    best_distance_sqr = test_distance_sqr;
+                }
+            }
+        }
+    }
+#endif
+
+    ///////////////////////////////////////////////////////////////
+    // NOTE(xkazu0x): update camera/player z based on last movement
+    if (!are_on_the_same_tile(&old_player_pos, &state->player_pos)) {
+        u32 new_tile_value = get_tile_map_tile_value(tile_map, state->player_pos);
+        if (new_tile_value == 3) {
+            ++state->player_pos.tile_z;
+        } else if (new_tile_value == 4) {
+            --state->player_pos.tile_z;
+        }
+    }
+    
     state->camera_pos.tile_z = state->player_pos.tile_z;
 
     tile_map_difference_t cam_diff = subtract(tile_map, &state->player_pos, &state->camera_pos);
@@ -461,7 +486,9 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     if (cam_diff.dy < -((((f32)tile_count_y)/2)*tile_map->tile_size_in_meters)) {
         state->camera_pos.tile_y -= tile_count_y;
     }
+    cam_diff = subtract(tile_map, &state->player_pos, &state->camera_pos);
 
+    ////////////////////////
     // NOTE(xkazu0x): render
     draw_rectangle(framebuffer,
                    vec2f_create(0.0f),
@@ -505,11 +532,9 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             draw_rectangle(framebuffer, {min_x, min_y}, {max_x, max_y}, tile_color);
         }
     }
-
-    tile_map_difference_t diff = subtract(tile_map, &state->player_pos, &state->camera_pos);
     
-    f32 player_ground_point_x = screen_center_x + meters_to_pixels*diff.dx;
-    f32 player_ground_point_y = screen_center_y - meters_to_pixels*diff.dy;
+    f32 player_ground_point_x = screen_center_x + meters_to_pixels*cam_diff.dx;
+    f32 player_ground_point_y = screen_center_y - meters_to_pixels*cam_diff.dy;
     
     f32 player_left_dim = player_ground_point_x - 0.5f*meters_to_pixels*player_size.x;
     f32 player_right_dim = player_ground_point_y - meters_to_pixels*player_size.y;

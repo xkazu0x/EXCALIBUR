@@ -112,6 +112,8 @@ internal inline f32 vec2f_dot(vec2f a, vec2f b);
 internal inline f32 vec3f_dot(vec3f a, vec3f b);
 internal inline f32 vec4f_dot(vec4f a, vec4f b);
 
+internal inline f32 length_sqr(vec2f v);
+
 internal inline f32 sqr(f32 f);
 
 #endif // EXCALIBUR_MATH_H
