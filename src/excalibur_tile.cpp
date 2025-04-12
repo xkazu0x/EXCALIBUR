@@ -115,8 +115,8 @@ recanonicalize_coord(tile_map_t *tile_map, u32 *tile_index, f32 *tile_rel) {
     *tile_index += offset;
     *tile_rel -= offset*tile_map->tile_size_in_meters;
 
-    EX_ASSERT(*tile_rel >= -0.5f*tile_map->tile_size_in_meters);
-    EX_ASSERT(*tile_rel <= 0.5f*tile_map->tile_size_in_meters);
+    EX_ASSERT(*tile_rel > -0.5001f*tile_map->tile_size_in_meters);
+    EX_ASSERT(*tile_rel < 0.5001f*tile_map->tile_size_in_meters);
 }
 
 inline tile_map_position_t

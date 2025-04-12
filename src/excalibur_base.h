@@ -127,6 +127,9 @@
 
 #define EX_ARRAY_COUNT(x) (sizeof(x)/sizeof(*(x)))
 
+#define EX_MIN(a, b) ((a < b) ? (a) : (b))
+#define EX_MAX(a, b) ((a > b) ? (a) : (b))
+
 #define EX_FALSE 0
 #define EX_TRUE 1
 
