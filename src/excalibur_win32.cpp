@@ -31,11 +31,11 @@ global win32_state_t global_win32;
 global xinput_get_state_t *xinput_get_state;
 global xinput_set_state_t *xinput_set_state;
 
-XINPUT_GET_STATE(_xinput_get_state) {
+XINPUT_GET_STATE(xinput_get_state_) {
     return(ERROR_DEVICE_NOT_CONNECTED);
 }
 
-XINPUT_SET_STATE(_xinput_set_state) {
+XINPUT_SET_STATE(xinput_set_state_) {
     return(ERROR_DEVICE_NOT_CONNECTED);
 }
 
@@ -339,10 +339,10 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     
     //////////////////////////////////
     // NOTE(xkazu0x): framebuffer init
-    s32 scale = 3;
+    s32 scale = 4;
     
     os_framebuffer_t framebuffer = {};
-    win32_resize_framebuffer(&framebuffer, 320, 240);
+    win32_resize_framebuffer(&framebuffer, 320, 180);
     EXINFO("framebuffer size: %dx%d", framebuffer.width, framebuffer.height);
     
     /////////////////////////////
@@ -436,8 +436,8 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
         WIN32_GET_PROC_ADDR(xinput_get_state, xinput_library, "XInputGetState");
         WIN32_GET_PROC_ADDR(xinput_set_state, xinput_library, "XInputSetState");
     } else {
-        xinput_get_state = _xinput_get_state;
-        xinput_set_state = _xinput_set_state;
+        xinput_get_state = xinput_get_state_;
+        xinput_set_state = xinput_set_state_;
     }
 
     /////////////////////////////

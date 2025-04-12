@@ -1,6 +1,6 @@
 #include <math.h>
 
-internal f32
+internal inline f32
 abs_f32(f32 x) {
     union { f32 f; u32 u; } result;
     result.f = x;
@@ -8,7 +8,7 @@ abs_f32(f32 x) {
     return(result.f);
 }
 
-internal f64
+internal inline f64
 abs_f64(f64 x) {
     union { f64 f; u64 u; } result;
     result.f = x;
@@ -16,73 +16,87 @@ abs_f64(f64 x) {
     return(result.f);
 }
 
-internal f32
+internal inline f32
 sqrt_f32(f32 x) {
-    return(sqrtf(x));
+    f32 result = sqrtf(x);
+    return(result);
 }
 
-internal f32
+internal inline f32
 sin_f32(f32 x) {
-    return(sinf(x));
+    f32 result = sinf(x);
+    return(result);
 }
 
-internal f32
+internal inline f32
 cos_f32(f32 x) {
-    return(cosf(x));
+    f32 result = cosf(x);
+    return(result);
 }
 
-internal f32
+internal inline f32
 tan_f32(f32 x) {
-    return(tanf(x));
+    f32 result = tanf(x);
+    return(result);
 }
 
-internal f64
+internal inline f64
 sqrt_f64(f64 x) {
-    return(sqrtf(x));
+    f64 result = sqrtf(x);
+    return(result);
 }
 
-internal f64
+internal inline f64
 sin_f64(f64 x) {
-    return(sinf(x));
+    f64 result = sinf(x);
+    return(result);
 }
 
-internal f64
+internal inline f64
 cos_f64(f64 x) {
-    return(cosf(x));
+    f64 result = cosf(x);
+    return(result);
 }
 
-internal f64
+internal inline f64
 tan_f64(f64 x) {
-    return(tanf(x));
-}
-
-inline s32
-round_f32_to_s32(f32 f) {
-    s32 result = (s32)roundf(f);
+    f64 result = tanf(x);
     return(result);
 }
 
-inline u32
-round_f32_to_u32(f32 f) {
-    u32 result = (u32)roundf(f);
+internal inline s32
+sign_of(s32 x) {
+    s32 result = (x >= 0) ? 1 : -1;
     return(result);
 }
 
-inline s32
-truncate_f32_to_s32(f32 f) {
-    s32 result = (s32)f;
+internal inline s32
+round_f32_to_s32(f32 x) {
+    s32 result = (s32)roundf(x);
     return(result);
 }
 
-inline u32
-truncate_f32_to_u32(f32 f) {
-    u32 result = (u32)f;
+internal inline u32
+round_f32_to_u32(f32 x) {
+    u32 result = (u32)roundf(x);
     return(result);
 }
 
-inline s32
-floor_f32_to_s32(f32 f) {
-    s32 result = (s32)floorf(f);
+internal inline s32
+truncate_f32_to_s32(f32 x) {
+    s32 result = (s32)x;
+    return(result);
+}
+
+internal inline u32
+truncate_f32_to_u32(f32 x) {
+    u32 result = (u32)x;
+    return(result);
+}
+
+internal inline s32
+floor_f32_to_s32(f32 x) {
+    s32 result = (s32)floorf(x);
     return(result);
 }
 
@@ -90,7 +104,7 @@ floor_f32_to_s32(f32 f) {
 #include <intrin.h>
 #endif
 
-inline bit_scan_result_t
+internal inline bit_scan_result_t
 find_least_significant_set_bit(u32 value) {
     bit_scan_result_t result = {};
 #if COMPILER_CL

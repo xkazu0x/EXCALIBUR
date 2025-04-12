@@ -225,12 +225,9 @@ player_move(game_state_t *state, entity_t *entity, vec2f dd_pos, f32 delta) {
     vec2f player_delta = (0.5f*dd_pos*sqr(delta) + entity->d_pos*delta);
     entity->d_pos = dd_pos*delta + entity->d_pos;
     
-    tile_map_position_t new_player_pos = old_player_pos;
-    new_player_pos.tile_offset += player_delta;
-    new_player_pos = recanonicalize_position(tile_map, new_player_pos);
+    tile_map_position_t new_player_pos = tile_offset(tile_map, old_player_pos, player_delta);
     
 #if 0
-    
     tile_map_position_t player_left_pos = new_player_pos;
     player_left_pos.tile_offset.x -= 0.5f*entity->width;
     player_left_pos = recanonicalize_position(tile_map, player_left_pos);
@@ -274,15 +271,29 @@ player_move(game_state_t *state, entity_t *entity, vec2f dd_pos, f32 delta) {
         entity->pos = new_player_pos;
     }
 #else
+
+#if 0
     u32 min_tile_x = EX_MIN(old_player_pos.tile_x, new_player_pos.tile_x);
     u32 min_tile_y = EX_MIN(old_player_pos.tile_y, new_player_pos.tile_y);
     u32 one_past_max_tile_x = EX_MAX(old_player_pos.tile_x, new_player_pos.tile_x) + 1;
     u32 one_past_max_tile_y = EX_MAX(old_player_pos.tile_y, new_player_pos.tile_y) + 1;
+#else
+    u32 start_tile_x = old_player_pos.tile_x;
+    u32 start_tile_y = old_player_pos.tile_y;
+    u32 end_tile_x = new_player_pos.tile_x;
+    u32 end_tile_y = new_player_pos.tile_y;
     
-    u32 tile_z = entity->pos.tile_z;
+    s32 delta_tile_x = sign_of(end_tile_x - start_tile_x);
+    s32 delta_tile_y = sign_of(end_tile_y - start_tile_y);
+#endif
+
     f32 t_min = 1.0f;
-    for (u32 tile_y = min_tile_y; tile_y != one_past_max_tile_y; tile_y++) {
-        for (u32 tile_x = min_tile_x; tile_x != one_past_max_tile_x; tile_x++) {
+    u32 tile_z = entity->pos.tile_z;
+    
+    u32 tile_y = start_tile_y;
+    for (;;) {
+        u32 tile_x = start_tile_x;
+        for (;;) {
             tile_map_position_t test_tile_pos = centered_tile_point(tile_x, tile_y, tile_z);
             u32 tile_value = get_tile_map_tile_value(tile_map, test_tile_pos);
             
@@ -303,13 +314,20 @@ player_move(game_state_t *state, entity_t *entity, vec2f dd_pos, f32 delta) {
                 test_wall(max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
                           &t_min, min_corner.x, max_corner.x);
             }
+            if (tile_x == end_tile_x) {
+                break;
+            } else {
+                tile_x += delta_tile_x;
+            }
+        }
+        if (tile_y == end_tile_y) {
+            break;
+        } else {
+            tile_y += delta_tile_y;
         }
     }
     
-    new_player_pos = old_player_pos;
-    new_player_pos.tile_offset += t_min*player_delta;
-    entity->pos = new_player_pos;
-    new_player_pos = recanonicalize_position(tile_map, new_player_pos);
+    entity->pos = tile_offset(tile_map, old_player_pos, t_min*player_delta);
 #endif
     
     ///////////////////////////////////////////////////////////////
@@ -357,7 +375,8 @@ player_init(game_state_t *state, u32 entity_index) {
     entity->exists = EX_TRUE;
     entity->pos.tile_x = 3;
     entity->pos.tile_y = 3;
-    entity->pos.tile_offset = {};
+    entity->pos.tile_offset_.x = 0.0f;
+    entity->pos.tile_offset_.y = 0.0f;
     entity->height = 1.4f; // NOTE(xkazu0x): tile size in meters
     entity->width = 0.75f*entity->height;
 
@@ -397,7 +416,8 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
 
         state->camera_pos.tile_x = 7;
         state->camera_pos.tile_y = 5;
-        state->camera_pos.tile_offset = {};
+        state->camera_pos.tile_offset_.x = 0.0f;
+        state->camera_pos.tile_offset_.y = 0.0f;
         
         state->world_arena = memory_arena_create(memory->permanent_storage_size - sizeof(game_state_t),
                                                (u8 *)memory->permanent_storage + sizeof(game_state_t));
@@ -411,6 +431,8 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         tile_map->chunk_mask = (1 << tile_map->chunk_shift) - 1;
         tile_map->chunk_dim = (1 << tile_map->chunk_shift);
         
+        tile_map->tile_size_in_meters = 1.4f;
+        
         tile_map->tile_chunk_count_x = 128;
         tile_map->tile_chunk_count_y = 128;
         tile_map->tile_chunk_count_z = 2;
@@ -420,19 +442,21 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                                                                    tile_map->tile_chunk_count_z)*
                                                                   sizeof(tile_chunk_t));
         
-        tile_map->tile_size_in_meters = 1.4f;
         u32 random_number_index = 0;
-        
+#if 0
+        // TODO(xkazu0x): waiting for full sparseness
+        u32 screen_x = s32_max/2;
+        u32 screen_y = s32_max/2;
+#else
         u32 screen_x = 0;
         u32 screen_y = 0;
-        
+#endif
         u32 abs_tile_z = 0;
                     
         b32 door_left = EX_FALSE;
         b32 door_right = EX_FALSE;
         b32 door_top = EX_FALSE;
         b32 door_bottom = EX_FALSE;
-
         b32 door_up = EX_FALSE;
         b32 door_down = EX_FALSE;
         
@@ -482,6 +506,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                         tile_value = 2;
                     }
 
+                    //tile_value = 1;
                     if ((tile_x == 10) && (tile_y == 6)) {
                         if (door_up) {
                             tile_value = 3;
@@ -584,9 +609,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     if (camera_following_entity) {
         state->camera_pos.tile_z = camera_following_entity->pos.tile_z;
 
-        vec3f cam_diff = subtract(tile_map,
-                                  &camera_following_entity->pos,
-                                  &state->camera_pos);
+        vec3f cam_diff = subtract(tile_map, &camera_following_entity->pos, &state->camera_pos);
         if (cam_diff.x > ((((f32)tile_count_x)/2)*tile_map->tile_size_in_meters)) {
             state->camera_pos.tile_x += tile_count_x;
         }
@@ -627,16 +650,20 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     tile_color = vec3f_create(0.25f);
                 }
                 
-                // if ((column == state->player_pos.tile_x) &&
-                //     (row == state->player_pos.tile_y)) {
-                //     tile_color = vec3f_create(0.0f);
-                // }
+                // TODO(xkazu0x): temp
+                entity_t *entity = &state->entities[1];
+                if (entity->exists) {
+                    if ((column == entity->pos.tile_x) &&
+                        (row == entity->pos.tile_y)) {
+                        tile_color = vec3f_create(0.0f);
+                    }
+                }
             } else {
                 tile_color = vec3f_create(1.0f, 0.5f, 0.2f);
             }
             
-            f32 center_x = screen_center_x - meters_to_pixels*state->camera_pos.tile_offset.x + ((f32)rel_column)*tile_size_in_pixels;
-            f32 center_y = screen_center_y + meters_to_pixels*state->camera_pos.tile_offset.y - ((f32)rel_row)*tile_size_in_pixels;
+            f32 center_x = screen_center_x - meters_to_pixels*state->camera_pos.tile_offset_.x + ((f32)rel_column)*tile_size_in_pixels;
+            f32 center_y = screen_center_y + meters_to_pixels*state->camera_pos.tile_offset_.y - ((f32)rel_row)*tile_size_in_pixels;
             f32 min_x = center_x - 0.5f*tile_size_in_pixels;
             f32 min_y = center_y - 0.5f*tile_size_in_pixels;
             f32 max_x = center_x + 0.5f*tile_size_in_pixels;
