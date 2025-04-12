@@ -191,19 +191,24 @@ debug_load_bitmap(debug_os_read_file_t *debug_os_read_file, os_thread_t *thread,
     return(result);
 }
 
-internal void
+internal b32
 test_wall(f32 wall_x, f32 rel_x, f32 rel_y, f32 player_delta_x, f32 player_delta_y,
           f32 *t_min, f32 min_y, f32 max_y) {
-    f32 t_epsilon = 0.0001f;
+    b32 hit = EX_FALSE;
+    
+    f32 t_epsilon = 0.00001f;
     if (player_delta_x != 0.0f) {
         f32 t_result = (wall_x - rel_x) / player_delta_x;
         f32 y = rel_y + t_result*player_delta_y;
         if ((t_result >= 0.0f) && (*t_min > t_result)) {
             if (y >= min_y && (y <= max_y)) {
                 *t_min = EX_MAX(0.0f, t_result - t_epsilon);
+                hit = EX_TRUE;
             }
         }
     }
+    
+    return(hit);
 }
 
 internal void
@@ -272,64 +277,72 @@ player_move(game_state_t *state, entity_t *entity, vec2f dd_pos, f32 delta) {
     }
 #else
 
-#if 0
     u32 min_tile_x = EX_MIN(old_player_pos.tile_x, new_player_pos.tile_x);
     u32 min_tile_y = EX_MIN(old_player_pos.tile_y, new_player_pos.tile_y);
-    u32 one_past_max_tile_x = EX_MAX(old_player_pos.tile_x, new_player_pos.tile_x) + 1;
-    u32 one_past_max_tile_y = EX_MAX(old_player_pos.tile_y, new_player_pos.tile_y) + 1;
-#else
-    u32 start_tile_x = old_player_pos.tile_x;
-    u32 start_tile_y = old_player_pos.tile_y;
-    u32 end_tile_x = new_player_pos.tile_x;
-    u32 end_tile_y = new_player_pos.tile_y;
-    
-    s32 delta_tile_x = sign_of(end_tile_x - start_tile_x);
-    s32 delta_tile_y = sign_of(end_tile_y - start_tile_y);
-#endif
+    u32 max_tile_x = EX_MAX(old_player_pos.tile_x, new_player_pos.tile_x);
+    u32 max_tile_y = EX_MAX(old_player_pos.tile_y, new_player_pos.tile_y);
 
-    f32 t_min = 1.0f;
+    u32 entity_tile_width = ceil_f32_to_s32(entity->width/tile_map->tile_size_in_meters);
+    u32 entity_tile_height = ceil_f32_to_s32(entity->height/tile_map->tile_size_in_meters);
+    
+    min_tile_x -= entity_tile_width;
+    min_tile_y -= entity_tile_height;
+    max_tile_x += entity_tile_width;
+    max_tile_y += entity_tile_height;
+    
     u32 tile_z = entity->pos.tile_z;
+
+    f32 t_remaining = 1.0f;
+    for (u32 iteration = 0; (iteration < 4) && (t_remaining > 0.0f); iteration++) {
+        f32 t_min = 1.0f;
+        vec2f wall_normal = {};
     
-    u32 tile_y = start_tile_y;
-    for (;;) {
-        u32 tile_x = start_tile_x;
-        for (;;) {
-            tile_map_position_t test_tile_pos = centered_tile_point(tile_x, tile_y, tile_z);
-            u32 tile_value = get_tile_map_tile_value(tile_map, test_tile_pos);
+        EX_ASSERT((max_tile_x - min_tile_x) < 32);
+        EX_ASSERT((max_tile_y - min_tile_y) < 32);
+    
+        for (u32 tile_y = min_tile_y; tile_y <= max_tile_y; tile_y++) {
+            for (u32 tile_x = min_tile_x; tile_x <= max_tile_x; tile_x++) {
+                tile_map_position_t test_tile_pos = centered_tile_point(tile_x, tile_y, tile_z);
+                u32 tile_value = get_tile_map_tile_value(tile_map, test_tile_pos);
             
-            if (!is_tile_value_empty(tile_value)) {
-                vec2f min_corner = vec2f_create(-0.5f*tile_map->tile_size_in_meters);
-                vec2f max_corner = vec2f_create(0.5f*tile_map->tile_size_in_meters);
+                if (!is_tile_value_empty(tile_value)) {
+                    f32 dim_width = tile_map->tile_size_in_meters + entity->width;
+                    f32 dim_height = tile_map->tile_size_in_meters + entity->height;
+                    vec2f min_corner = -0.5f*vec2f{dim_width, dim_height};
+                    vec2f max_corner = 0.5f*vec2f{dim_width, dim_height};
                 
-                vec3f rel_old_player_pos = subtract(tile_map, &old_player_pos, &test_tile_pos);
-                vec2f rel = vec2f{rel_old_player_pos.x, rel_old_player_pos.y};
+                    vec3f rel_old_player_pos = subtract(tile_map, &old_player_pos, &test_tile_pos);
+                    vec2f rel = vec2f{rel_old_player_pos.x, rel_old_player_pos.y};
+
+                    if (test_wall(min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
+                                  &t_min, min_corner.y, max_corner.y)) {
+                        wall_normal = vec2f{-1.0f, 0.0f};
+                    }
                 
-                test_wall(min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
-                          &t_min, min_corner.y, max_corner.y);
-                test_wall(max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
-                          &t_min, min_corner.y, max_corner.y);
+                    if (test_wall(max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
+                                  &t_min, min_corner.y, max_corner.y)) {
+                        wall_normal = vec2f{1.0f, 0.0f};
+                    }
                 
-                test_wall(min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
-                          &t_min, min_corner.x, max_corner.x);
-                test_wall(max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
-                          &t_min, min_corner.x, max_corner.x);
-            }
-            if (tile_x == end_tile_x) {
-                break;
-            } else {
-                tile_x += delta_tile_x;
+                    if (test_wall(min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
+                                  &t_min, min_corner.x, max_corner.x)) {
+                        wall_normal = vec2f{0.0f, -1.0f};
+                    }
+                
+                    if (test_wall(max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
+                                  &t_min, min_corner.x, max_corner.x)) {
+                        wall_normal = vec2f{0.0f, 1.0f};
+                    }
+                }
             }
         }
-        if (tile_y == end_tile_y) {
-            break;
-        } else {
-            tile_y += delta_tile_y;
-        }
+        entity->pos = tile_offset(tile_map, old_player_pos, t_min*player_delta);
+        entity->d_pos = entity->d_pos - 1*vec2f_dot(entity->d_pos, wall_normal)*wall_normal;
+        player_delta = player_delta - 1*vec2f_dot(player_delta, wall_normal)*wall_normal;
+        t_remaining -= t_min*t_remaining;
     }
-    
-    entity->pos = tile_offset(tile_map, old_player_pos, t_min*player_delta);
 #endif
-    
+        
     ///////////////////////////////////////////////////////////////
     // NOTE(xkazu0x): update camera/player z based on last movement
     if (!are_on_the_same_tile(&old_player_pos, &entity->pos)) {
@@ -377,8 +390,8 @@ player_init(game_state_t *state, u32 entity_index) {
     entity->pos.tile_y = 3;
     entity->pos.tile_offset_.x = 0.0f;
     entity->pos.tile_offset_.y = 0.0f;
-    entity->height = 1.4f; // NOTE(xkazu0x): tile size in meters
-    entity->width = 0.75f*entity->height;
+    entity->height = 0.5f; // NOTE(xkazu0x): tile size in meters
+    entity->width = 1.0f;
 
     entity_t *camera_following_entity = get_entity(state, state->camera_following_entity_index);
     if (!camera_following_entity->exists) {
@@ -685,7 +698,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
 
             vec2f player_size = vec2f{entity->width, entity->height};
             f32 player_left_dim = player_ground_point_x - 0.5f*meters_to_pixels*player_size.x;
-            f32 player_right_dim = player_ground_point_y - meters_to_pixels*player_size.y;
+            f32 player_right_dim = player_ground_point_y - 0.5f*meters_to_pixels*player_size.y;
             vec2f player_min = vec2f{player_left_dim, player_right_dim};
             vec2f player_max = player_min + player_size*meters_to_pixels;
             draw_rectangle(framebuffer, player_min, player_max, vec3f_create(1.0f, 1.0f, 0.0f));

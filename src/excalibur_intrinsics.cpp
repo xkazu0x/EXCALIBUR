@@ -95,6 +95,12 @@ truncate_f32_to_u32(f32 x) {
 }
 
 internal inline s32
+ceil_f32_to_s32(f32 x) {
+    s32 result = (s32)ceilf(x);
+    return(result);
+}
+
+internal inline s32
 floor_f32_to_s32(f32 x) {
     s32 result = (s32)floorf(x);
     return(result);

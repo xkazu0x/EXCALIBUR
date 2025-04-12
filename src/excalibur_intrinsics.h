@@ -22,6 +22,7 @@ internal inline u32 round_f32_to_u32(f32 x);
 internal inline s32 truncate_f32_to_s32(f32 x);
 internal inline u32 truncate_f32_to_u32(f32 x);
 
+internal inline s32 ceil_f32_to_s32(f32 x);
 internal inline s32 floor_f32_to_s32(f32 x);
 
 struct bit_scan_result_t {
