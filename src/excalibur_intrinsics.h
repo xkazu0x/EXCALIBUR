@@ -16,6 +16,9 @@ internal inline f64 tan_f64(f64 x);
 
 internal inline s32 sign_of(s32 x);
 
+internal inline u32 rotate_left(u32 value, s32 amount);
+internal inline u32 rotate_right(u32 value, s32 amount);
+
 internal inline s32 round_f32_to_s32(f32 x);
 internal inline u32 round_f32_to_u32(f32 x);
 

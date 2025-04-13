@@ -70,6 +70,30 @@ sign_of(s32 x) {
     return(result);
 }
 
+internal inline u32
+rotate_left(u32 value, s32 amount) {
+#if COMPILER_CL
+    u32 result = _rotl(value, amount);
+#else
+    // TODO(xkazu0x): port this to other compiler platform
+    amount &= 31;
+    u32 result = ((value << amount) | (value >> (32 - amount)));
+#endif
+    return(result);
+}
+
+internal inline u32
+rotate_right(u32 value, s32 amount) {
+#if COMPILER_CL
+    u32 result = _rotr(value, amount);
+#else
+    // TODO(xkazu0x): port this to other compiler platform
+    amount &= 31;
+    u32 result = ((value >> amount) | (value << (32 - amount)));
+#endif
+    return(result);
+}
+
 internal inline s32
 round_f32_to_s32(f32 x) {
     s32 result = (s32)roundf(x);

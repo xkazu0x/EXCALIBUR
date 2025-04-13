@@ -42,13 +42,34 @@ struct bitmap_t {
     u32 *pixels;
 };
 
-struct entity_t {
+struct high_entity_t {
     b32 exists;
-    tile_map_position_t pos;
+    vec2f pos; // NOTE(xkazu0x): relative to the camera
     vec2f d_pos;
     u32 direction;
+};
+
+struct low_entity_t {
+};
+
+struct dormant_entity_t {
+    tile_map_position_t pos;
     f32 width;
     f32 height;
+};
+
+enum entity_residence_t {
+    ENTITY_RESIDENCE_UNDEFINED,
+    ENTITY_RESIDENCE_DORMANT,
+    ENTITY_RESIDENCE_LOW,
+    ENTITY_RESIDENCE_HIGH,
+};
+
+struct entity_t {
+    entity_residence_t residence;
+    dormant_entity_t *dormant;
+    low_entity_t *low;
+    high_entity_t *high;
 };
 
 struct game_state_t {
@@ -58,10 +79,13 @@ struct game_state_t {
     u32 camera_following_entity_index;
     tile_map_position_t camera_pos;
 
-    u32 player_gamepad_index[GAMEPAD_COUNT_MAX];
     u32 entity_count;
-    entity_t entities[256];
+    entity_residence_t entity_residence[256];
+    dormant_entity_t dormant_entities[256];
+    low_entity_t low_entities[256];
+    high_entity_t high_entities[256];
     
+    u32 player_gamepad_index[GAMEPAD_COUNT_MAX];    
     bitmap_t player_sprites[4];
 };
 
