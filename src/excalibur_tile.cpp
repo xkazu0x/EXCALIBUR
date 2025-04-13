@@ -110,18 +110,18 @@ is_tile_map_point_empty(tile_map_t *tile_map, tile_map_position_t tile_map_pos) 
 
 inline void
 recanonicalize_coord(tile_map_t *tile_map, u32 *tile_index, f32 *tile_rel) {
-    // TODO(xkazu0x): floorf does not fucking work
     s32 offset = round_f32_to_s32(*tile_rel / tile_map->tile_size_in_meters);
     *tile_index += offset;
     *tile_rel -= offset*tile_map->tile_size_in_meters;
 
-    EX_ASSERT(*tile_rel > -0.5001f*tile_map->tile_size_in_meters);
-    EX_ASSERT(*tile_rel < 0.5001f*tile_map->tile_size_in_meters);
+    EX_ASSERT(*tile_rel > -0.5f*tile_map->tile_size_in_meters);
+    EX_ASSERT(*tile_rel < 0.5f*tile_map->tile_size_in_meters);
 }
 
 inline tile_map_position_t
-recanonicalize_position(tile_map_t *tile_map, tile_map_position_t pos) {
-    tile_map_position_t result = pos;
+map_into_tile_space(tile_map_t *tile_map, tile_map_position_t base_pos, vec2f offset) {
+    tile_map_position_t result = base_pos;
+    result.tile_offset_ += offset;
     recanonicalize_coord(tile_map, &result.tile_x, &result.tile_offset_.x);
     recanonicalize_coord(tile_map, &result.tile_y, &result.tile_offset_.y);
     return(result);
@@ -157,11 +157,4 @@ centered_tile_point(u32 tile_x, u32 tile_y, u32 tile_z) {
     result.tile_y = tile_y;
     result.tile_z = tile_z;
     return(result);
-}
-
-inline tile_map_position_t
-tile_offset(tile_map_t *tile_map, tile_map_position_t pos, vec2f offset) {
-    pos.tile_offset_ += offset;
-    pos = recanonicalize_position(tile_map, pos);
-    return(pos);
 }

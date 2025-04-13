@@ -43,9 +43,9 @@ struct bitmap_t {
 };
 
 struct high_entity_t {
-    b32 exists;
     vec2f pos; // NOTE(xkazu0x): relative to the camera
     vec2f d_pos;
+    u32 tile_z;
     u32 direction;
 };
 
@@ -56,6 +56,8 @@ struct dormant_entity_t {
     tile_map_position_t pos;
     f32 width;
     f32 height;
+    s32 d_tile_z; // NOTE(xkazu0x): this is for "stairs"
+    b32 collides;
 };
 
 enum entity_residence_t {
