@@ -52,7 +52,14 @@ struct high_entity_t {
 struct low_entity_t {
 };
 
+enum entity_type_t {
+    ENTITY_TYPE_NULL,
+    ENTITY_TYPE_PLAYER,
+    ENTITY_TYPE_WALL,
+};
+
 struct dormant_entity_t {
+    entity_type_t type;
     tile_map_position_t pos;
     f32 width;
     f32 height;

@@ -435,3 +435,42 @@ sqr(f32 f) {
     f32 result = f*f;
     return(result);
 }
+
+internal inline rect2f
+rect2f_min_max(vec2f min, vec2f max) {
+    rect2f result;
+    result.min = min;
+    result.min = max;
+    return(result);
+}
+
+internal inline rect2f
+rect2f_min_dim(vec2f min, vec2f dim) {
+    rect2f result;
+    result.min = min;
+    result.min = min + dim;
+    return(result);
+}
+
+internal inline rect2f
+rect2f_center_half_dim(vec2f center, vec2f half_dim) {
+    rect2f result;
+    result.min = center - half_dim;
+    result.max = center + half_dim;
+    return(result);
+}
+
+internal inline rect2f
+rect2f_center_dim(vec2f center, vec2f dim) {
+    rect2f result = rect2f_center_half_dim(center, 0.5f*dim);
+    return(result);
+}
+
+internal inline b32
+is_in_rect2f(rect2f rect, vec2f test) {
+    b32 result = ((test.x >= rect.min.x) &&
+                  (test.y >= rect.min.y) &&
+                  (test.x < rect.max.x) &&
+                  (test.y < rect.max.y));
+    return(result);
+}

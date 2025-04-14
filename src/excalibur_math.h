@@ -113,7 +113,18 @@ internal inline f32 vec3f_dot(vec3f a, vec3f b);
 internal inline f32 vec4f_dot(vec4f a, vec4f b);
 
 internal inline f32 length_sqr(vec2f v);
-
 internal inline f32 sqr(f32 f);
+
+struct rect2f {
+    vec2f min;
+    vec2f max;
+};
+
+internal inline rect2f rect2f_min_max(vec2f min, vec2f max);
+internal inline rect2f rect2f_min_dim(vec2f min, vec2f dim);
+internal inline rect2f rect2f_center_half_dim(vec2f center, vec2f half_dim);
+internal inline rect2f rect2f_center_dim(vec2f center, vec2f dim);
+
+internal inline b32 is_in_rect2f(rect2f rect, vec2f test);
 
 #endif // EXCALIBUR_MATH_H
