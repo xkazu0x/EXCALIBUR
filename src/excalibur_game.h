@@ -42,41 +42,34 @@ struct bitmap_t {
     u32 *pixels;
 };
 
-struct high_entity_t {
-    vec2f pos; // NOTE(xkazu0x): relative to the camera
-    vec2f d_pos;
-    u32 tile_z;
-    u32 direction;
-};
-
-struct low_entity_t {
-};
-
 enum entity_type_t {
     ENTITY_TYPE_NULL,
     ENTITY_TYPE_PLAYER,
     ENTITY_TYPE_WALL,
 };
 
-struct dormant_entity_t {
+struct low_entity_t {
     entity_type_t type;
     tile_map_position_t pos;
     f32 width;
     f32 height;
     s32 d_tile_z; // NOTE(xkazu0x): this is for "stairs"
     b32 collides;
+
+    u32 high_entity_index;
 };
 
-enum entity_residence_t {
-    ENTITY_RESIDENCE_UNDEFINED,
-    ENTITY_RESIDENCE_DORMANT,
-    ENTITY_RESIDENCE_LOW,
-    ENTITY_RESIDENCE_HIGH,
+struct high_entity_t {
+    vec2f pos; // NOTE(xkazu0x): relative to the camera
+    vec2f d_pos;
+    u32 tile_z;
+    u32 direction;
+
+    u32 low_entity_index;
 };
 
 struct entity_t {
-    entity_residence_t residence;
-    dormant_entity_t *dormant;
+    u32 low_index;
     low_entity_t *low;
     high_entity_t *high;
 };
@@ -88,11 +81,11 @@ struct game_state_t {
     u32 camera_following_entity_index;
     tile_map_position_t camera_pos;
 
-    u32 entity_count;
-    entity_residence_t entity_residence[256];
-    dormant_entity_t dormant_entities[256];
-    low_entity_t low_entities[256];
-    high_entity_t high_entities[256];
+    u32 low_entity_count;
+    low_entity_t low_entities[4096];
+
+    u32 high_entity_count;
+    high_entity_t high_entities_[256];
     
     u32 player_gamepad_index[GAMEPAD_COUNT_MAX];    
     bitmap_t player_sprites[4];

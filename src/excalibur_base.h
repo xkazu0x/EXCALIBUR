@@ -120,6 +120,8 @@
 # define EX_ASSERT(x)
 #endif
 
+#define INVALID_CODE_PATH() EX_ASSERT(!"INVALID_CODE_PATH");
+
 #define EX_KILOBYTES(x) ((x)*1024LL)
 #define EX_MEGABYTES(x) (EX_KILOBYTES(x)*1024LL)
 #define EX_GIGABYTES(x) (EX_MEGABYTES(x)*1024LL)
