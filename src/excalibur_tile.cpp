@@ -1,3 +1,57 @@
+#define TILE_CHUNK_SAFE_MARGIN 256
+
+inline tile_chunk_t *
+get_tile_chunk(tile_map_t *tile_map, u32 tile_chunk_x, u32 tile_chunk_y, u32 tile_chunk_z,
+               memory_arena_t *arena = 0) {
+    EX_ASSERT(tile_chunk_x > TILE_CHUNK_SAFE_MARGIN);
+    EX_ASSERT(tile_chunk_y > TILE_CHUNK_SAFE_MARGIN);
+    EX_ASSERT(tile_chunk_z > TILE_CHUNK_SAFE_MARGIN);
+
+    EX_ASSERT(tile_chunk_x < (u32_max - TILE_CHUNK_SAFE_MARGIN));
+    EX_ASSERT(tile_chunk_y < (u32_max - TILE_CHUNK_SAFE_MARGIN));
+    EX_ASSERT(tile_chunk_z < (u32_max - TILE_CHUNK_SAFE_MARGIN));
+    
+    // TODO(xkazu0x): BETTER HASH FUNCTION!!!!
+    u32 hash_value = 19*tile_chunk_x + 7*tile_chunk_y + 3*tile_chunk_z;
+    u32 hash_slot = hash_value & (EX_ARRAY_COUNT(tile_map->tile_chunk_hash) - 1);
+    EX_ASSERT(hash_slot < EX_ARRAY_COUNT(tile_map->tile_chunk_hash));
+    
+    tile_chunk_t *chunk = tile_map->tile_chunk_hash + hash_slot;
+    do {
+        if ((tile_chunk_x == chunk->tile_chunk_x) &&
+            (tile_chunk_y == chunk->tile_chunk_y) &&
+            (tile_chunk_z == chunk->tile_chunk_z)) {
+            break;
+        }
+
+        if (arena && (chunk->tile_chunk_x != 0) && (!chunk->next_in_hash)) {
+            chunk->next_in_hash = (tile_chunk_t *)memory_arena_push(arena, sizeof(tile_chunk_t));
+            chunk->tile_chunk_x = 0;
+            chunk = chunk->next_in_hash;
+        }
+
+        if (arena && (chunk->tile_chunk_x == 0)) {
+            u32 tile_count = tile_map->chunk_dim*tile_map->chunk_dim;
+
+            chunk->tile_chunk_x = tile_chunk_x;
+            chunk->tile_chunk_y = tile_chunk_y;
+            chunk->tile_chunk_z = tile_chunk_z;
+            
+            chunk->tiles = (u32 *)memory_arena_push(arena, tile_count*sizeof(u32));
+            // TODO(xkazu0x): do we want to always initialize?
+            for (u32 tile_index = 0; tile_index < tile_count; tile_index++) {
+                chunk->tiles[tile_index] = 1;
+            }
+
+            chunk->next_in_hash = 0;
+            break;
+        }
+        
+        chunk = chunk->next_in_hash;
+    } while(chunk);
+    return(chunk);
+}
+
 inline tile_chunk_position_t
 get_tile_chunk_position(tile_map_t *tile_map, u32 tile_x, u32 tile_y, u32 tile_z) {
     tile_chunk_position_t result;
@@ -6,19 +60,6 @@ get_tile_chunk_position(tile_map_t *tile_map, u32 tile_x, u32 tile_y, u32 tile_z
     result.tile_chunk_z = tile_z;
     result.tile_x = tile_x & tile_map->chunk_mask;
     result.tile_y = tile_y & tile_map->chunk_mask;
-    return(result);
-}
-
-inline tile_chunk_t *
-get_tile_chunk(tile_map_t *tile_map, u32 tile_chunk_x, u32 tile_chunk_y, u32 tile_chunk_z) {
-    tile_chunk_t *result = 0;
-    if ((tile_chunk_x < tile_map->tile_chunk_count_x) &&
-        (tile_chunk_y < tile_map->tile_chunk_count_y) &&
-        (tile_chunk_z < tile_map->tile_chunk_count_z)) {
-        result = &tile_map->tile_chunks[tile_chunk_z*tile_map->tile_chunk_count_y*tile_map->tile_chunk_count_x +
-                                        tile_chunk_y*tile_map->tile_chunk_count_x +
-                                        tile_chunk_x];
-    }
     return(result);
 }
 
@@ -76,17 +117,7 @@ set_tile_map_tile_value(memory_arena_t *arena, tile_map_t *tile_map,
                         u32 tile_x, u32 tile_y, u32 tile_z,
                         u32 tile_value) {
     tile_chunk_position_t chunk_pos = get_tile_chunk_position(tile_map, tile_x, tile_y, tile_z);
-    tile_chunk_t *tile_chunk = get_tile_chunk(tile_map, chunk_pos.tile_chunk_x, chunk_pos.tile_chunk_y, chunk_pos.tile_chunk_z);
-    
-    EX_ASSERT(tile_chunk);
-    if (!tile_chunk->tiles) {
-        u32 tile_count = tile_map->chunk_dim*tile_map->chunk_dim;
-        tile_chunk->tiles = (u32 *)memory_arena_push(arena, tile_count*sizeof(u32));
-        for (u32 tile_index = 0; tile_index < tile_count; tile_index++) {
-            tile_chunk->tiles[tile_index] = 1;
-        }
-    }
-    
+    tile_chunk_t *tile_chunk = get_tile_chunk(tile_map, chunk_pos.tile_chunk_x, chunk_pos.tile_chunk_y, chunk_pos.tile_chunk_z, arena);
     set_tile_chunk_tile_value(tile_map, tile_chunk, chunk_pos.tile_x, chunk_pos.tile_y, tile_value);
 }
 
@@ -103,6 +134,20 @@ is_tile_map_point_empty(tile_map_t *tile_map, tile_map_position_t tile_map_pos) 
     u32 tile_value = get_tile_map_tile_value(tile_map, tile_map_pos.tile_x, tile_map_pos.tile_y, tile_map_pos.tile_z);
     b32 result = is_tile_value_empty(tile_value);
     return(result);
+}
+
+internal void
+tile_map_initialize(tile_map_t *tile_map, f32 tile_size_in_meters) {
+    tile_map->chunk_shift = 4;
+    tile_map->chunk_mask = (1 << tile_map->chunk_shift) - 1;
+    tile_map->chunk_dim = (1 << tile_map->chunk_shift);
+    tile_map->tile_size_in_meters = tile_size_in_meters;
+
+    for (u32 tile_chunk_index = 0;
+         tile_chunk_index < EX_ARRAY_COUNT(tile_map->tile_chunk_hash);
+         tile_chunk_index++) {
+        tile_map->tile_chunk_hash[tile_chunk_index].tile_chunk_x = 0;;
+    }
 }
 
 /////////////////

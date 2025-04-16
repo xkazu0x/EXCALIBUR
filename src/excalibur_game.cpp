@@ -286,8 +286,9 @@ player_add(game_state_t *state) {
     u32 entity_index = entity_add_low(state, ENTITY_TYPE_PLAYER);
     low_entity_t *entity = entity_get_low(state, entity_index);
     
-    entity->pos.tile_x = 3;
-    entity->pos.tile_y = 3;
+    entity->pos = state->camera_pos;
+    entity->pos.tile_offset_.x = 0.0f;
+    entity->pos.tile_offset_.y = 0.0f;
     entity->height = 0.5f;
     entity->width = 1.0f;
     entity->collides = EX_TRUE;
@@ -476,7 +477,6 @@ camera_set(game_state_t *state, tile_map_position_t new_camera_pos) {
     vec2f entity_offset_for_frame = -vec2f{d_camera_pos.x, d_camera_pos.y};
     offset_and_check_frequency_by_area(state, entity_offset_for_frame, camera_bounds);
 
-    // TODO(xkazu0x): fix wrapping problem here!!!
     u32 min_tile_x = (u32)(new_camera_pos.tile_x - (f32)tile_span_x/2);
     u32 max_tile_x = (u32)(new_camera_pos.tile_x + (f32)tile_span_x/2);
     u32 min_tile_y = (u32)(new_camera_pos.tile_y - (f32)tile_span_y/2);
@@ -486,14 +486,11 @@ camera_set(game_state_t *state, tile_map_position_t new_camera_pos) {
          entity_index++) {
         low_entity_t *low = state->low_entities + entity_index;
         if (low->high_entity_index == 0) {
-#if 0
             if ((low->pos.tile_z == new_camera_pos.tile_z) &&
                 (low->pos.tile_x >= min_tile_x) &&
                 (low->pos.tile_x <= max_tile_x) &&
-                (low->pos.tile_y <= min_tile_y) &&
-                (low->pos.tile_y >= max_tile_y)) {
-#endif
-                {
+                (low->pos.tile_y >= min_tile_y) &&
+                (low->pos.tile_y <= max_tile_y)) {
                 entity_make_high(state, entity_index);
             }
         }
@@ -528,39 +525,25 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         world->tile_map = (tile_map_t *)memory_arena_push(&state->world_arena, sizeof(tile_map_t));
         
         tile_map_t *tile_map = world->tile_map;
-        tile_map->chunk_shift = 4;
-        tile_map->chunk_mask = (1 << tile_map->chunk_shift) - 1;
-        tile_map->chunk_dim = (1 << tile_map->chunk_shift);
+        tile_map_initialize(tile_map, 1.4f);
         
-        tile_map->tile_size_in_meters = 1.4f;
+        u32 screen_base_x = (s16_max/tile_count_x)/2;
+        u32 screen_base_y = (s16_max/tile_count_y)/2;
+        u32 screen_base_z = s16_max/2;
         
-        tile_map->tile_chunk_count_x = 128;
-        tile_map->tile_chunk_count_y = 128;
-        tile_map->tile_chunk_count_z = 2;
-        tile_map->tile_chunks = (tile_chunk_t *)memory_arena_push(&state->world_arena,
-                                                                  (tile_map->tile_chunk_count_x*
-                                                                   tile_map->tile_chunk_count_y*
-                                                                   tile_map->tile_chunk_count_z)*
-                                                                  sizeof(tile_chunk_t));
+        u32 screen_x = screen_base_x;
+        u32 screen_y = screen_base_y;
+        u32 abs_tile_z = screen_base_z;
         
         u32 random_number_index = 0;
-#if 0
-        // TODO(xkazu0x): waiting for full sparseness
-        u32 screen_x = s32_max/2;
-        u32 screen_y = s32_max/2;
-#else
-        u32 screen_x = 0;
-        u32 screen_y = 0;
-#endif
-        u32 abs_tile_z = 0;
-                    
+        
+        // TODO(xkazu0x): replace all this with real world generation
         b32 door_left = EX_FALSE;
         b32 door_right = EX_FALSE;
         b32 door_top = EX_FALSE;
         b32 door_bottom = EX_FALSE;
         b32 door_up = EX_FALSE;
-        b32 door_down = EX_FALSE;
-        
+        b32 door_down = EX_FALSE;        
         for (u32 screen_index = 0; screen_index < 2; screen_index++) {
             // TODO(xkazu0x): random number generator
             EX_ASSERT(random_number_index < EX_ARRAY_COUNT(random_number_table));
@@ -574,7 +557,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             b32 created_z_door = EX_FALSE;
             if (random_choice == 2) {
                 created_z_door = EX_TRUE;
-                if (abs_tile_z == 0) {
+                if (abs_tile_z == screen_base_z) {
                     door_up = EX_TRUE;
                 } else {
                     door_down = EX_TRUE;
@@ -639,10 +622,10 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             door_top = EX_FALSE;
 
             if (random_choice == 2) {
-                if (abs_tile_z == 0) {
-                    abs_tile_z = 1;
+                if (abs_tile_z == screen_base_z) {
+                    abs_tile_z = screen_base_z + 1;
                 } else {
-                    abs_tile_z = 0;
+                    abs_tile_z = screen_base_z;
                 }
             } else if (random_choice == 1) {
                 screen_x++;
@@ -652,8 +635,9 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         }
 
         tile_map_position_t new_camera_pos = {};
-        new_camera_pos.tile_x = tile_count_x/2;
-        new_camera_pos.tile_y = tile_count_y/2;
+        new_camera_pos.tile_x = screen_base_x*tile_count_x + tile_count_x/2;
+        new_camera_pos.tile_y = screen_base_y*tile_count_y + tile_count_y/2;
+        new_camera_pos.tile_z = screen_base_z;
         camera_set(state, new_camera_pos);
                 
         memory->initialized = EX_TRUE;
