@@ -32,10 +32,6 @@ memory_arena_push(memory_arena_t *arena, memi size) {
     return(result);
 }
 
-struct world_t {
-    tile_map_t *tile_map;
-};
-
 struct bitmap_t {
     s32 width;
     s32 height;
@@ -50,17 +46,17 @@ enum entity_type_t {
 
 struct low_entity_t {
     entity_type_t type;
-    tile_map_position_t pos;
+    world_position_t pos;
     f32 width;
     f32 height;
-    s32 d_tile_z; // NOTE(xkazu0x): this is for "stairs"
+    s32 d_tile_z; // note(xkazu0x): this is for "stairs"
     b32 collides;
 
     u32 high_entity_index;
 };
 
 struct high_entity_t {
-    vec2f pos; // NOTE(xkazu0x): relative to the camera
+    vec2f pos; // note(xkazu0x): relative to the camera
     vec2f d_pos;
     u32 tile_z;
     u32 direction;
@@ -79,7 +75,7 @@ struct game_state_t {
     world_t *world;
 
     u32 camera_following_entity_index;
-    tile_map_position_t camera_pos;
+    world_position_t camera_pos;
 
     u32 low_entity_count;
     low_entity_t low_entities[4096];
