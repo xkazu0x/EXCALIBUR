@@ -58,7 +58,7 @@ struct low_entity_t {
 struct high_entity_t {
     vec2f pos; // note(xkazu0x): relative to the camera
     vec2f d_pos;
-    u32 tile_z;
+    u32 chunk_z;
     u32 direction;
 
     u32 low_entity_index;
@@ -78,12 +78,12 @@ struct game_state_t {
     world_position_t camera_pos;
 
     u32 low_entity_count;
-    low_entity_t low_entities[4096];
+    low_entity_t low_entities[50000];
 
     u32 high_entity_count;
-    high_entity_t high_entities_[256];
+    high_entity_t high_entities_[1000];
     
-    u32 player_gamepad_index[GAMEPAD_COUNT_MAX];    
+    u32 player_gamepad_index[GAMEPAD_COUNT_MAX];
     bitmap_t player_sprites[4];
 };
 

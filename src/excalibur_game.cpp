@@ -10,7 +10,7 @@
 
 #include "excalibur_os.h"
 
-////////////////////////////////////////////////
+////////////////////////////////////
 // NOTE(xkazu0x): exclusive includes
 
 #include "excalibur_random.h"
@@ -223,7 +223,7 @@ entity_make_high(game_state_t *state, u32 low_index) {
             vec3f diff = subtract(state->world, &low_entity->pos, &state->camera_pos);
             high_entity->pos = vec2f{diff.x, diff.y};
             high_entity->d_pos = vec2f{0, 0};
-            high_entity->tile_z = low_entity->pos.tile_z;
+            high_entity->chunk_z = low_entity->pos.chunk_z;
             high_entity->direction = 0;
             high_entity->low_entity_index = low_index;
             
@@ -271,10 +271,8 @@ wall_add(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
     u32 entity_index = entity_add_low(state, ENTITY_TYPE_WALL);
     low_entity_t *entity = entity_get_low(state, entity_index);
     
-    entity->pos.tile_x = tile_x;
-    entity->pos.tile_y = tile_y;
-    entity->pos.tile_z = tile_z;
-    entity->height = state->world->tile_size_in_meters;
+    entity->pos = chunk_position_from_tile_position(state->world, tile_x, tile_y, tile_z);
+    entity->height = state->world->tile_side_in_meters;
     entity->width = entity->height;
     entity->collides = EX_TRUE;
     
@@ -287,8 +285,8 @@ player_add(game_state_t *state) {
     low_entity_t *entity = entity_get_low(state, entity_index);
     
     entity->pos = state->camera_pos;
-    entity->pos.tile_offset_.x = 0.0f;
-    entity->pos.tile_offset_.y = 0.0f;
+    entity->pos.offset_.x = 0.0f;
+    entity->pos.offset_.y = 0.0f;
     entity->height = 0.5f;
     entity->width = 1.0f;
     entity->collides = EX_TRUE;
@@ -418,7 +416,8 @@ player_move(game_state_t *state, entity_t entity, vec2f dd_pos, f32 delta) {
 
             high_entity_t *hit_high_entity = state->high_entities_ + hit_high_entity_index;
             low_entity_t *hit_low_entity = state->low_entities + hit_high_entity->low_entity_index;
-            entity.high->tile_z += hit_low_entity->d_tile_z;
+            // TODO(xkazu0x): stairs
+            //entity.high->tile_z += hit_low_entity->d_tile_z;
         } else {
             break;
         }
@@ -451,7 +450,6 @@ offset_and_check_frequency_by_area(game_state_t *state,
                                    vec2f offset,
                                    rect2f high_frequency_bounds) {
     // TODO(xkazu0x): clearly this has a bug...
-#if 1
     for (u32 entity_index = 1;
          entity_index < state->high_entity_count;
          ) {
@@ -463,17 +461,6 @@ offset_and_check_frequency_by_area(game_state_t *state,
             entity_make_low(state, entity_index);
         }
     }
-#else
-    for (u32 entity_index = 1;
-         entity_index < state->high_entity_count;
-         entity_index++) {
-        high_entity_t *high = state->high_entities_ + entity_index;
-        high->pos += offset;
-        if (!is_in_rect2f(high_frequency_bounds, high->pos)) {
-            entity_make_low(state, entity_index);
-        }
-    }
-#endif
 }
 
 internal void
@@ -486,11 +473,13 @@ camera_set(game_state_t *state, world_position_t new_camera_pos) {
     u32 tile_span_x = 17*3;
     u32 tile_span_y = 9*3;
     rect2f camera_bounds = rect2f_center_dim(vec2f_create(0.0f),
-                                             world->tile_size_in_meters*vec2f_create((f32)tile_span_x,
-                                                                                        (f32)tile_span_y));
+                                             world->tile_side_in_meters*vec2f_create((f32)tile_span_x,
+                                                                                     (f32)tile_span_y));
     vec2f entity_offset_for_frame = -vec2f{d_camera_pos.x, d_camera_pos.y};
     offset_and_check_frequency_by_area(state, entity_offset_for_frame, camera_bounds);
 
+    // TODO(xkazu0x): do this in terms of tile chunks
+#if 0
     s32 min_tile_x = new_camera_pos.tile_x - tile_span_x/2;
     s32 max_tile_x = new_camera_pos.tile_x + tile_span_x/2;
     s32 min_tile_y = new_camera_pos.tile_y - tile_span_y/2;
@@ -508,7 +497,8 @@ camera_set(game_state_t *state, world_position_t new_camera_pos) {
                 entity_make_high(state, entity_index);
             }
         }
-    }    
+    }
+#endif
 }
 
 extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
@@ -558,7 +548,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             // TODO(xkazu0x): random number generator
             EX_ASSERT(random_number_index < EX_ARRAY_COUNT(random_number_table));
             u32 random_choice;
-            if (door_up || door_down) {
+            if (1) { //(door_up || door_down) {
                 random_choice = random_number_table[random_number_index++] % 2;
             } else {
                 random_choice = random_number_table[random_number_index++] % 3;
@@ -637,16 +627,17 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     abs_tile_z = screen_base_z;
                 }
             } else if (random_choice == 1) {
-                screen_x++;
+                screen_x += 1;
             } else {
-                screen_y++;
+                screen_y += 1;
             }
         }
 
         world_position_t new_camera_pos = {};
-        new_camera_pos.tile_x = screen_base_x*tile_count_x + tile_count_x/2;
-        new_camera_pos.tile_y = screen_base_y*tile_count_y + tile_count_y/2;
-        new_camera_pos.tile_z = screen_base_z;
+        new_camera_pos = chunk_position_from_tile_position(state->world,
+                                                           screen_base_x*tile_count_x + tile_count_x/2,
+                                                           screen_base_y*tile_count_y + tile_count_y/2,
+                                                           screen_base_z);
         camera_set(state, new_camera_pos);
                 
         memory->initialized = EX_TRUE;
@@ -655,7 +646,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     world_t *world = state->world;
 
     s32 tile_size_in_pixels = 16;
-    f32 meters_to_pixels = (f32)tile_size_in_pixels / (f32)world->tile_size_in_meters;
+    f32 meters_to_pixels = (f32)tile_size_in_pixels / (f32)world->tile_side_in_meters;
 
     //////////////////////////
     // NOTE(xkazu0x): controls
@@ -709,24 +700,25 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     entity_t camera_following_entity = entity_get_high(state, state->camera_following_entity_index);
     if (camera_following_entity.high) {
         world_position_t new_camera_pos = state->camera_pos;
-        new_camera_pos.tile_z = camera_following_entity.low->pos.tile_z;
+        new_camera_pos.chunk_z = camera_following_entity.low->pos.chunk_z;
         
-#if 1
-        if (camera_following_entity.high->pos.x > ((((f32)tile_count_x)/2)*world->tile_size_in_meters)) {
-            new_camera_pos.tile_x += tile_count_x;
+#if 0
+        if (camera_following_entity.high->pos.x > (9.0f*world->tile_side_in_meters)) {
+            new_camera_pos.tile_x += 17;
         }
-        if (camera_following_entity.high->pos.x < -((((f32)tile_count_x)/2)*world->tile_size_in_meters)) {
-            new_camera_pos.tile_x -= tile_count_x;
+        if (camera_following_entity.high->pos.x < -(9.0f*world->tile_side_in_meters)) {
+            new_camera_pos.tile_x -= 17;
         }
-        if (camera_following_entity.high->pos.y > ((((f32)tile_count_y)/2)*world->tile_size_in_meters)) {
-            new_camera_pos.tile_y += tile_count_y;
+        if (camera_following_entity.high->pos.y > (5.0f*world->tile_side_in_meters)) {
+            new_camera_pos.tile_y += 9;
         }
-        if (camera_following_entity.high->pos.y < -((((f32)tile_count_y)/2)*world->tile_size_in_meters)) {
-            new_camera_pos.tile_y -= tile_count_y;
+        if (camera_following_entity.high->pos.y < -(5.0f*world->tile_side_in_meters)) {
+            new_camera_pos.tile_y -= 9;
         }
 #else
         new_camera_pos = camera_following_entity.low->pos;
 #endif
+        
         camera_set(state, new_camera_pos);
     }
     
