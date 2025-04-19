@@ -85,6 +85,7 @@ struct game_state_t {
     
     u32 player_gamepad_index[GAMEPAD_COUNT_MAX];
     bitmap_t player_sprites[4];
+    bitmap_t wall_sprite;
 };
 
 #endif // EXCALIBUR_GAME_H

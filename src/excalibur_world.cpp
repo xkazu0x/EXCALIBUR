@@ -98,7 +98,7 @@ recanonicalize_coord(world_t *world, s32 *chunk_index, f32 *chunk_offset) {
 }
 
 inline world_position_t
-map_into_tile_space(world_t *world, world_position_t base_pos, vec2f offset) {
+map_into_chunk_space(world_t *world, world_position_t base_pos, vec2f offset) {
     world_position_t result = base_pos;
     result.offset_ += offset;
     recanonicalize_coord(world, &result.chunk_x, &result.offset_.x);
@@ -156,12 +156,13 @@ entity_change_location(memory_arena_t *arena, world_t *world, u32 low_entity_ind
             world_chunk_t *chunk = get_world_chunk(world, old_pos->chunk_x, old_pos->chunk_y, old_pos->chunk_z);
             EX_ASSERT(chunk);
             if (chunk) {
+                b32 not_found = EX_TRUE;
                 world_entity_block_t *first_block = &chunk->entity_block;
                 for (world_entity_block_t *block = first_block;
-                     block;
+                     block && not_found;
                      block = block->next) {
                     for (u32 index = 0;
-                         index < block->entity_count;
+                         (index < block->entity_count) && not_found;
                          index++) {
                         if (block->low_entity_index[index] == low_entity_index) {
                             EX_ASSERT(first_block->entity_count > 0);
@@ -176,8 +177,8 @@ entity_change_location(memory_arena_t *arena, world_t *world, u32 low_entity_ind
                                     world->first_free = next_block;
                                 }
                             }
-                            block = 0;
-                            break;
+                            
+                            not_found = EX_FALSE;
                         }
                     }
                 }

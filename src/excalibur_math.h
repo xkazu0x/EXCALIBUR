@@ -104,13 +104,13 @@ internal inline vec2f operator/(vec2f v, f32 s);
 internal inline vec3f operator/(vec3f v, f32 s);
 internal inline vec4f operator/(vec4f v, f32 s);
 
-internal inline vec2f vec2f_hadamard(vec2f a, vec2f b);
-internal inline vec3f vec3f_hadamard(vec3f a, vec3f b);
-internal inline vec4f vec4f_hadamard(vec4f a, vec4f b);
+internal inline vec2f vec_hadamard(vec2f a, vec2f b);
+internal inline vec3f vec_hadamard(vec3f a, vec3f b);
+internal inline vec4f vec_hadamard(vec4f a, vec4f b);
 
-internal inline f32 vec2f_dot(vec2f a, vec2f b);
-internal inline f32 vec3f_dot(vec3f a, vec3f b);
-internal inline f32 vec4f_dot(vec4f a, vec4f b);
+internal inline f32 vec_dot(vec2f a, vec2f b);
+internal inline f32 vec_dot(vec3f a, vec3f b);
+internal inline f32 vec_dot(vec4f a, vec4f b);
 
 internal inline f32 length_sqr(vec2f v);
 internal inline f32 sqr(f32 f);
@@ -125,6 +125,10 @@ internal inline rect2f rect2f_min_dim(vec2f min, vec2f dim);
 internal inline rect2f rect2f_center_half_dim(vec2f center, vec2f half_dim);
 internal inline rect2f rect2f_center_dim(vec2f center, vec2f dim);
 
-internal inline b32 is_in_rect2f(rect2f rect, vec2f test);
+internal inline b32 is_in_rect(rect2f rect, vec2f test);
+
+internal inline vec2f rect_get_min_corner(rect2f rect);
+internal inline vec2f rect_get_max_corner(rect2f rect);
+internal inline vec2f rect_get_center(rect2f rect);
 
 #endif // EXCALIBUR_MATH_H

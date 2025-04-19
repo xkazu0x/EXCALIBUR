@@ -380,7 +380,7 @@ operator/(vec4f v, f32 s) {
 }
 
 internal inline vec2f
-vec2f_hadamard(vec2f a, vec2f b) {
+vec_hadamard(vec2f a, vec2f b) {
     vec2f result;
     result.x = a.x*b.x;
     result.y = a.y*b.y;
@@ -388,7 +388,7 @@ vec2f_hadamard(vec2f a, vec2f b) {
 }
 
 internal inline vec3f
-vec3f_hadamard(vec3f a, vec3f b) {
+vec_hadamard(vec3f a, vec3f b) {
     vec3f result;
     result.x = a.x*b.x;
     result.y = a.y*b.y;
@@ -397,7 +397,7 @@ vec3f_hadamard(vec3f a, vec3f b) {
 }
 
 internal inline vec4f
-vec4f_hadamard(vec4f a, vec4f b) {
+vec_hadamard(vec4f a, vec4f b) {
     vec4f result;
     result.x = a.x*b.x;
     result.y = a.y*b.y;
@@ -407,26 +407,26 @@ vec4f_hadamard(vec4f a, vec4f b) {
 }
 
 internal inline f32
-vec2f_dot(vec2f a, vec2f b) {
+vec_dot(vec2f a, vec2f b) {
     f32 result = a.x*b.x + a.y*b.y;
     return(result);
 }
 
 internal inline f32
-vec3f_dot(vec3f a, vec3f b) {
+vec_dot(vec3f a, vec3f b) {
     f32 result = a.x*b.x + a.y*b.y + a.z*b.z;
     return(result);
 }
 
 internal inline f32
-vec4f_dot(vec4f a, vec4f b) {
+vec_dot(vec4f a, vec4f b) {
     f32 result = a.x*b.x + a.y*b.y + a.z*b.z + a.w*b.w;
     return(result);
 }
 
 internal inline f32
 length_sqr(vec2f v) {
-    f32 result = vec2f_dot(v, v);
+    f32 result = vec_dot(v, v);
     return(result);
 }
 
@@ -467,10 +467,28 @@ rect2f_center_dim(vec2f center, vec2f dim) {
 }
 
 internal inline b32
-is_in_rect2f(rect2f rect, vec2f test) {
+is_in_rect(rect2f rect, vec2f test) {
     b32 result = ((test.x >= rect.min.x) &&
                   (test.y >= rect.min.y) &&
                   (test.x < rect.max.x) &&
                   (test.y < rect.max.y));
+    return(result);
+}
+
+internal inline vec2f
+rect_get_min_corner(rect2f rect) {
+    vec2f result = rect.min;
+    return(result);
+}
+
+internal inline vec2f
+rect_get_max_corner(rect2f rect) {
+    vec2f result = rect.max;
+    return(result);
+}
+
+internal inline vec2f
+rect_get_center(rect2f rect) {
+    vec2f result = 0.5f*(rect.min + rect.max);
     return(result);
 }
