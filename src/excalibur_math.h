@@ -44,20 +44,20 @@ union vec4f {
     f32 e[4];
 };
 
-internal inline vec2i vec2i_create(s32 x, s32 y);
-internal inline vec2i vec2i_create(s32 s);
+internal inline vec2i _vec2i(s32 x, s32 y);
+internal inline vec2i _vec2i(s32 s);
 
-internal inline vec2f vec2f_create(f32 x, f32 y);
-internal inline vec2f vec2f_create(f32 f);
+internal inline vec2f _vec2f(f32 x, f32 y);
+internal inline vec2f _vec2f(f32 f);
 
-internal inline vec3f vec3f_create(f32 x, f32 y, f32 z);
-internal inline vec3f vec3f_create(vec2f v, f32 z);
-internal inline vec3f vec3f_create(f32 f);
+internal inline vec3f _vec3f(f32 x, f32 y, f32 z);
+internal inline vec3f _vec3f(vec2f v, f32 z);
+internal inline vec3f _vec3f(f32 f);
 
-internal inline vec4f vec4f_create(f32 x, f32 y, f32 z, f32 w);
-internal inline vec4f vec4f_create(vec2f v, f32 z, f32 w);
-internal inline vec4f vec4f_create(vec3f v, f32 w);
-internal inline vec4f vec4f_create(f32 f);
+internal inline vec4f _vec4f(f32 x, f32 y, f32 z, f32 w);
+internal inline vec4f _vec4f(vec2f v, f32 z, f32 w);
+internal inline vec4f _vec4f(vec3f v, f32 w);
+internal inline vec4f _vec4f(f32 f);
 
 internal inline vec2i operator+(vec2i a, vec2i b);
 internal inline vec2f operator+(vec2f a, vec2f b);

@@ -46,6 +46,12 @@ enum entity_type_t {
     ENTITY_TYPE_MONSTER,
 };
 
+#define HIT_POINT_FILLED_MAX 4
+struct hit_point_t {
+    u8 flags;
+    u8 filled_amount;
+};
+
 struct low_entity_t {
     entity_type_t type;
     world_position_t pos;
@@ -55,6 +61,10 @@ struct low_entity_t {
     b32 collides;
 
     u32 high_entity_index;
+
+    // TODO(xkazu0x): should hit point be entities?
+    u32 hit_point_max;
+    hit_point_t hit_points[16];
 };
 
 struct high_entity_t {
@@ -79,12 +89,11 @@ struct entity_t {
 struct entity_visible_piece_t {
     bitmap_t *bitmap;
     vec3f offset;
-    f32 alpha;
-};
-
-struct entity_visible_piece_group_t {
-    u32 piece_count;
-    entity_visible_piece_t pieces[8];
+    
+    vec4f color;
+    vec2f size;
+    
+    f32 entity_zc;
 };
 
 struct game_state_t {
@@ -104,6 +113,18 @@ struct game_state_t {
     bitmap_t player_sprites[4];
     bitmap_t wall_sprite;
     bitmap_t bat_sprite;
+    bitmap_t shadow_sprite;
+
+    f32 meters_to_pixels;
+};
+
+// TODO(xkazu0x): this is dumb, this should just be part of
+// the renderer pushbuffer - add correction of coordinates
+// in there and be done with it.
+struct entity_visible_piece_group_t {
+    game_state_t *game_state;
+    u32 piece_count;
+    entity_visible_piece_t pieces[32];
 };
 
 #endif // EXCALIBUR_GAME_H

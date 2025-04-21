@@ -1,5 +1,5 @@
 internal inline vec2i
-vec2i_create(s32 x, s32 y) {
+_vec2i(s32 x, s32 y) {
     vec2i result;
     result.x = x;
     result.y = y;
@@ -7,7 +7,7 @@ vec2i_create(s32 x, s32 y) {
 }
 
 internal inline vec2i
-vec2i_create(s32 s) {
+_vec2i(s32 s) {
     vec2i result;
     result.x = s;
     result.y = s;
@@ -15,7 +15,7 @@ vec2i_create(s32 s) {
 }
 
 internal inline vec2f
-vec2f_create(f32 x, f32 y) {
+_vec2f(f32 x, f32 y) {
     vec2f result;
     result.x = x;
     result.y = y;
@@ -23,7 +23,7 @@ vec2f_create(f32 x, f32 y) {
 }
 
 internal inline vec2f
-vec2f_create(f32 f) {
+_vec2f(f32 f) {
     vec2f result;
     result.x = f;
     result.y = f;
@@ -31,7 +31,7 @@ vec2f_create(f32 f) {
 }
 
 internal inline vec3f
-vec3f_create(f32 x, f32 y, f32 z) {
+_vec3f(f32 x, f32 y, f32 z) {
     vec3f result;
     result.x = x;
     result.y = y;
@@ -40,7 +40,7 @@ vec3f_create(f32 x, f32 y, f32 z) {
 }
 
 internal inline vec3f
-vec3f_create(vec2f v, f32 z) {
+_vec3f(vec2f v, f32 z) {
     vec3f result;
     result.x = v.x;
     result.y = v.y;
@@ -49,7 +49,7 @@ vec3f_create(vec2f v, f32 z) {
 }
 
 internal inline vec3f
-vec3f_create(f32 f) {
+_vec3f(f32 f) {
     vec3f result;
     result.x = f;
     result.y = f;
@@ -58,7 +58,7 @@ vec3f_create(f32 f) {
 }
 
 internal inline vec4f
-vec4f_create(f32 x, f32 y, f32 z, f32 w) {
+_vec4f(f32 x, f32 y, f32 z, f32 w) {
     vec4f result;
     result.x = x;
     result.y = y;
@@ -68,7 +68,7 @@ vec4f_create(f32 x, f32 y, f32 z, f32 w) {
 }
 
 internal inline vec4f
-vec4f_create(vec2f v, f32 z, f32 w) {
+_vec4f(vec2f v, f32 z, f32 w) {
     vec4f result;
     result.x = v.x;
     result.y = v.y;
@@ -78,7 +78,7 @@ vec4f_create(vec2f v, f32 z, f32 w) {
 }
 
 internal inline vec4f
-vec4f_create(vec3f v, f32 w) {
+_vec4f(vec3f v, f32 w) {
     vec4f result;
     result.x = v.x;
     result.y = v.y;
@@ -88,7 +88,7 @@ vec4f_create(vec3f v, f32 w) {
 }
 
 internal inline vec4f
-vec4f_create(f32 f) {
+_vec4f(f32 f) {
     vec4f result;
     result.x = f;
     result.y = f;

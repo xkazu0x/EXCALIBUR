@@ -31,8 +31,8 @@ get_gamepad(os_input_t *input, u32 index) {
 
 internal void
 draw_rectangle(os_framebuffer_t *framebuffer, vec2f min, vec2f max, vec3f color) {
-    vec2i mini = vec2i_create(0, 0);
-    vec2i maxi = vec2i_create(0, 0);
+    vec2i mini = _vec2i(0, 0);
+    vec2i maxi = _vec2i(0, 0);
     
     mini.x = round_f32_to_s32(min.x);
     mini.y = round_f32_to_s32(min.y);
@@ -103,7 +103,7 @@ draw_bitmap(os_framebuffer_t *framebuffer, bitmap_t *bitmap,
             f32 dest_red = (f32)((*dest >> 16) & 0xFF);
             f32 dest_green = (f32)((*dest >> 8) & 0xFF);
             f32 dest_blue = (f32)((*dest >> 0) & 0xFF);
-            
+
             f32 red = (1.0f-alpha)*dest_red + alpha*src_red;
             f32 green = (1.0f-alpha)*dest_green + alpha*src_green;
             f32 blue = (1.0f-alpha)*dest_blue + alpha*src_blue;
@@ -196,7 +196,7 @@ inline vec2f
 get_camera_space_pos(game_state_t *state, low_entity_t *low_entity) {
     // NOTE(xkazu0x): map the entity in camera space
     vec3f diff = subtract(state->world, &low_entity->pos, &state->camera_pos);
-    vec2f result = vec2f_create(diff.x, diff.y);
+    vec2f result = _vec2f(diff.x, diff.y);
     return(result);
 }
 
@@ -211,7 +211,7 @@ make_entity_high(game_state_t *state, low_entity_t *low_entity, u32 low_index, v
             high_entity = state->high_entities_ + high_index;
 
             high_entity->pos = camera_space_pos;
-            high_entity->d_pos = vec2f_create(0.0f);
+            high_entity->d_pos = _vec2f(0.0f);
             high_entity->chunk_z = low_entity->pos.chunk_z;
             high_entity->direction = 0;
             high_entity->low_entity_index = low_index;
@@ -321,8 +321,10 @@ add_player(game_state_t *state) {
     world_position_t pos = state->camera_pos;
     add_low_entity_result entity = add_low_entity(state, ENTITY_TYPE_PLAYER, &pos);
 
-    //entity.low->height = 0.5f;
-    //entity.low->width = 1.0f;
+    entity.low->hit_point_max = 3;
+    entity.low->hit_points[2].filled_amount = HIT_POINT_FILLED_MAX;
+    entity.low->hit_points[0] = entity.low->hit_points[1] = entity.low->hit_points[2];
+    
     // TODO(xkazu0x): colliding is not happening in perfect tile size
     entity.low->height = 0.9f*state->world->tile_side_in_meters;
     entity.low->width = entity.low->height;
@@ -437,32 +439,32 @@ move_entity(game_state_t *state, entity_t entity, vec2f dd_pos, f32 delta) {
                     f32 dim_w = test_entity.low->width + entity.low->width;
                     f32 dim_h = test_entity.low->width + entity.low->height;
             
-                    vec2f min_corner = -0.5f*vec2f_create(dim_w, dim_h);
-                    vec2f max_corner =  0.5f*vec2f_create(dim_w, dim_h);
+                    vec2f min_corner = -0.5f*_vec2f(dim_w, dim_h);
+                    vec2f max_corner =  0.5f*_vec2f(dim_w, dim_h);
                 
                     vec2f rel = entity.high->pos - test_entity.high->pos;
 
                     if (wall_test(min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
                                   &t_min, min_corner.y, max_corner.y)) {
-                        wall_normal = vec2f_create(-1.0f, 0.0f);
+                        wall_normal = _vec2f(-1.0f, 0.0f);
                         hit_high_entity_index = test_high_entity_index;
                     }
                 
                     if (wall_test(max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
                                   &t_min, min_corner.y, max_corner.y)) {
-                        wall_normal = vec2f_create(1.0f, 0.0f);
+                        wall_normal = _vec2f(1.0f, 0.0f);
                         hit_high_entity_index = test_high_entity_index;
                     }
                 
                     if (wall_test(min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
                                   &t_min, min_corner.x, max_corner.x)) {
-                        wall_normal = vec2f_create(0.0f, -1.0f);
+                        wall_normal = _vec2f(0.0f, -1.0f);
                         hit_high_entity_index = test_high_entity_index;
                     }
                 
                     if (wall_test(max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
                                   &t_min, min_corner.x, max_corner.x)) {
-                        wall_normal = vec2f_create(0.0f, 1.0f);
+                        wall_normal = _vec2f(0.0f, 1.0f);
                         hit_high_entity_index = test_high_entity_index;
                     }
                 }
@@ -553,10 +555,10 @@ set_camera(game_state_t *state, world_position_t new_camera_pos) {
 
     u32 tile_span_x = 17*3;
     u32 tile_span_y = 9*3;
-    rect2f camera_bounds = rect2f_center_dim(vec2f_create(0.0f),
-                                             world->tile_side_in_meters*vec2f_create((f32)tile_span_x,
+    rect2f camera_bounds = rect2f_center_dim(_vec2f(0.0f),
+                                             world->tile_side_in_meters*_vec2f((f32)tile_span_x,
                                                                                      (f32)tile_span_y));
-    vec2f entity_offset_for_frame = -vec2f_create(camera_dpos.x, camera_dpos.y);
+    vec2f entity_offset_for_frame = -_vec2f(camera_dpos.x, camera_dpos.y);
     offset_and_check_frequency_by_area(state, entity_offset_for_frame, camera_bounds);
     
     EX_ASSERT(validate_entity_pairs(state));
@@ -595,12 +597,28 @@ set_camera(game_state_t *state, world_position_t new_camera_pos) {
 }
 
 internal void
-push_piece(entity_visible_piece_group_t *group, bitmap_t *bitmap, vec3f offset, f32 alpha = 1.0f) {
+push_piece(entity_visible_piece_group_t *group, bitmap_t *bitmap,
+           vec3f offset, vec2f size, vec4f color, f32 entity_zc = 1.0f) {
+
     EX_ASSERT(group->piece_count < EX_ARRAY_COUNT(group->pieces));
     entity_visible_piece_t *piece = group->pieces + group->piece_count++;
     piece->bitmap = bitmap;
-    piece->offset = offset;
-    piece->alpha = alpha;
+    piece->offset = group->game_state->meters_to_pixels*_vec3f(offset.x, -offset.y, offset.z);
+    piece->color = color;
+    piece->size = size;
+    piece->entity_zc = entity_zc;
+}
+
+internal void
+push_bitmap(entity_visible_piece_group_t *group, bitmap_t *bitmap, vec3f offset,
+            f32 alpha = 1.0f, f32 entity_zc = 1.0f) {
+    push_piece(group, bitmap, offset, _vec2f(0.0f), _vec4f(_vec3f(1.0f), alpha), entity_zc);
+}
+
+internal void
+push_rect(entity_visible_piece_group_t *group, vec3f offset, vec2f size, vec4f color,
+          f32 entity_zc = 1.0f) {
+    push_piece(group, 0, offset, size, color, entity_zc);
 }
 
 internal entity_t
@@ -635,8 +653,8 @@ update_familiar(game_state_t *state, entity_t entity, f32 delta) {
         }
     }
 
-    vec2f dd_pos = vec2f_create(0.0f);
-    if (closest_player.high && (closest_player_distance_sqr > 0.1f)) {
+    vec2f dd_pos = _vec2f(0.0f);
+    if (closest_player.high && (closest_player_distance_sqr > sqr(2.5f))) {
         // TODO(xkazu0x): pull speed out of move entity
         f32 acceleration = 0.5f;
         f32 lenght_normalized = acceleration / sqrt_f32(closest_player_distance_sqr);
@@ -675,6 +693,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             debug_load_bitmap(memory->debug_os_read_file, thread, "res/skull_left.bmp");
         state->wall_sprite = debug_load_bitmap(memory->debug_os_read_file, thread, "res/wall.bmp");
         state->bat_sprite = debug_load_bitmap(memory->debug_os_read_file, thread, "res/bat.bmp");
+        state->shadow_sprite = debug_load_bitmap(memory->debug_os_read_file, thread, "res/shadow.bmp");
         
         state->world_arena = memory_arena_create(memory->permanent_storage_size - sizeof(game_state_t),
                                                (u8 *)memory->permanent_storage + sizeof(game_state_t));
@@ -682,6 +701,9 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         world_t *world = state->world;
         world_initialize(world, 1.4f);
 
+        s32 tile_size_in_pixels = 16;
+        state->meters_to_pixels = (f32)tile_size_in_pixels / (f32)world->tile_side_in_meters;
+        
         u32 screen_base_x = 0;
         u32 screen_base_y = 0;
         u32 screen_base_z = 0;
@@ -796,7 +818,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
 
         add_monster(state, camera_tile_x + 2, camera_tile_y + 2, camera_tile_z);
         for (u32 familiar_index = 0;
-             familiar_index < 20;
+             familiar_index < 1;
              ++familiar_index) {
             s32 familiar_offset_x = (random_number_table[random_number_index++] % 10) - 5;
             s32 familiar_offset_y = (random_number_table[random_number_index++] % 10) - 3;
@@ -811,9 +833,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     }
 
     world_t *world = state->world;
-
-    s32 tile_size_in_pixels = 16;
-    f32 meters_to_pixels = (f32)tile_size_in_pixels / (f32)world->tile_side_in_meters;
+    f32 meters_to_pixels = state->meters_to_pixels;
 
     ////////////////////////////////
     // NOTE(xkazu0x): player control
@@ -838,7 +858,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             entity_t controlling_entity = force_entity_into_high(state, low_entity_index);
             
             vec2f dd_pos = {};
-            dd_pos = vec2f_create(gamepad->left_stick.x, gamepad->left_stick.y);
+            dd_pos = _vec2f(gamepad->left_stick.x, gamepad->left_stick.y);
 
             // NOTE(xkazu0x): combine keyboard and gamepad inputs
             // only for the first player
@@ -890,15 +910,27 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     
     ////////////////////////
     // NOTE(xkazu0x): render
-    draw_rectangle(framebuffer,
-                   vec2f_create(0.0f),
-                   vec2f_create(framebuffer->width, framebuffer->height),
-                   vec3f_create(0.2f, 0.3f, 0.3f));
+    for (u32 y = 0; y < 12; y++) {
+        for (u32 x = 0; x < 20; x++) {
+            vec3f color = _vec3f(57.0f/255.0f, 44.0f/255.0f, 49.0f/255.0f);
+            
+            if (((y % 2 == 0) && (x % 2 == 0)) ||
+                ((y % 2 == 1) && (x % 2 == 1))) {
+                color = _vec3f(74.0f/255.0f, 60.0f/255.0f, 74.0f/255.0f);
+            }
+            
+            vec2f min = _vec2f(x*16, y*16);
+            vec2f max = _vec2f(min.x + 16, min.y + 16);
+            
+            draw_rectangle(framebuffer, min, max, color);
+        }
+    }
     
     f32 screen_center_x = 0.5f*((f32)framebuffer->width);
     f32 screen_center_y = 0.5f*((f32)framebuffer->height);
 
     entity_visible_piece_group_t piece_group;
+    piece_group.game_state = state;
     for (u32 high_entity_index = 1;
          high_entity_index < state->high_entity_count;
          high_entity_index++) {
@@ -914,25 +946,54 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         
         f32 delta = clock->delta_seconds;
 
+        f32 shadow_alpha = 1.0f - 0.5f*high_entity->z;
+        if (shadow_alpha < 0.0f) shadow_alpha = 0.0f;
+        
         switch (low_entity->type) {
             case ENTITY_TYPE_PLAYER: {
                 bitmap_t *sprite = &state->player_sprites[high_entity->direction];
-                push_piece(&piece_group, sprite, vec3f_create(0.0f));
+                push_bitmap(&piece_group, &state->shadow_sprite, _vec3f(0.0f), shadow_alpha, 0.0f);
+                push_bitmap(&piece_group, sprite, _vec3f(0.0f, 0.0f, -0.4f));
+
+                if (low_entity->hit_point_max >= 1) {
+                    vec2f health_dim = _vec2f(0.125f*1.4f);
+                    f32 spacing_x = 1.5f*health_dim.x;
+                    f32 offset_x = health_dim.x*low_entity->hit_point_max + spacing_x/2;
+                    vec2f hit_pos = _vec2f((-0.5f*(low_entity->hit_point_max - 1)*spacing_x) + offset_x, 0.7f);
+                    vec2f hit_dpos = _vec2f(spacing_x, 0.0f);
+                        
+                    for (u32 health_index = 0;
+                         health_index < low_entity->hit_point_max;
+                         health_index++) {
+                        hit_point_t *hit_point = low_entity->hit_points + health_index;
+                        vec4f color = _vec4f(222.0f/255.0f, 214.0f/255.0f, 222.0f/255.0f, 1.0f);
+                        if (hit_point->filled_amount == 0) {
+                            color = _vec4f(164.0f/255.0f, 157.0f/255.0f, 164.0f/255.0f, 1.0f);
+                        }
+                        push_rect(&piece_group, _vec3f(hit_pos, 0.0f), health_dim, color, 0.0f);
+                        hit_pos += hit_dpos;
+                    }
+                }
             } break;
             case ENTITY_TYPE_WALL: {
-                push_piece(&piece_group, &state->wall_sprite, vec3f_create(0.0f));
+                push_bitmap(&piece_group, &state->wall_sprite, _vec3f(0.0f));
             } break;
             case ENTITY_TYPE_FAMILIAR: {
                 update_familiar(state, entity, delta);
+                
                 entity.high->t_bob += delta;
                 if (entity.high->t_bob > (2.0f*pi32)) {
                     entity.high->t_bob -= (2.0f*pi32);
                 }
-                push_piece(&piece_group, &state->bat_sprite, vec3f_create(0.0f, 0.0f, 2.0f*sin_f32(5.0f*entity.high->t_bob)));
+
+                f32 bob_sin = sin_f32(5.0f*entity.high->t_bob);
+                
+                push_bitmap(&piece_group, &state->shadow_sprite, _vec3f(0.0f), (0.5f*shadow_alpha) + 0.2f*bob_sin, 0.0f);
+                push_bitmap(&piece_group, &state->bat_sprite, _vec3f(0.0f, 0.6f, 0.2f*bob_sin));
             } break;
             case ENTITY_TYPE_MONSTER: {
                 update_monster(state, entity, delta);
-                push_piece(&piece_group, &state->player_sprites[2], vec3f_create(0.0f));
+                push_bitmap(&piece_group, &state->player_sprites[2], _vec3f(0.0f));
             } break;
             default: {
                 INVALID_CODE_PATH();
@@ -944,21 +1005,26 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         f32 entity_z = -meters_to_pixels*high_entity->z;
         
 #if 0
-        vec2f entity_left_top = vec2f_create(entity_ground_point_x - 0.5f*meters_to_pixels*low_entity->width,
-                                             entity_ground_point_y - 0.5f*meters_to_pixels*low_entity->height);
-        vec2f entity_width_height = vec2f_create(low_entity->width, low_entity->height);
-        // draw_rectangle(framebuffer,
-        //                entity_left_top,
-        //                entity_left_top + meters_to_pixels*entity_width_height,
-        //                vec3f_create(0.0f, 0.0f, 1.0f));
+        vec2f entity_left_top = _vec2f(entity_ground_point_x - 0.5f*meters_to_pixels*low_entity->width,
+                                       entity_ground_point_y - 0.5f*meters_to_pixels*low_entity->height);
+        vec2f entity_width_height = _vec2f(low_entity->width, low_entity->height);
+        draw_rectangle(framebuffer,
+                       entity_left_top,
+                       entity_left_top + meters_to_pixels*entity_width_height,
+                       _vec3f(0.0f, 0.0f, 1.0f));
 #endif
 
         for (u32 piece_index = 0; piece_index < piece_group.piece_count; piece_index++) {
             entity_visible_piece_t *piece = piece_group.pieces + piece_index;
-            draw_bitmap(framebuffer, piece->bitmap,
-                        entity_ground_point_x + piece->offset.x,
-                        entity_ground_point_y + piece->offset.y + piece->offset.z + entity_z,
-                        piece->alpha);
+            vec2f center = _vec2f(entity_ground_point_x + piece->offset.x,
+                                  entity_ground_point_y + piece->offset.y + piece->offset.z + piece->entity_zc*entity_z);
+            if (piece->bitmap) {
+                draw_bitmap(framebuffer, piece->bitmap, center.x, center.y, piece->color.a);
+            } else {
+                vec2f half_size = 0.5f*meters_to_pixels*piece->size;
+                vec3f color = _vec3f(piece->color.r, piece->color.g, piece->color.b);
+                draw_rectangle(framebuffer, center - half_size, center + half_size, color);
+            }
         }
     }
 }
