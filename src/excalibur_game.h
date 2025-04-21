@@ -40,10 +40,11 @@ struct bitmap_t {
 
 enum entity_type_t {
     ENTITY_TYPE_NULL,
-    ENTITY_TYPE_PLAYER,
     ENTITY_TYPE_WALL,
+    ENTITY_TYPE_PLAYER,
     ENTITY_TYPE_FAMILIAR,
     ENTITY_TYPE_MONSTER,
+    ENTITY_TYPE_SWORD,
 };
 
 #define HIT_POINT_FILLED_MAX 4
@@ -54,9 +55,11 @@ struct hit_point_t {
 
 struct low_entity_t {
     entity_type_t type;
+    
     world_position_t pos;
     f32 width;
     f32 height;
+    
     s32 d_tile_z; // note(xkazu0x): this is for "stairs"
     b32 collides;
 
@@ -65,6 +68,9 @@ struct low_entity_t {
     // TODO(xkazu0x): should hit point be entities?
     u32 hit_point_max;
     hit_point_t hit_points[16];
+
+    u32 sword_low_index;
+    f32 distance_remaining;
 };
 
 struct high_entity_t {
@@ -114,6 +120,7 @@ struct game_state_t {
     bitmap_t wall_sprite;
     bitmap_t bat_sprite;
     bitmap_t shadow_sprite;
+    bitmap_t sword_sprite;
 
     f32 meters_to_pixels;
 };

@@ -2,6 +2,21 @@
 #define WORLD_CHUNK_UNINITIALIZED s32_max
 #define TILES_PER_CHUNK 16
 
+inline world_position_t
+null_position(void) {
+    world_position_t result = {};
+    
+    result.chunk_x = WORLD_CHUNK_UNINITIALIZED;
+    
+    return(result);
+}
+
+inline b32
+is_valid(world_position_t pos) {
+    b32 result = (pos.chunk_x != WORLD_CHUNK_UNINITIALIZED);
+    return(result);
+}
+
 inline b32
 is_canonical(world_t *world, f32 tile_rel) {
     b32 result = ((tile_rel >= -0.5f*world->chunk_side_in_meters) &&
@@ -159,8 +174,11 @@ centered_chunk_point(u32 chunk_x, u32 chunk_y, u32 chunk_z) {
 }
 
 inline void
-entity_change_location(memory_arena_t *arena, world_t *world, u32 low_entity_index,
-                       world_position_t *old_pos, world_position_t *new_pos) {
+entity_change_location_raw(memory_arena_t *arena, world_t *world, u32 low_entity_index,
+                           world_position_t *old_pos, world_position_t *new_pos) {
+    EX_ASSERT(!old_pos || is_valid(*old_pos));
+    EX_ASSERT(!new_pos || is_valid(*new_pos));
+    
     if (old_pos && are_in_same_chunk(world, old_pos, new_pos)) {
         // NOTE(xkazu0x): leave entity where it is
     } else {
@@ -197,27 +215,40 @@ entity_change_location(memory_arena_t *arena, world_t *world, u32 low_entity_ind
                 }
             }
         }
+        if (new_pos) {
+            // NOTE(xkazu0x): insert the entity into its new entity block
+            world_chunk_t *chunk = get_world_chunk(world, new_pos->chunk_x, new_pos->chunk_y, new_pos->chunk_z, arena);
+            EX_ASSERT(chunk);
         
-        // NOTE(xkazu0x): insert the entity into its new entity block
-        world_chunk_t *chunk = get_world_chunk(world, new_pos->chunk_x, new_pos->chunk_y, new_pos->chunk_z, arena);
-        EX_ASSERT(chunk);
-        
-        world_entity_block_t *block = &chunk->entity_block;
-        if (block->entity_count == EX_ARRAY_COUNT(block->low_entity_index)) {
-            // NOTE(xkazu0x): we're out of room, get a new block
-            world_entity_block_t *old_block = world->first_free;
-            if (old_block) {
-                world->first_free = old_block->next;
-            } else {
-                old_block = (world_entity_block_t *)memory_arena_push(arena, sizeof(world_entity_block_t));
-            }
+            world_entity_block_t *block = &chunk->entity_block;
+            if (block->entity_count == EX_ARRAY_COUNT(block->low_entity_index)) {
+                // NOTE(xkazu0x): we're out of room, get a new block
+                world_entity_block_t *old_block = world->first_free;
+                if (old_block) {
+                    world->first_free = old_block->next;
+                } else {
+                    old_block = (world_entity_block_t *)memory_arena_push(arena, sizeof(world_entity_block_t));
+                }
             
-            *old_block = *block;
-            block->next = old_block;
-            block->entity_count = 0;
-        }
+                *old_block = *block;
+                block->next = old_block;
+                block->entity_count = 0;
+            }
 
-        EX_ASSERT(block->entity_count < EX_ARRAY_COUNT(block->low_entity_index));
-        block->low_entity_index[block->entity_count++] = low_entity_index;
+            EX_ASSERT(block->entity_count < EX_ARRAY_COUNT(block->low_entity_index));
+            block->low_entity_index[block->entity_count++] = low_entity_index;
+        }
+    }
+}
+
+internal void
+entity_change_location(memory_arena_t *arena, world_t *world,
+                       u32 low_entity_index, low_entity_t *low_entity,
+                       world_position_t *old_pos, world_position_t *new_pos) {
+    entity_change_location_raw(arena, world, low_entity_index, old_pos, new_pos);
+    if (new_pos) {
+        low_entity->pos = *new_pos;
+    } else {
+        low_entity->pos = null_position();
     }
 }

@@ -243,11 +243,13 @@ make_entity_high(game_state_t *state, u32 low_index) {
 internal entity_t
 force_entity_into_high(game_state_t *state, u32 low_index) {
     entity_t result = {};
+    
     if ((low_index > 0) && (low_index < state->low_entity_count)) {
         result.low_index = low_index;
         result.low = state->low_entities + low_index;
         result.high = make_entity_high(state, low_index);
     }
+    
     return(result);
 }
 
@@ -292,10 +294,7 @@ add_low_entity(game_state_t *state, entity_type_t type, world_position_t *pos) {
     *low_entity = {};
     low_entity->type = type;
 
-    if (pos) {
-        low_entity->pos = *pos;
-        entity_change_location(&state->world_arena, state->world, entity_index, 0, pos);
-    }
+    entity_change_location(&state->world_arena, state->world, entity_index, low_entity, 0, pos);
     
     add_low_entity_result result = {};
     result.low_index = entity_index;
@@ -316,36 +315,51 @@ add_wall(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
     return(entity);
 }
 
-internal add_low_entity_result
-add_player(game_state_t *state) {
-    world_position_t pos = state->camera_pos;
-    add_low_entity_result entity = add_low_entity(state, ENTITY_TYPE_PLAYER, &pos);
-
-    entity.low->hit_point_max = 3;
-    entity.low->hit_points[2].filled_amount = HIT_POINT_FILLED_MAX;
-    entity.low->hit_points[0] = entity.low->hit_points[1] = entity.low->hit_points[2];
-    
-    // TODO(xkazu0x): colliding is not happening in perfect tile size
-    entity.low->height = 0.9f*state->world->tile_side_in_meters;
-    entity.low->width = entity.low->height;
-    entity.low->collides = EX_TRUE;
-    
-    if (state->camera_following_entity_index == 0) {
-        state->camera_following_entity_index = entity.low_index;
+internal void
+init_hit_points(low_entity_t *low_entity, u32 hit_point_count) {
+    EX_ASSERT(hit_point_count < EX_ARRAY_COUNT(low_entity->hit_points));
+    low_entity->hit_point_max = hit_point_count;
+    for (u32 hit_point_index = 0;
+         hit_point_index < hit_point_count;
+         hit_point_index++) {
+        hit_point_t *hit_point = low_entity->hit_points + hit_point_index;
+        hit_point->flags = 0;
+        hit_point->filled_amount = HIT_POINT_FILLED_MAX;
     }
+}
+
+internal add_low_entity_result
+add_sword(game_state_t *state) {
+    add_low_entity_result entity = add_low_entity(state, ENTITY_TYPE_SWORD, 0);
+    
+    entity.low->height = state->world->tile_side_in_meters;
+    entity.low->width = entity.low->height;
+    entity.low->collides = EX_FALSE;
     
     return(entity);
 }
 
 internal add_low_entity_result
-add_monster(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
-    world_position_t pos = chunk_position_from_tile_position(state->world, tile_x, tile_y, tile_z);
-    add_low_entity_result entity = add_low_entity(state, ENTITY_TYPE_MONSTER, &pos);
+add_player(game_state_t *state) {
+    world_position_t pos = state->camera_pos;
+    add_low_entity_result entity = add_low_entity(state, ENTITY_TYPE_PLAYER, &pos);
     
-    entity.low->height = state->world->tile_side_in_meters;
+    // TODO(xkazu0x): colliding is not happening in perfect tile size,
+    // theres is something sketchy on how we are representing the
+    // colliding dimensions
+    entity.low->height = 0.9f*state->world->tile_side_in_meters;
     entity.low->width = entity.low->height;
     entity.low->collides = EX_TRUE;
+    
+    init_hit_points(entity.low, 3);
 
+    add_low_entity_result sword = add_sword(state);
+    entity.low->sword_low_index = sword.low_index;
+    
+    if (state->camera_following_entity_index == 0) {
+        state->camera_following_entity_index = entity.low_index;
+    }
+    
     return(entity);
 }
 
@@ -358,6 +372,20 @@ add_familiar(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
     entity.low->width = entity.low->height;
     entity.low->collides = EX_TRUE;
 
+    return(entity);
+}
+
+internal add_low_entity_result
+add_monster(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
+    world_position_t pos = chunk_position_from_tile_position(state->world, tile_x, tile_y, tile_z);
+    add_low_entity_result entity = add_low_entity(state, ENTITY_TYPE_MONSTER, &pos);
+    
+    entity.low->height = state->world->tile_side_in_meters;
+    entity.low->width = entity.low->height;
+    entity.low->collides = EX_TRUE;
+    
+    init_hit_points(entity.low, 5);
+    
     return(entity);
 }
 
@@ -507,8 +535,7 @@ move_entity(game_state_t *state, entity_t entity, vec2f dd_pos, f32 delta) {
 
     world_position_t new_pos = map_into_chunk_space(state->world, state->camera_pos, entity.high->pos);
     entity_change_location(&state->world_arena, state->world,
-                           entity.low_index, &entity.low->pos, &new_pos);
-    entity.low->pos = new_pos;
+                           entity.low_index, entity.low, &entity.low->pos, &new_pos);
 }
 
 inline b32
@@ -672,6 +699,29 @@ update_monster(game_state_t *state, entity_t entity, f32 delta) {
 
 }
 
+internal void
+draw_hit_points(entity_visible_piece_group_t *piece_group, low_entity_t *low_entity) {
+    if (low_entity->hit_point_max >= 1) {
+        vec2f health_dim = _vec2f(0.125f*1.4f);
+        f32 spacing_x = 1.5f*health_dim.x;
+        f32 offset_x = (low_entity->width + (spacing_x/2))/2;
+        vec2f hit_pos = _vec2f((-0.5f*(low_entity->hit_point_max - 1)*spacing_x) + offset_x, 0.7f);
+        vec2f hit_dpos = _vec2f(spacing_x, 0.0f);
+                        
+        for (u32 health_index = 0;
+             health_index < low_entity->hit_point_max;
+             health_index++) {
+            hit_point_t *hit_point = low_entity->hit_points + health_index;
+            vec4f color = _vec4f(222.0f/255.0f, 214.0f/255.0f, 222.0f/255.0f, 1.0f);
+            if (hit_point->filled_amount == 0) {
+                color = _vec4f(164.0f/255.0f, 157.0f/255.0f, 164.0f/255.0f, 1.0f);
+            }
+            push_rect(piece_group, _vec3f(hit_pos, 0.0f), health_dim, color, 0.0f);
+            hit_pos += hit_dpos;
+        }
+    }
+}
+
 extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     EX_ASSERT(sizeof(game_state_t) <= memory->permanent_storage_size);
     game_state_t *state = (game_state_t *)memory->permanent_storage;
@@ -694,6 +744,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         state->wall_sprite = debug_load_bitmap(memory->debug_os_read_file, thread, "res/wall.bmp");
         state->bat_sprite = debug_load_bitmap(memory->debug_os_read_file, thread, "res/bat.bmp");
         state->shadow_sprite = debug_load_bitmap(memory->debug_os_read_file, thread, "res/shadow.bmp");
+        state->sword_sprite = debug_load_bitmap(memory->debug_os_read_file, thread, "res/floor.bmp");
         
         state->world_arena = memory_arena_create(memory->permanent_storage_size - sizeof(game_state_t),
                                                (u8 *)memory->permanent_storage + sizeof(game_state_t));
@@ -858,26 +909,34 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             entity_t controlling_entity = force_entity_into_high(state, low_entity_index);
             
             vec2f dd_pos = {};
+            vec2f sword_delta = {};
+            
             dd_pos = _vec2f(gamepad->left_stick.x, gamepad->left_stick.y);
 
             // NOTE(xkazu0x): combine keyboard and gamepad inputs
             // only for the first player
             if (gamepad_index == 1) {
-                if (input->keyboard[KEY_W].down) {
-                    dd_pos.y = 1.0f;
-                }
-                if (input->keyboard[KEY_S].down) {
-                    dd_pos.y = -1.0f;
-                }
-                if (input->keyboard[KEY_A].down) {
-                    dd_pos.x = -1.0f;
-                }
-                if (input->keyboard[KEY_D].down) {
-                    dd_pos.x = 1.0f;
-                }
+                if (input->keyboard[KEY_W].down) dd_pos.y = 1.0f;
+                if (input->keyboard[KEY_S].down) dd_pos.y = -1.0f;
+                if (input->keyboard[KEY_A].down) dd_pos.x = -1.0f;
+                if (input->keyboard[KEY_D].down) dd_pos.x = 1.0f;
+
+                if (input->keyboard[KEY_UP].pressed) sword_delta = _vec2f(0.0f, 1.0f);
+                if (input->keyboard[KEY_DOWN].pressed) sword_delta = _vec2f(0.0f, -1.0f);
+                if (input->keyboard[KEY_LEFT].pressed) sword_delta = _vec2f(-1.0f, 0.0f);
+                if (input->keyboard[KEY_RIGHT].pressed) sword_delta = _vec2f(1.0f, 0.0f);
             }
             
             move_entity(state, controlling_entity, dd_pos, clock->delta_seconds);
+            if ((sword_delta.x != 0.0f) || sword_delta.y != 0.0f) {
+                low_entity_t *sword = get_low_entity(state, controlling_entity.low->sword_low_index);
+                if (sword && !is_valid(sword->pos)) {
+                    world_position_t new_sword_pos = controlling_entity.low->pos;
+                    entity_change_location(&state->world_arena, state->world,
+                                           controlling_entity.low->sword_low_index, sword,
+                                           0, &new_sword_pos);
+                }
+            }
         }
     }
     
@@ -950,33 +1009,18 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         if (shadow_alpha < 0.0f) shadow_alpha = 0.0f;
         
         switch (low_entity->type) {
+            case ENTITY_TYPE_WALL: {
+                push_bitmap(&piece_group, &state->wall_sprite, _vec3f(0.0f));
+            } break;
+            case ENTITY_TYPE_SWORD: {
+                push_bitmap(&piece_group, &state->sword_sprite, _vec3f(0.0f));
+            } break;
+
             case ENTITY_TYPE_PLAYER: {
                 bitmap_t *sprite = &state->player_sprites[high_entity->direction];
                 push_bitmap(&piece_group, &state->shadow_sprite, _vec3f(0.0f), shadow_alpha, 0.0f);
                 push_bitmap(&piece_group, sprite, _vec3f(0.0f, 0.0f, -0.4f));
-
-                if (low_entity->hit_point_max >= 1) {
-                    vec2f health_dim = _vec2f(0.125f*1.4f);
-                    f32 spacing_x = 1.5f*health_dim.x;
-                    f32 offset_x = health_dim.x*low_entity->hit_point_max + spacing_x/2;
-                    vec2f hit_pos = _vec2f((-0.5f*(low_entity->hit_point_max - 1)*spacing_x) + offset_x, 0.7f);
-                    vec2f hit_dpos = _vec2f(spacing_x, 0.0f);
-                        
-                    for (u32 health_index = 0;
-                         health_index < low_entity->hit_point_max;
-                         health_index++) {
-                        hit_point_t *hit_point = low_entity->hit_points + health_index;
-                        vec4f color = _vec4f(222.0f/255.0f, 214.0f/255.0f, 222.0f/255.0f, 1.0f);
-                        if (hit_point->filled_amount == 0) {
-                            color = _vec4f(164.0f/255.0f, 157.0f/255.0f, 164.0f/255.0f, 1.0f);
-                        }
-                        push_rect(&piece_group, _vec3f(hit_pos, 0.0f), health_dim, color, 0.0f);
-                        hit_pos += hit_dpos;
-                    }
-                }
-            } break;
-            case ENTITY_TYPE_WALL: {
-                push_bitmap(&piece_group, &state->wall_sprite, _vec3f(0.0f));
+                draw_hit_points(&piece_group, entity.low);
             } break;
             case ENTITY_TYPE_FAMILIAR: {
                 update_familiar(state, entity, delta);
@@ -989,11 +1033,13 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 f32 bob_sin = sin_f32(5.0f*entity.high->t_bob);
                 
                 push_bitmap(&piece_group, &state->shadow_sprite, _vec3f(0.0f), (0.5f*shadow_alpha) + 0.2f*bob_sin, 0.0f);
-                push_bitmap(&piece_group, &state->bat_sprite, _vec3f(0.0f, 0.6f, 0.2f*bob_sin));
+                push_bitmap(&piece_group, &state->bat_sprite, _vec3f(0.0f, 0.0f, 0.2f*bob_sin - 0.6f));
             } break;
             case ENTITY_TYPE_MONSTER: {
                 update_monster(state, entity, delta);
-                push_bitmap(&piece_group, &state->player_sprites[2], _vec3f(0.0f));
+                push_bitmap(&piece_group, &state->shadow_sprite, _vec3f(0.0f), shadow_alpha, 0.0f);
+                push_bitmap(&piece_group, &state->player_sprites[2], _vec3f(0.0f, 0.0f, -0.4f));
+                draw_hit_points(&piece_group, entity.low);
             } break;
             default: {
                 INVALID_CODE_PATH();
