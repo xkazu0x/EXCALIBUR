@@ -113,10 +113,23 @@ chunk_position_from_tile_position(world_t *world, s32 tile_x, s32 tile_y, s32 ti
     result.chunk_x = tile_x / TILES_PER_CHUNK;
     result.chunk_y = tile_y / TILES_PER_CHUNK;
     result.chunk_z = tile_z / TILES_PER_CHUNK;
+
+    // TODO(xkazu0x):
+    if (tile_x < 0) {
+        --result.chunk_x;
+    }
+    if (tile_y < 0) {
+        --result.chunk_y;
+    }
+    if (tile_z < 0) {
+        --result.chunk_z;
+    }
     
-    result.offset_.x = (f32)(tile_x - (result.chunk_x*TILES_PER_CHUNK))*world->tile_side_in_meters;
-    result.offset_.y = (f32)(tile_y - (result.chunk_y*TILES_PER_CHUNK))*world->tile_side_in_meters;
+    result.offset_.x = (f32)((tile_x - TILES_PER_CHUNK/2) - (result.chunk_x*TILES_PER_CHUNK))*world->tile_side_in_meters;
+    result.offset_.y = (f32)((tile_y - TILES_PER_CHUNK/2) - (result.chunk_y*TILES_PER_CHUNK))*world->tile_side_in_meters;
     // TODO(xkazu0x): move to 3D z!!
+
+    EX_ASSERT(is_canonical(world, result.offset_));
     
     return(result);
 }
