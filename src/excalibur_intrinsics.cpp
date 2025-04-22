@@ -8,14 +8,6 @@ abs_f32(f32 x) {
     return(result.f);
 }
 
-internal inline f64
-abs_f64(f64 x) {
-    union { f64 f; u64 u; } result;
-    result.f = x;
-    result.u &= 0x7fffffffffffffff;
-    return(result.f);
-}
-
 internal inline f32
 sqrt_f32(f32 x) {
     f32 result = sqrtf(x);
@@ -37,30 +29,6 @@ cos_f32(f32 x) {
 internal inline f32
 tan_f32(f32 x) {
     f32 result = tanf(x);
-    return(result);
-}
-
-internal inline f64
-sqrt_f64(f64 x) {
-    f64 result = sqrtf(x);
-    return(result);
-}
-
-internal inline f64
-sin_f64(f64 x) {
-    f64 result = sinf(x);
-    return(result);
-}
-
-internal inline f64
-cos_f64(f64 x) {
-    f64 result = cosf(x);
-    return(result);
-}
-
-internal inline f64
-tan_f64(f64 x) {
-    f64 result = tanf(x);
     return(result);
 }
 

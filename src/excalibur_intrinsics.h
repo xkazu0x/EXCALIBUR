@@ -2,17 +2,10 @@
 #define EXCALIBUR_INTRINSICS_H
 
 internal inline f32 abs_f32(f32 x);
-internal inline f64 abs_f64(f64 x);
-
 internal inline f32 sqrt_f32(f32 x);
 internal inline f32 sin_f32(f32 x);
 internal inline f32 cos_f32(f32 x);
 internal inline f32 tan_f32(f32 x);
-
-internal inline f64 sqrt_f64(f64 x);
-internal inline f64 sin_f64(f64 x);
-internal inline f64 cos_f64(f64 x);
-internal inline f64 tan_f64(f64 x);
 
 internal inline s32 sign_of(s32 x);
 

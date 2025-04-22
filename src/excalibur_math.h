@@ -112,7 +112,9 @@ internal inline f32 vec_dot(vec2f a, vec2f b);
 internal inline f32 vec_dot(vec3f a, vec3f b);
 internal inline f32 vec_dot(vec4f a, vec4f b);
 
-internal inline f32 length_sqr(vec2f v);
+internal inline f32 vec_length_sqr(vec2f v);
+internal inline f32 vec_length(vec2f v);
+
 internal inline f32 sqr(f32 f);
 
 struct rect2f {

@@ -294,7 +294,7 @@ add_low_entity(game_state_t *state, entity_type_t type, world_position_t *pos) {
     *low_entity = {};
     low_entity->type = type;
 
-    entity_change_location(&state->world_arena, state->world, entity_index, low_entity, 0, pos);
+    change_entity_location(&state->world_arena, state->world, entity_index, low_entity, 0, pos);
     
     add_low_entity_result result = {};
     result.low_index = entity_index;
@@ -409,20 +409,38 @@ wall_test(f32 wall_x, f32 rel_x, f32 rel_y, f32 player_delta_x, f32 player_delta
     return(hit);
 }
 
+struct move_spec_t {
+    b32 unit_max_accel_vector;
+    f32 speed;
+    f32 drag;
+};
+
+inline move_spec_t
+default_move_spec(void) {
+    move_spec_t result;
+
+    result.unit_max_accel_vector = EX_FALSE;
+    result.speed = 1.0f;
+    result.drag= 0.0f;
+    
+    return(result);
+}
+
 internal void
-move_entity(game_state_t *state, entity_t entity, vec2f dd_pos, f32 delta) {
+move_entity(game_state_t *state, entity_t entity, f32 delta, move_spec_t *move_spec, vec2f dd_pos) {
     world_t *world = state->world;
 
-    f32 dd_pos_length = length_sqr(dd_pos);
-    if (dd_pos_length > 1.0f) {
-        dd_pos *= (1.0f/sqrt_f32(dd_pos_length));
+    if (move_spec->unit_max_accel_vector) {
+        f32 dd_pos_length = vec_length_sqr(dd_pos);
+        if (dd_pos_length > 1.0f) {
+            dd_pos *= (1.0f/sqrt_f32(dd_pos_length));
+        }
     }
     
-    f32 player_speed = 50.0f; // m/s^2
-    dd_pos *= player_speed;
+    dd_pos *= move_spec->speed;
     
     // TODO(xkazu0x): ODE here!
-    dd_pos += -5.0f*entity.high->d_pos;
+    dd_pos += -move_spec->drag*entity.high->d_pos;
     
     //vec2f old_player_pos = entity.high->pos;
     vec2f player_delta = (0.5f*dd_pos*sqr(delta) + entity.high->d_pos*delta);
@@ -453,52 +471,54 @@ move_entity(game_state_t *state, entity_t entity, vec2f dd_pos, f32 delta) {
         u32 hit_high_entity_index = 0;
 
         vec2f desired_pos = entity.high->pos + player_delta;
-        
-        for (u32 test_high_entity_index = 1;
-             test_high_entity_index < state->high_entity_count;
-             test_high_entity_index++) {
-            if (test_high_entity_index != entity.low->high_entity_index) {
-                entity_t test_entity;
-                test_entity.high = state->high_entities_ + test_high_entity_index;
-                test_entity.low_index = test_entity.high->low_entity_index;
-                test_entity.low = state->low_entities + test_entity.low_index;
-                
-                if (test_entity.low->collides) {
-                    f32 dim_w = test_entity.low->width + entity.low->width;
-                    f32 dim_h = test_entity.low->width + entity.low->height;
-            
-                    vec2f min_corner = -0.5f*_vec2f(dim_w, dim_h);
-                    vec2f max_corner =  0.5f*_vec2f(dim_w, dim_h);
-                
-                    vec2f rel = entity.high->pos - test_entity.high->pos;
 
-                    if (wall_test(min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
-                                  &t_min, min_corner.y, max_corner.y)) {
-                        wall_normal = _vec2f(-1.0f, 0.0f);
-                        hit_high_entity_index = test_high_entity_index;
-                    }
+        if (entity.low->collides) {
+            for (u32 test_high_entity_index = 1;
+                 test_high_entity_index < state->high_entity_count;
+                 test_high_entity_index++) {
+                if (test_high_entity_index != entity.low->high_entity_index) {
+                    entity_t test_entity;
+                    test_entity.high = state->high_entities_ + test_high_entity_index;
+                    test_entity.low_index = test_entity.high->low_entity_index;
+                    test_entity.low = state->low_entities + test_entity.low_index;
                 
-                    if (wall_test(max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
-                                  &t_min, min_corner.y, max_corner.y)) {
-                        wall_normal = _vec2f(1.0f, 0.0f);
-                        hit_high_entity_index = test_high_entity_index;
-                    }
+                    if (test_entity.low->collides) {
+                        f32 dim_w = test_entity.low->width + entity.low->width;
+                        f32 dim_h = test_entity.low->width + entity.low->height;
+            
+                        vec2f min_corner = -0.5f*_vec2f(dim_w, dim_h);
+                        vec2f max_corner =  0.5f*_vec2f(dim_w, dim_h);
                 
-                    if (wall_test(min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
-                                  &t_min, min_corner.x, max_corner.x)) {
-                        wall_normal = _vec2f(0.0f, -1.0f);
-                        hit_high_entity_index = test_high_entity_index;
-                    }
+                        vec2f rel = entity.high->pos - test_entity.high->pos;
+
+                        if (wall_test(min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
+                                      &t_min, min_corner.y, max_corner.y)) {
+                            wall_normal = _vec2f(-1.0f, 0.0f);
+                            hit_high_entity_index = test_high_entity_index;
+                        }
                 
-                    if (wall_test(max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
-                                  &t_min, min_corner.x, max_corner.x)) {
-                        wall_normal = _vec2f(0.0f, 1.0f);
-                        hit_high_entity_index = test_high_entity_index;
+                        if (wall_test(max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
+                                      &t_min, min_corner.y, max_corner.y)) {
+                            wall_normal = _vec2f(1.0f, 0.0f);
+                            hit_high_entity_index = test_high_entity_index;
+                        }
+                
+                        if (wall_test(min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
+                                      &t_min, min_corner.x, max_corner.x)) {
+                            wall_normal = _vec2f(0.0f, -1.0f);
+                            hit_high_entity_index = test_high_entity_index;
+                        }
+                
+                        if (wall_test(max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
+                                      &t_min, min_corner.x, max_corner.x)) {
+                            wall_normal = _vec2f(0.0f, 1.0f);
+                            hit_high_entity_index = test_high_entity_index;
+                        }
                     }
                 }
             }
         }
-        
+            
         entity.high->pos += t_min*player_delta;
         if (hit_high_entity_index) {
             entity.high->d_pos = entity.high->d_pos - 1*vec_dot(entity.high->d_pos, wall_normal)*wall_normal;
@@ -534,7 +554,7 @@ move_entity(game_state_t *state, entity_t entity, vec2f dd_pos, f32 delta) {
     }
 
     world_position_t new_pos = map_into_chunk_space(state->world, state->camera_pos, entity.high->pos);
-    entity_change_location(&state->world_arena, state->world,
+    change_entity_location(&state->world_arena, state->world,
                            entity.low_index, entity.low, &entity.low->pos, &new_pos);
 }
 
@@ -560,9 +580,10 @@ offset_and_check_frequency_by_area(game_state_t *state,
          high_entity_index < state->high_entity_count;
          ) {
         high_entity_t *high = state->high_entities_ + high_entity_index;
-        high->pos += offset;
+        low_entity_t *low = state->low_entities + high->low_entity_index;
         
-        if (is_in_rect(high_frequency_bounds, high->pos)) {
+        high->pos += offset;
+        if (is_valid(low->pos) && is_in_rect(high_frequency_bounds, high->pos)) {
             ++high_entity_index;
         } else {
             EX_ASSERT(state->low_entities[high->low_entity_index].high_entity_index == high_entity_index);
@@ -672,7 +693,7 @@ update_familiar(game_state_t *state, entity_t entity, f32 delta) {
          high_entity_index++) {
         entity_t test_entity = entity_from_high_index(state, high_entity_index);
         if (test_entity.low->type == ENTITY_TYPE_PLAYER) {
-            f32 test_distance_sqr = length_sqr(test_entity.high->pos - entity.high->pos);
+            f32 test_distance_sqr = vec_length_sqr(test_entity.high->pos - entity.high->pos);
             if (closest_player_distance_sqr > test_distance_sqr) {
                 closest_player = test_entity;
                 closest_player_distance_sqr = test_distance_sqr;
@@ -688,7 +709,12 @@ update_familiar(game_state_t *state, entity_t entity, f32 delta) {
         dd_pos = lenght_normalized*(closest_player.high->pos - entity.high->pos);
     }
 
-    move_entity(state, entity, dd_pos, delta);
+    move_spec_t move_spec = default_move_spec();
+    move_spec.unit_max_accel_vector = EX_TRUE;
+    move_spec.speed = 50.0f;
+    move_spec.drag = 5.0f;
+    move_entity(state, entity, delta, &move_spec, dd_pos);
+    
     if (dd_pos.x == 0.0f && dd_pos.y == 0.0f) {
         entity.high->direction = 2;
     }
@@ -697,6 +723,25 @@ update_familiar(game_state_t *state, entity_t entity, f32 delta) {
 internal void
 update_monster(game_state_t *state, entity_t entity, f32 delta) {
 
+}
+
+internal void
+update_sword(game_state_t *state, entity_t entity, f32 delta) {
+    move_spec_t move_spec = default_move_spec();
+    move_spec.unit_max_accel_vector = EX_FALSE;
+    move_spec.speed = 0.0f;
+    move_spec.drag = 0.0f;
+
+    vec2f old_pos = entity.high->pos;
+    move_entity(state, entity, delta, &move_spec, _vec2f(0.0f));
+    
+    f32 distance_traveled = vec_length(entity.high->pos - old_pos);
+    entity.low->distance_remaining -= distance_traveled;
+    if (entity.low->distance_remaining < 0.0f) {
+        change_entity_location(&state->world_arena, state->world,
+                               entity.low_index, entity.low,
+                               &entity.low->pos, 0);
+    }
 }
 
 internal void
@@ -927,14 +972,21 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 if (input->keyboard[KEY_RIGHT].pressed) sword_delta = _vec2f(1.0f, 0.0f);
             }
             
-            move_entity(state, controlling_entity, dd_pos, clock->delta_seconds);
+            move_spec_t move_spec = default_move_spec();
+            move_spec.unit_max_accel_vector = EX_TRUE;
+            move_spec.speed = 50.0f;
+            move_spec.drag = 5.0f;
+            move_entity(state, controlling_entity, clock->delta_seconds, &move_spec, dd_pos);
             if ((sword_delta.x != 0.0f) || sword_delta.y != 0.0f) {
-                low_entity_t *sword = get_low_entity(state, controlling_entity.low->sword_low_index);
-                if (sword && !is_valid(sword->pos)) {
+                low_entity_t *low_sword = get_low_entity(state, controlling_entity.low->sword_low_index);
+                if (low_sword && !is_valid(low_sword->pos)) {
                     world_position_t new_sword_pos = controlling_entity.low->pos;
-                    entity_change_location(&state->world_arena, state->world,
-                                           controlling_entity.low->sword_low_index, sword,
+                    change_entity_location(&state->world_arena, state->world,
+                                           controlling_entity.low->sword_low_index, low_sword,
                                            0, &new_sword_pos);
+                    entity_t sword = force_entity_into_high(state, controlling_entity.low->sword_low_index);
+                    sword.low->distance_remaining = 3.0f;
+                    sword.high->d_pos = 5.0f*sword_delta;
                 }
             }
         }
@@ -1013,6 +1065,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 push_bitmap(&piece_group, &state->wall_sprite, _vec3f(0.0f));
             } break;
             case ENTITY_TYPE_SWORD: {
+                update_sword(state, entity, delta);
                 push_bitmap(&piece_group, &state->sword_sprite, _vec3f(0.0f));
             } break;
 

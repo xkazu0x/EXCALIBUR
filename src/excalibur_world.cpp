@@ -174,12 +174,12 @@ centered_chunk_point(u32 chunk_x, u32 chunk_y, u32 chunk_z) {
 }
 
 inline void
-entity_change_location_raw(memory_arena_t *arena, world_t *world, u32 low_entity_index,
+change_entity_location_raw(memory_arena_t *arena, world_t *world, u32 low_entity_index,
                            world_position_t *old_pos, world_position_t *new_pos) {
     EX_ASSERT(!old_pos || is_valid(*old_pos));
     EX_ASSERT(!new_pos || is_valid(*new_pos));
     
-    if (old_pos && are_in_same_chunk(world, old_pos, new_pos)) {
+    if (old_pos && new_pos && are_in_same_chunk(world, old_pos, new_pos)) {
         // NOTE(xkazu0x): leave entity where it is
     } else {
         if (old_pos) {
@@ -242,10 +242,10 @@ entity_change_location_raw(memory_arena_t *arena, world_t *world, u32 low_entity
 }
 
 internal void
-entity_change_location(memory_arena_t *arena, world_t *world,
+change_entity_location(memory_arena_t *arena, world_t *world,
                        u32 low_entity_index, low_entity_t *low_entity,
                        world_position_t *old_pos, world_position_t *new_pos) {
-    entity_change_location_raw(arena, world, low_entity_index, old_pos, new_pos);
+    change_entity_location_raw(arena, world, low_entity_index, old_pos, new_pos);
     if (new_pos) {
         low_entity->pos = *new_pos;
     } else {
