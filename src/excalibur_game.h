@@ -55,15 +55,16 @@ struct hit_point_t {
 
 struct low_entity_t {
     entity_type_t type;
-    
     world_position_t pos;
+    vec2f dpos;
     f32 width;
     f32 height;
     
+    u32 direction;
+    f32 t_bob;
+    
     s32 d_tile_z; // note(xkazu0x): this is for "stairs"
     b32 collides;
-
-    u32 high_entity_index;
 
     // TODO(xkazu0x): should hit point be entities?
     u32 hit_point_max;
@@ -71,25 +72,6 @@ struct low_entity_t {
 
     u32 sword_low_index;
     f32 distance_remaining;
-};
-
-struct high_entity_t {
-    vec2f pos; // note(xkazu0x): relative to the camera
-    vec2f d_pos;
-    u32 chunk_z;
-    u32 direction;
-
-    f32 t_bob;
-    f32 z;
-    f32 dz;
-
-    u32 low_entity_index;
-};
-
-struct entity_t {
-    u32 low_index;
-    low_entity_t *low;
-    high_entity_t *high;
 };
 
 struct entity_visible_piece_t {
@@ -105,15 +87,15 @@ struct entity_visible_piece_t {
 struct game_state_t {
     memory_arena_t world_arena;
     world_t *world;
-
+    
+    f32 meters_to_pixels;
+    
     u32 camera_following_entity_index;
     world_position_t camera_pos;
 
+    // TODO(xkazu0x): change the name to "stored entity"
     u32 low_entity_count;
     low_entity_t low_entities[100000];
-
-    u32 high_entity_count;
-    high_entity_t high_entities_[256];
     
     u32 player_gamepad_index[GAMEPAD_COUNT_MAX];
     bitmap_t player_sprites[4];
@@ -121,8 +103,6 @@ struct game_state_t {
     bitmap_t bat_sprite;
     bitmap_t shadow_sprite;
     bitmap_t sword_sprite;
-
-    f32 meters_to_pixels;
 };
 
 // TODO(xkazu0x): this is dumb, this should just be part of

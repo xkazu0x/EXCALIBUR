@@ -16,8 +16,10 @@
 #include "excalibur_random.h"
 #include "excalibur_world.h"
 #include "excalibur_game.h"
+#include "excalibur_sim.h"
 
 #include "excalibur_world.cpp"
+#include "excalibur_sim.cpp"
 
 internal gamepad_t *
 get_gamepad(os_input_t *input, u32 index) {
@@ -198,77 +200,6 @@ get_camera_space_pos(game_state_t *state, low_entity_t *low_entity) {
     vec3f diff = subtract(state->world, &low_entity->pos, &state->camera_pos);
     vec2f result = _vec2f(diff.x, diff.y);
     return(result);
-}
-
-inline high_entity_t *
-make_entity_high(game_state_t *state, low_entity_t *low_entity, u32 low_index, vec2f camera_space_pos) {
-    high_entity_t *high_entity = 0;
-    
-    EX_ASSERT(low_entity->high_entity_index == 0);
-    if (low_entity->high_entity_index == 0) {
-        if (state->high_entity_count < EX_ARRAY_COUNT(state->high_entities_)) {
-            u32 high_index = state->high_entity_count++;
-            high_entity = state->high_entities_ + high_index;
-
-            high_entity->pos = camera_space_pos;
-            high_entity->d_pos = _vec2f(0.0f);
-            high_entity->chunk_z = low_entity->pos.chunk_z;
-            high_entity->direction = 0;
-            high_entity->low_entity_index = low_index;
-            
-            low_entity->high_entity_index = high_index;
-        } else {
-            INVALID_CODE_PATH();
-        }
-    }
-    
-    return(high_entity);
-}
-
-internal high_entity_t *
-make_entity_high(game_state_t *state, u32 low_index) {
-    high_entity_t *high_entity = 0;
-    
-    low_entity_t *low_entity = state->low_entities + low_index;
-    if (low_entity->high_entity_index) {
-        high_entity = state->high_entities_ + low_entity->high_entity_index;
-    } else {
-        vec2f camera_space_pos = get_camera_space_pos(state, low_entity);
-        high_entity = make_entity_high(state, low_entity, low_index, camera_space_pos);
-    }
-
-    return(high_entity);
-}
-
-internal entity_t
-force_entity_into_high(game_state_t *state, u32 low_index) {
-    entity_t result = {};
-    
-    if ((low_index > 0) && (low_index < state->low_entity_count)) {
-        result.low_index = low_index;
-        result.low = state->low_entities + low_index;
-        result.high = make_entity_high(state, low_index);
-    }
-    
-    return(result);
-}
-
-internal void
-make_entity_low(game_state_t *state, u32 low_index) {
-    low_entity_t *low_entity = &state->low_entities[low_index];
-    u32 high_index = low_entity->high_entity_index;
-    if (high_index) {
-        u32 last_high_index = state->high_entity_count - 1;
-        if (high_index != last_high_index) {
-            high_entity_t *last_entity = state->high_entities_ + last_high_index;
-            high_entity_t *del_entity = state->high_entities_ + high_index;
-            
-            *del_entity = *last_entity;
-            state->low_entities[last_entity->low_entity_index].high_entity_index = high_index;
-        }
-        --state->high_entity_count;
-        low_entity->high_entity_index = 0;
-    }
 }
 
 internal low_entity_t *
@@ -556,92 +487,6 @@ move_entity(game_state_t *state, entity_t entity, f32 delta, move_spec_t *move_s
     world_position_t new_pos = map_into_chunk_space(state->world, state->camera_pos, entity.high->pos);
     change_entity_location(&state->world_arena, state->world,
                            entity.low_index, entity.low, &entity.low->pos, &new_pos);
-}
-
-inline b32
-validate_entity_pairs(game_state_t *state) {
-    b32 valid = EX_TRUE;
-    
-    for (u32 high_entity_index = 1;
-         high_entity_index < state->high_entity_count;
-         ++high_entity_index) {
-        high_entity_t *high = state->high_entities_ + high_entity_index;
-        valid = valid && (state->low_entities[high->low_entity_index].high_entity_index == high_entity_index);
-    }
-
-    return(valid);
-}
-
-internal void
-offset_and_check_frequency_by_area(game_state_t *state,
-                                   vec2f offset,
-                                   rect2f high_frequency_bounds) {
-    for (u32 high_entity_index = 1;
-         high_entity_index < state->high_entity_count;
-         ) {
-        high_entity_t *high = state->high_entities_ + high_entity_index;
-        low_entity_t *low = state->low_entities + high->low_entity_index;
-        
-        high->pos += offset;
-        if (is_valid(low->pos) && is_in_rect(high_frequency_bounds, high->pos)) {
-            ++high_entity_index;
-        } else {
-            EX_ASSERT(state->low_entities[high->low_entity_index].high_entity_index == high_entity_index);
-            make_entity_low(state, high->low_entity_index);
-        }
-    }
-}
-
-internal void
-set_camera(game_state_t *state, world_position_t new_camera_pos) {
-    world_t *world = state->world;
-
-    EX_ASSERT(validate_entity_pairs(state));
-    
-    vec3f camera_dpos = subtract(world, &new_camera_pos, &state->camera_pos);
-    state->camera_pos = new_camera_pos;
-
-    u32 tile_span_x = 17*3;
-    u32 tile_span_y = 9*3;
-    rect2f camera_bounds = rect2f_center_dim(_vec2f(0.0f),
-                                             world->tile_side_in_meters*_vec2f((f32)tile_span_x,
-                                                                                     (f32)tile_span_y));
-    vec2f entity_offset_for_frame = -_vec2f(camera_dpos.x, camera_dpos.y);
-    offset_and_check_frequency_by_area(state, entity_offset_for_frame, camera_bounds);
-    
-    EX_ASSERT(validate_entity_pairs(state));
-    
-    world_position_t min_chunk_pos = map_into_chunk_space(state->world, new_camera_pos, rect_get_min_corner(camera_bounds));
-    world_position_t max_chunk_pos = map_into_chunk_space(state->world, new_camera_pos, rect_get_max_corner(camera_bounds));
-    for (s32 chunk_y = min_chunk_pos.chunk_y;
-         chunk_y <= max_chunk_pos.chunk_y;
-         ++chunk_y) {
-        for (s32 chunk_x = min_chunk_pos.chunk_x;
-             chunk_x <= max_chunk_pos.chunk_x;
-             ++chunk_x) {
-            world_chunk_t *chunk = get_world_chunk(state->world, chunk_x, chunk_y, new_camera_pos.chunk_z);
-            if (chunk) {
-                for (world_entity_block_t *block = &chunk->entity_block;
-                     block;
-                     block = block->next) {
-                    for (u32 entity_index_index = 0;
-                         entity_index_index < block->entity_count;
-                         entity_index_index++) {
-                        u32 low_entity_index = block->low_entity_index[entity_index_index];
-                        low_entity_t *low = state->low_entities + low_entity_index;
-                        if (low->high_entity_index == 0) {
-                            vec2f camera_space_pos = get_camera_space_pos(state, low);
-                            if (is_in_rect(camera_bounds, camera_space_pos)) {
-                                make_entity_high(state, low, low_entity_index, camera_space_pos);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    EX_ASSERT(validate_entity_pairs(state));
 }
 
 internal void
@@ -992,34 +837,16 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         }
     }
     
-    ///////////////////////////////
-    // NOTE(xkazu0x): camera update
-    entity_t camera_following_entity = force_entity_into_high(state, state->camera_following_entity_index);
-    if (camera_following_entity.high) {
-        world_position_t new_camera_pos = state->camera_pos;
-        new_camera_pos.chunk_z = camera_following_entity.low->pos.chunk_z;
-        
-#if 0
-        if (camera_following_entity.high->pos.x > (9.0f*world->tile_side_in_meters)) {
-            new_camera_pos.tile_x += 17;
-        }
-        if (camera_following_entity.high->pos.x < -(9.0f*world->tile_side_in_meters)) {
-            new_camera_pos.tile_x -= 17;
-        }
-        if (camera_following_entity.high->pos.y > (5.0f*world->tile_side_in_meters)) {
-            new_camera_pos.tile_y += 9;
-        }
-        if (camera_following_entity.high->pos.y < -(5.0f*world->tile_side_in_meters)) {
-            new_camera_pos.tile_y -= 9;
-        }
-#else
-        new_camera_pos = camera_following_entity.low->pos;
-#endif
-        
-        set_camera(state, new_camera_pos);
-    }
+    // NOTE(xkazu0x): smulation begin
+    world_t *world = state->world;
     
-    ////////////////////////
+    u32 tile_span_x = 17*3;
+    u32 tile_span_y = 9*3;
+    rect2f camera_bounds = rect2f_center_dim(_vec2f(0.0f),
+                                             world->tile_side_in_meters*_vec2f((f32)tile_span_x,
+                                                                               (f32)tile_span_y));
+    sim_region_t *region = sim_begin(state->sim_arena, state->world, state->camera_pos, camera_bounds);
+    
     // NOTE(xkazu0x): render
     for (u32 y = 0; y < 12; y++) {
         for (u32 x = 0; x < 20; x++) {
@@ -1042,22 +869,18 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
 
     entity_visible_piece_group_t piece_group;
     piece_group.game_state = state;
-    for (u32 high_entity_index = 1;
-         high_entity_index < state->high_entity_count;
-         high_entity_index++) {
+
+    sim_entity_t *entity = region->entities;
+    for (u32 entity_index = 0;
+         entity_index < region->entity_count;
+         entity_index++) {
         piece_group.piece_count = 0;
         
-        high_entity_t *high_entity = state->high_entities_ + high_entity_index;
-        low_entity_t *low_entity = state->low_entities + high_entity->low_entity_index;
-
-        entity_t entity;
-        entity.low_index = high_entity->low_entity_index;
-        entity.low = low_entity;
-        entity.high = high_entity;
+        low_entity_t *low_entity = state->low_entities + entity->storage_index;
         
         f32 delta = clock->delta_seconds;
 
-        f32 shadow_alpha = 1.0f - 0.5f*high_entity->z;
+        f32 shadow_alpha = 1.0f - 0.5f*entity->z;
         if (shadow_alpha < 0.0f) shadow_alpha = 0.0f;
         
         switch (low_entity->type) {
@@ -1070,7 +893,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             } break;
 
             case ENTITY_TYPE_PLAYER: {
-                bitmap_t *sprite = &state->player_sprites[high_entity->direction];
+                bitmap_t *sprite = &state->player_sprites[low_entity->direction];
                 push_bitmap(&piece_group, &state->shadow_sprite, _vec3f(0.0f), shadow_alpha, 0.0f);
                 push_bitmap(&piece_group, sprite, _vec3f(0.0f, 0.0f, -0.4f));
                 draw_hit_points(&piece_group, entity.low);
@@ -1098,10 +921,15 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 INVALID_CODE_PATH();
             }
         }
+
+        f32 ddz = -9.8f;
+        entity->z = 0.5f*ddz*square(delta) + entity->dz*delta + entity->z;
+        entity->dz = ddz*delta + entity->dz;
+        if (entity->z < 0.0f) entity->z = 0.0f;
         
-        f32 entity_ground_point_x = screen_center_x + meters_to_pixels*high_entity->pos.x;
-        f32 entity_ground_point_y = screen_center_y - meters_to_pixels*high_entity->pos.y;
-        f32 entity_z = -meters_to_pixels*high_entity->z;
+        f32 entity_ground_point_x = screen_center_x + meters_to_pixels*entity->pos.x;
+        f32 entity_ground_point_y = screen_center_y - meters_to_pixels*entity->pos.y;
+        f32 entity_z = -meters_to_pixels*entity->z;
         
 #if 0
         vec2f entity_left_top = _vec2f(entity_ground_point_x - 0.5f*meters_to_pixels*low_entity->width,
@@ -1126,4 +954,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             }
         }
     }
+
+    // NOTE(xkazu0x): simulation end
+    sim_end(region, state);
 }
