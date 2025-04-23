@@ -38,40 +38,9 @@ struct bitmap_t {
     u32 *pixels;
 };
 
-enum entity_type_t {
-    ENTITY_TYPE_NULL,
-    ENTITY_TYPE_WALL,
-    ENTITY_TYPE_PLAYER,
-    ENTITY_TYPE_FAMILIAR,
-    ENTITY_TYPE_MONSTER,
-    ENTITY_TYPE_SWORD,
-};
-
-#define HIT_POINT_FILLED_MAX 4
-struct hit_point_t {
-    u8 flags;
-    u8 filled_amount;
-};
-
 struct low_entity_t {
-    entity_type_t type;
     world_position_t pos;
-    vec2f dpos;
-    f32 width;
-    f32 height;
-    
-    u32 direction;
-    f32 t_bob;
-    
-    s32 d_tile_z; // note(xkazu0x): this is for "stairs"
-    b32 collides;
-
-    // TODO(xkazu0x): should hit point be entities?
-    u32 hit_point_max;
-    hit_point_t hit_points[16];
-
-    u32 sword_low_index;
-    f32 distance_remaining;
+    sim_entity_t sim;
 };
 
 struct entity_visible_piece_t {
