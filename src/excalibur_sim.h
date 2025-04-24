@@ -36,7 +36,7 @@ struct sim_entity_t {
     u32 chunk_z;
     
     f32 z;
-    f32 dz;
+    f32 d_z;
 
     vec2f d_pos;
     f32 width;

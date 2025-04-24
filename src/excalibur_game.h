@@ -16,11 +16,11 @@ struct memory_arena_t {
 };
 
 internal memory_arena_t
-memory_arena_create(memi size, u8 *base) {
+memory_arena_create(memi size, void *base) {
     memory_arena_t result;
     result.size = size;
     result.used = 0;
-    result.base = base;
+    result.base = (u8 *)base;
     return(result);
 }
 
@@ -30,6 +30,16 @@ memory_arena_push(memory_arena_t *arena, memi size) {
     void *result = arena->base + arena->used;
     arena->used += size;
     return(result);
+}
+
+#define zero_struct(instance) zero_size(sizeof(instance), &(instance))
+
+internal inline void
+zero_size(memi size, void *ptr) {
+    u8 *byte = (u8 *)ptr;
+    while (size--) {
+        *byte++ = 0;
+    }
 }
 
 struct bitmap_t {
@@ -53,20 +63,28 @@ struct entity_visible_piece_t {
     f32 entity_zc;
 };
 
+struct controlled_player_t {
+    u32 entity_index;
+    // NOTE(xkazu0x): these are the gamepad requests for simulation
+    vec2f dd_pos;
+    vec2f d_sword;
+    f32 d_z;
+};
+
 struct game_state_t {
     memory_arena_t world_arena;
     world_t *world;
     
-    f32 meters_to_pixels;
-    
     u32 camera_following_entity_index;
     world_position_t camera_pos;
-
+    
+    controlled_player_t controlled_players[GAMEPAD_COUNT_MAX];
+    
     // TODO(xkazu0x): change the name to "stored entity"
     u32 low_entity_count;
     low_entity_t low_entities[100000];
-    
-    u32 player_gamepad_index[GAMEPAD_COUNT_MAX];
+
+    f32 meters_to_pixels;
     bitmap_t player_sprites[4];
     bitmap_t wall_sprite;
     bitmap_t bat_sprite;

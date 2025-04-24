@@ -16,6 +16,7 @@
 #include "excalibur_random.h"
 #include "excalibur_world.h"
 #include "excalibur_sim.h"
+#include "excalibur_entity.h"
 
 #include "excalibur_game.h"
 
@@ -30,6 +31,7 @@ get_low_entity(game_state_t *state, u32 index) {
 
 #include "excalibur_world.cpp"
 #include "excalibur_sim.cpp"
+#include "excalibur_entity.cpp"
 
 internal gamepad_t *
 get_gamepad(os_input_t *input, u32 index) {
@@ -346,90 +348,19 @@ push_rect(entity_visible_piece_group_t *group, vec3f offset, vec2f size, vec4f c
     push_piece(group, 0, offset, size, color, entity_zc);
 }
 
-inline move_spec_t
-default_move_spec(void) {
-    move_spec_t result;
-
-    result.unit_max_accel_vector = EX_FALSE;
-    result.speed = 1.0f;
-    result.drag= 0.0f;
-    
-    return(result);
-}
-
 internal void
-update_familiar(game_state_t *state, entity_t entity, f32 delta) {
-    entity_t closest_player = {};
-    f32 closest_player_distance_sqr = sqr(10.0f); // NOTE(xkazu0x): ten meter maximun search!
-    
-    for (u32 high_entity_index = 1;
-         high_entity_index < state->high_entity_count;
-         high_entity_index++) {
-        entity_t test_entity = entity_from_high_index(state, high_entity_index);
-        if (test_entity.low->sim.type == ENTITY_TYPE_PLAYER) {
-            f32 test_distance_sqr = vec_length_sqr(test_entity.high->pos - entity.high->pos);
-            if (closest_player_distance_sqr > test_distance_sqr) {
-                closest_player = test_entity;
-                closest_player_distance_sqr = test_distance_sqr;
-            }
-        }
-    }
-
-    vec2f dd_pos = _vec2f(0.0f);
-    if (closest_player.high && (closest_player_distance_sqr > sqr(2.5f))) {
-        // TODO(xkazu0x): pull speed out of move entity
-        f32 acceleration = 0.5f;
-        f32 lenght_normalized = acceleration / sqrt_f32(closest_player_distance_sqr);
-        dd_pos = lenght_normalized*(closest_player.high->pos - entity.high->pos);
-    }
-
-    move_spec_t move_spec = default_move_spec();
-    move_spec.unit_max_accel_vector = EX_TRUE;
-    move_spec.speed = 50.0f;
-    move_spec.drag = 5.0f;
-    move_entity(state, entity, delta, &move_spec, dd_pos);
-    
-    if (dd_pos.x == 0.0f && dd_pos.y == 0.0f) {
-        entity.high->direction = 2;
-    }
-}
-
-internal void
-update_monster(game_state_t *state, entity_t entity, f32 delta) {
-}
-
-internal void
-update_sword(game_state_t *state, entity_t entity, f32 delta) {
-    move_spec_t move_spec = default_move_spec();
-    move_spec.unit_max_accel_vector = EX_FALSE;
-    move_spec.speed = 0.0f;
-    move_spec.drag = 0.0f;
-
-    vec2f old_pos = entity.high->pos;
-    move_entity(state, entity, delta, &move_spec, _vec2f(0.0f));
-    
-    f32 distance_traveled = vec_length(entity.high->pos - old_pos);
-    entity.low->sim.distance_remaining -= distance_traveled;
-    if (entity.low->sim.distance_remaining < 0.0f) {
-        change_entity_location(&state->world_arena, state->world,
-                               entity.low_index, entity.low,
-                               &entity.low->sim.pos, 0);
-    }
-}
-
-internal void
-draw_hit_points(entity_visible_piece_group_t *piece_group, low_entity_t *low_entity) {
-    if (low_entity->sim.hit_point_max >= 1) {
+draw_hit_points(entity_visible_piece_group_t *piece_group, sim_entity_t *entity) {
+    if (entity->hit_point_max >= 1) {
         vec2f health_dim = _vec2f(0.125f*1.4f);
         f32 spacing_x = 1.5f*health_dim.x;
-        f32 offset_x = (low_entity->sim.width + (spacing_x/2))/2;
-        vec2f hit_pos = _vec2f((-0.5f*(low_entity->sim.hit_point_max - 1)*spacing_x) + offset_x, 0.7f);
+        f32 offset_x = (entity->width + (spacing_x/2))/2;
+        vec2f hit_pos = _vec2f((-0.5f*(entity->hit_point_max - 1)*spacing_x) + offset_x, 0.7f);
         vec2f hit_dpos = _vec2f(spacing_x, 0.0f);
                         
         for (u32 health_index = 0;
-             health_index < low_entity->sim.hit_point_max;
+             health_index < entity->hit_point_max;
              health_index++) {
-            hit_point_t *hit_point = low_entity->sim.hit_points + health_index;
+            hit_point_t *hit_point = entity->hit_points + health_index;
             vec4f color = _vec4f(222.0f/255.0f, 214.0f/255.0f, 222.0f/255.0f, 1.0f);
             if (hit_point->filled_amount == 0) {
                 color = _vec4f(164.0f/255.0f, 157.0f/255.0f, 164.0f/255.0f, 1.0f);
@@ -446,10 +377,10 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     
     u32 tile_count_x = 17;
     u32 tile_count_y = 9;
+    s32 tile_size_in_pixels = 16;
     
     if (!memory->initialized) {
         add_low_entity(state, ENTITY_TYPE_NULL, 0);
-        state->high_entity_count = 1;
 
         state->player_sprites[0] =
             debug_load_bitmap(memory->debug_os_read_file, thread, "res/skull_back.bmp");
@@ -465,12 +396,11 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         state->sword_sprite = debug_load_bitmap(memory->debug_os_read_file, thread, "res/floor.bmp");
         
         state->world_arena = memory_arena_create(memory->permanent_storage_size - sizeof(game_state_t),
-                                               (u8 *)memory->permanent_storage + sizeof(game_state_t));
+                                                 (u8 *)memory->permanent_storage + sizeof(game_state_t));
         state->world = (world_t *)memory_arena_push(&state->world_arena, sizeof(world_t));
         world_t *world = state->world;
         world_initialize(world, 1.4f);
 
-        s32 tile_size_in_pixels = 16;
         state->meters_to_pixels = (f32)tile_size_in_pixels / (f32)world->tile_side_in_meters;
         
         u32 screen_base_x = 0;
@@ -603,77 +533,51 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     world_t *world = state->world;
     f32 meters_to_pixels = state->meters_to_pixels;
 
-    ////////////////////////////////
-    // NOTE(xkazu0x): player control
+    /////////////////////////////////
+    // NOTE(xkazu0x): gamepad control
     for (u32 gamepad_index = 0; gamepad_index < EX_ARRAY_COUNT(input->gamepads); gamepad_index++) {
         gamepad_t *gamepad = get_gamepad(input, gamepad_index);
-        u32 low_entity_index = state->player_gamepad_index[gamepad_index];
-        if (low_entity_index == 0) {
-            if (gamepad->start.pressed) {
-                u32 player_entity_index = add_player(state).low_index;
-                state->player_gamepad_index[gamepad_index] = player_entity_index;
-            }
-            
-            // NOTE(xkazu0x): combine keyboard and gamepad inputs
-            // only for the first player
-            if (gamepad_index == 1) {
-                if (input->keyboard[KEY_SPACE].pressed) {
-                    u32 player_entity_index = add_player(state).low_index;
-                    state->player_gamepad_index[gamepad_index] = player_entity_index;
-                }
+        controlled_player_t *controlled_player = state->controlled_players + gamepad_index;
+        if (controlled_player->entity_index == 0) {
+            if ((gamepad->start.pressed) ||
+                ((gamepad_index == 1) && (input->keyboard[KEY_SPACE].pressed))) {
+                *controlled_player = {};
+                controlled_player->entity_index = add_player(state).low_index;
             }
         } else {
-            entity_t controlling_entity = force_entity_into_high(state, low_entity_index);
+            controlled_player->dd_pos = {};
+            controlled_player->d_sword = {};
             
-            vec2f dd_pos = {};
-            vec2f sword_delta = {};
-            
-            dd_pos = _vec2f(gamepad->left_stick.x, gamepad->left_stick.y);
+            controlled_player->dd_pos = _vec2f(gamepad->left_stick.x, gamepad->left_stick.y);
 
             // NOTE(xkazu0x): combine keyboard and gamepad inputs
             // only for the first player
             if (gamepad_index == 1) {
-                if (input->keyboard[KEY_W].down) dd_pos.y = 1.0f;
-                if (input->keyboard[KEY_S].down) dd_pos.y = -1.0f;
-                if (input->keyboard[KEY_A].down) dd_pos.x = -1.0f;
-                if (input->keyboard[KEY_D].down) dd_pos.x = 1.0f;
+                if (input->keyboard[KEY_W].down) controlled_player->dd_pos.y = 1.0f;
+                if (input->keyboard[KEY_S].down) controlled_player->dd_pos.y = -1.0f;
+                if (input->keyboard[KEY_A].down) controlled_player->dd_pos.x = -1.0f;
+                if (input->keyboard[KEY_D].down) controlled_player->dd_pos.x = 1.0f;
+                
+                if (input->keyboard[KEY_UP].pressed) controlled_player->d_sword = _vec2f(0.0f, 1.0f);
+                if (input->keyboard[KEY_DOWN].pressed) controlled_player->d_sword = _vec2f(0.0f, -1.0f);
+                if (input->keyboard[KEY_LEFT].pressed) controlled_player->d_sword = _vec2f(-1.0f, 0.0f);
+                if (input->keyboard[KEY_RIGHT].pressed) controlled_player->d_sword = _vec2f(1.0f, 0.0f);
 
-                if (input->keyboard[KEY_UP].pressed) sword_delta = _vec2f(0.0f, 1.0f);
-                if (input->keyboard[KEY_DOWN].pressed) sword_delta = _vec2f(0.0f, -1.0f);
-                if (input->keyboard[KEY_LEFT].pressed) sword_delta = _vec2f(-1.0f, 0.0f);
-                if (input->keyboard[KEY_RIGHT].pressed) sword_delta = _vec2f(1.0f, 0.0f);
-            }
-            
-            move_spec_t move_spec = default_move_spec();
-            move_spec.unit_max_accel_vector = EX_TRUE;
-            move_spec.speed = 50.0f;
-            move_spec.drag = 5.0f;
-            move_entity(state, controlling_entity, clock->delta_seconds, &move_spec, dd_pos);
-            if ((sword_delta.x != 0.0f) || sword_delta.y != 0.0f) {
-                low_entity_t *low_sword = get_low_entity(state, controlling_entity.low->sim.sword_low_index);
-                if (low_sword && !is_valid(low_sword->pos)) {
-                    world_position_t new_sword_pos = controlling_entity.low->sim.pos;
-                    change_entity_location(&state->world_arena, state->world,
-                                           controlling_entity.low->sim.sword_low_index, low_sword,
-                                           0, &new_sword_pos);
-                    entity_t sword = force_entity_into_high(state, controlling_entity.low->sim.sword_low_index);
-                    sword.low->distance_remaining = 3.0f;
-                    sword.high->d_pos = 5.0f*sword_delta;
-                }
+                if (input->keyboard[KEY_Z].pressed) controlled_player->d_z = 3.0f;
             }
         }
     }
-    
-    // NOTE(xkazu0x): smulation begin
-    world_t *world = state->world;
-    
+
+    //////////////////////////////////
+    // NOTE(xkazu0x): simulation begin
     u32 tile_span_x = 17*3;
     u32 tile_span_y = 9*3;
-    rect2f camera_bounds = rect2f_center_dim(_vec2f(0.0f),
-                                             world->tile_side_in_meters*_vec2f((f32)tile_span_x,
-                                                                               (f32)tile_span_y));
-    sim_region_t *region = begin_sim(state->sim_arena, state->world, state->camera_pos, camera_bounds);
+    rect2f camera_bounds = rect2f_center_dim(_vec2f(0.0f), world->tile_side_in_meters*_vec2f((f32)tile_span_x, (f32)tile_span_y));
     
+    memory_arena_t sim_arena = memory_arena_create(memory->transient_storage_size, memory->transient_storage);
+    sim_region_t *sim_region = begin_sim(&sim_arena, state, world, state->camera_pos, camera_bounds);
+
+    ////////////////////////
     // NOTE(xkazu0x): render
     for (u32 y = 0; y < 12; y++) {
         for (u32 x = 0; x < 20; x++) {
@@ -684,8 +588,8 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 color = _vec3f(74.0f/255.0f, 60.0f/255.0f, 74.0f/255.0f);
             }
             
-            vec2f min = _vec2f(x*16, y*16);
-            vec2f max = _vec2f(min.x + 16, min.y + 16);
+            vec2f min = _vec2f(x*tile_size_in_pixels, y*tile_size_in_pixels);
+            vec2f max = _vec2f(min.x + tile_size_in_pixels, min.y + tile_size_in_pixels);
             
             draw_rectangle(framebuffer, min, max, color);
         }
@@ -697,61 +601,79 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     entity_visible_piece_group_t piece_group;
     piece_group.game_state = state;
 
-    sim_entity_t *entity = region->entities;
+    sim_entity_t *entity = sim_region->entities;
     for (u32 entity_index = 0;
-         entity_index < region->entity_count;
-         entity_index++) {
+         entity_index < sim_region->entity_count;
+         ++entity_index, ++entity) {
         piece_group.piece_count = 0;
-        
-        low_entity_t *low_entity = state->low_entities + entity->storage_index;
-        
         f32 delta = clock->delta_seconds;
 
         f32 shadow_alpha = 1.0f - 0.5f*entity->z;
         if (shadow_alpha < 0.0f) shadow_alpha = 0.0f;
         
-        switch (low_entity->sim.type) {
+        switch (entity->type) {
+            case ENTITY_TYPE_PLAYER: {
+                for (u32 controlled_index = 0;
+                     controlled_index < EX_ARRAY_COUNT(state->controlled_players);
+                     ++controlled_index) {
+                    controlled_player_t *controlled_player = state->controlled_players + controlled_index;
+                    if (entity->storage_index == controlled_player->entity_index) {
+                        entity->d_z = controlled_player->d_z;
+                        move_spec_t move_spec = default_move_spec();
+                        move_spec.unit_max_accel_vector = EX_TRUE;
+                        move_spec.speed = 50.0f;
+                        move_spec.drag = 5.0f;
+                        move_entity(sim_region, entity, clock->delta_seconds, &move_spec, controlled_player->dd_pos);
+                        if ((controlled_player->d_sword.x != 0.0f) || (controlled_player->d_sword.y != 0.0f)) {
+                            sim_entity_t *sword = entity->sword.ptr;
+                            if (sword) {
+                                sword->pos = entity->pos;
+                                sword->distance_remaining = 3.0f;
+                                sword->d_pos = 5.0f*controlled_player->d_sword;
+                            }
+                        }
+                    }
+                }
+
+                bitmap_t *sprite = &state->player_sprites[entity->direction];
+                push_bitmap(&piece_group, &state->shadow_sprite, _vec3f(0.0f), shadow_alpha, 0.0f);
+                push_bitmap(&piece_group, sprite, _vec3f(0.0f, 0.0f, -0.4f));
+                draw_hit_points(&piece_group, entity);
+            } break;
             case ENTITY_TYPE_WALL: {
                 push_bitmap(&piece_group, &state->wall_sprite, _vec3f(0.0f));
             } break;
             case ENTITY_TYPE_SWORD: {
-                update_sword(state, entity, delta);
+                update_sword(sim_region, entity, delta);
                 push_bitmap(&piece_group, &state->sword_sprite, _vec3f(0.0f));
             } break;
-
-            case ENTITY_TYPE_PLAYER: {
-                bitmap_t *sprite = &state->player_sprites[low_entity->sim.direction];
-                push_bitmap(&piece_group, &state->shadow_sprite, _vec3f(0.0f), shadow_alpha, 0.0f);
-                push_bitmap(&piece_group, sprite, _vec3f(0.0f, 0.0f, -0.4f));
-                draw_hit_points(&piece_group, entity.low);
-            } break;
             case ENTITY_TYPE_FAMILIAR: {
-                update_familiar(state, entity, delta);
+                update_familiar(sim_region, entity, delta);
                 
-                entity.high->t_bob += delta;
-                if (entity.high->t_bob > (2.0f*pi32)) {
-                    entity.high->t_bob -= (2.0f*pi32);
+                entity->t_bob += delta;
+                if (entity->t_bob > (2.0f*pi32)) {
+                    entity->t_bob -= (2.0f*pi32);
                 }
 
-                f32 bob_sin = sin_f32(5.0f*entity.high->t_bob);
+                f32 bob_sin = sin_f32(5.0f*entity->t_bob);
                 
                 push_bitmap(&piece_group, &state->shadow_sprite, _vec3f(0.0f), (0.5f*shadow_alpha) + 0.2f*bob_sin, 0.0f);
                 push_bitmap(&piece_group, &state->bat_sprite, _vec3f(0.0f, 0.0f, 0.2f*bob_sin - 0.6f));
             } break;
             case ENTITY_TYPE_MONSTER: {
-                update_monster(state, entity, delta);
+                update_monster(sim_region, entity, delta);
                 push_bitmap(&piece_group, &state->shadow_sprite, _vec3f(0.0f), shadow_alpha, 0.0f);
                 push_bitmap(&piece_group, &state->player_sprites[2], _vec3f(0.0f, 0.0f, -0.4f));
-                draw_hit_points(&piece_group, entity.low);
+                draw_hit_points(&piece_group, entity);
             } break;
             default: {
                 INVALID_CODE_PATH();
             }
         }
 
-        f32 ddz = -9.8f;
-        entity->z = 0.5f*ddz*square(delta) + entity->dz*delta + entity->z;
-        entity->dz = ddz*delta + entity->dz;
+        f32 dd_z = -9.8f;
+        entity->z = 0.5f*dd_z*sqr(delta) + entity->d_z*delta + entity->z;
+        entity->d_z = dd_z*delta + entity->d_z;
         if (entity->z < 0.0f) entity->z = 0.0f;
         
         f32 entity_ground_point_x = screen_center_x + meters_to_pixels*entity->pos.x;
@@ -782,6 +704,12 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         }
     }
 
+    ////////////////////////////////
     // NOTE(xkazu0x): simulation end
-    end_sim(region, state);
+    // TODO(xkazu0x): IMPORTANT(xkazu0x): add logic to the sim region to handle "unplaced" entities
+    // TODO(xkazu0x): IMPORTANT(xkazu0x): figure out why the origin is where it is...
+    world_position_t world_origin = {};
+    vec3f delta_origin = subtract(sim_region->world, &world_origin, &sim_region->origin);
+    draw_rectangle(framebuffer, _vec2f(delta_origin.x, delta_origin.y), _vec2f(tile_size_in_pixels), _vec3f(1.0f));
+    end_sim(sim_region, state);
 }

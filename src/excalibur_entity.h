@@ -1,0 +1,4 @@
+#ifndef EXCALIBUR_ENTITY_H
+#define EXCALIBUR_ENTITY_H
+
+#endif // EXCALIBUR_ENTITY_H

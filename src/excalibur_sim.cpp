@@ -7,8 +7,9 @@ get_hash_from_storage_index(sim_region_t *region, u32 storage_index) {
     for (u32 offset = 0;
          offset < EX_ARRAY_COUNT(region->hash);
          ++offset) {
-        sim_entity_hash_t *entry = region->hash +
-            ((hash_value + offset) & (EX_ARRAY_COUNT(region->hash) - 1));
+        u32 hash_mask = (EX_ARRAY_COUNT(region->hash) - 1);
+        u32 hash_index = ((hash_value + offset) & (hash_mask));
+        sim_entity_hash_t *entry = region->hash + hash_index;
         if (entry->index == 0 || entry->index == storage_index) {
             result = entry;
             break;
@@ -110,7 +111,8 @@ begin_sim(memory_arena_t *sim_arena, game_state_t *state, world_t *world, world_
     // TODO(xkazu0x): IMPORTANT(xkazu0x): NOTION OF ACTIVE vs. INACTIVE ENTITIES FOR APRON!
     
     sim_region_t *region = (sim_region_t *)memory_arena_push(sim_arena, sizeof(sim_region_t));
-
+    zero_struct(region->hash);
+    
     region->world = world;
     region->origin = origin;
     region->bounds = bounds;
@@ -134,10 +136,10 @@ begin_sim(memory_arena_t *sim_arena, game_state_t *state, world_t *world, world_
                 for (world_entity_block_t *block = &chunk->entity_block;
                      block;
                      block = block->next) {
-                    for (u32 entity_index_index = 0;
-                         entity_index_index < block->entity_count;
-                         entity_index_index++) {
-                        u32 low_entity_index = block->low_entity_index[entity_index_index];
+                    for (u32 entity_index = 0;
+                         entity_index < block->entity_count;
+                         entity_index++) {
+                        u32 low_entity_index = block->low_entity_index[entity_index];
                         low_entity_t *low = state->low_entities + low_entity_index;
                         vec2f sim_space_pos = get_sim_space_pos(region, low);
                         if (is_in_rect(region->bounds, sim_space_pos)) {
