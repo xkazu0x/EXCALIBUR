@@ -10,6 +10,7 @@ BUILD_DIR := build
 DLL := excalibur.dll
 EXEC := excalibur.exe
 
+.PHONY: all
 all: $(BUILD_DIR) $(BUILD_DIR)/$(DLL) $(BUILD_DIR)/$(EXEC)
 
 $(BUILD_DIR):
@@ -21,11 +22,14 @@ $(BUILD_DIR)/$(DLL): $(SRC_DIR)/excalibur_game.cpp
 $(BUILD_DIR)/$(EXEC): $(SRC_DIR)/excalibur_win32.cpp
 	$(CC) $(CFLAGS) -mconsole -o $@ $^ $(DEFINES) $(INCLUDES) $(LIBS)
 
+.PHONY: run
 run: all
 	$(BUILD_DIR)/$(EXEC)
 
+.PHONY: clean
 clean:
 	del /q $(BUILD_DIR)\*.*
 
+.PHONY: asm
 asm:
 	objdump -D $(BUILD_DIR)/$(EXEC)

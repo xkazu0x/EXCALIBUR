@@ -19,8 +19,9 @@ is_valid(world_position_t pos) {
 
 inline b32
 is_canonical(world_t *world, f32 tile_rel) {
-    b32 result = ((tile_rel >= -0.5f*world->chunk_side_in_meters) &&
-                  (tile_rel <= 0.5f*world->chunk_side_in_meters));
+    f32 epsilon = 0.0001f;
+    b32 result = ((tile_rel >= -(0.5f*world->chunk_side_in_meters + epsilon)) &&
+                  (tile_rel <= (0.5f*world->chunk_side_in_meters + epsilon)));
     return(result);
 }
 
