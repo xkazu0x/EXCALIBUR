@@ -579,8 +579,8 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     memory_arena_t sim_arena = memory_arena_create(memory->transient_storage_size, memory->transient_storage);
     sim_region_t *sim_region = begin_sim(&sim_arena, state, world, state->camera_pos, camera_bounds);
 
-    ////////////////////////
-    // NOTE(xkazu0x): render
+    ///////////////////////////////////
+    // NOTE(xkazu0x): update and render
     for (u32 y = 0; y < 12; y++) {
         for (u32 x = 0; x < 20; x++) {
             vec3f color = _vec3f(57.0f/255.0f, 44.0f/255.0f, 49.0f/255.0f);
@@ -600,113 +600,165 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     f32 screen_center_x = 0.5f*((f32)framebuffer->width);
     f32 screen_center_y = 0.5f*((f32)framebuffer->height);
 
+    // TODO(xkazu0x): move this out into excalibur_entity.cpp
     entity_visible_piece_group_t piece_group;
     piece_group.game_state = state;
 
     sim_entity_t *entity = sim_region->entities;
     for (u32 entity_index = 0;
          entity_index < sim_region->entity_count;
-         ++entity_index, ++entity) {
-        piece_group.piece_count = 0;
-        f32 delta = clock->delta_seconds;
+         ++entity_index, ++entity)
+    {
+        if (entity->updatable) {
+            piece_group.piece_count = 0;
+            f32 delta = clock->delta_seconds;
 
-        f32 shadow_alpha = 1.0f - 0.5f*entity->z;
-        if (shadow_alpha < 0.0f) shadow_alpha = 0.0f;
-        
-        switch (entity->type) {
-            case ENTITY_TYPE_PLAYER: {
-                for (u32 controlled_index = 0;
-                     controlled_index < EX_ARRAY_COUNT(state->controlled_players);
-                     ++controlled_index) {
-                    controlled_player_t *controlled_player = state->controlled_players + controlled_index;
-                    if (entity->storage_index == controlled_player->entity_index) {
-                        if (controlled_player->d_z != 0.0f) {
-                            entity->d_z = controlled_player->d_z;
-                        }
-                        move_spec_t move_spec = default_move_spec();
-                        move_spec.unit_max_accel_vector = EX_TRUE;
-                        move_spec.speed = 50.0f;
-                        move_spec.drag = 5.0f;
-                        move_entity(sim_region, entity, clock->delta_seconds, &move_spec, controlled_player->dd_pos);
-                        if ((controlled_player->d_sword.x != 0.0f) || (controlled_player->d_sword.y != 0.0f)) {
-                            sim_entity_t *sword = entity->sword.ptr;
-                            if (sword && is_entity_flag_set(sword, ENTITY_FLAG_NON_SPATIAL)) {
-                                sword->distance_remaining = 3.0f;
-                                make_entity_spatial(sword, entity->pos, 5.0f*controlled_player->d_sword);
+            f32 shadow_alpha = 1.0f - 0.5f*entity->z;
+            if (shadow_alpha < 0.0f) shadow_alpha = 0.0f;
+
+            move_spec_t move_spec = default_move_spec();
+            vec2f dd_pos = _vec2f(0.0f);
+            
+            switch (entity->type) {
+                case ENTITY_TYPE_PLAYER: {
+                    for (u32 controlled_index = 0;
+                         controlled_index < EX_ARRAY_COUNT(state->controlled_players);
+                         ++controlled_index) {
+                        controlled_player_t *controlled_player = state->controlled_players + controlled_index;
+                        if (entity->storage_index == controlled_player->entity_index) {
+                            if (controlled_player->d_z != 0.0f) {
+                                entity->d_z = controlled_player->d_z;
+                            }
+
+                            move_spec.unit_max_accel_vector = EX_TRUE;
+                            move_spec.speed = 50.0f;
+                            move_spec.drag = 5.0f;
+                            dd_pos = controlled_player->dd_pos;
+                            
+                            if ((controlled_player->d_sword.x != 0.0f) || (controlled_player->d_sword.y != 0.0f)) {
+                                sim_entity_t *sword = entity->sword.ptr;
+                                if (sword && is_entity_flag_set(sword, ENTITY_FLAG_NON_SPATIAL)) {
+                                    sword->distance_remaining = 3.0f;
+                                    make_entity_spatial(sword, entity->pos, 5.0f*controlled_player->d_sword);
+                                }
                             }
                         }
                     }
-                }
 
-                bitmap_t *sprite = &state->player_sprites[entity->direction];
-                push_bitmap(&piece_group, &state->shadow_sprite, _vec3f(0.0f), shadow_alpha, 0.0f);
-                push_bitmap(&piece_group, sprite, _vec3f(0.0f, 0.0f, -0.4f));
-                draw_hit_points(&piece_group, entity);
-            } break;
-            case ENTITY_TYPE_WALL: {
-                push_bitmap(&piece_group, &state->wall_sprite, _vec3f(0.0f));
-            } break;
-            case ENTITY_TYPE_SWORD: {
-                update_sword(sim_region, entity, delta);
-                push_bitmap(&piece_group, &state->shadow_sprite, _vec3f(0.0f));
-            } break;
-            case ENTITY_TYPE_FAMILIAR: {
-                update_familiar(sim_region, entity, delta);
-                
-                entity->t_bob += delta;
-                if (entity->t_bob > (2.0f*pi32)) {
-                    entity->t_bob -= (2.0f*pi32);
-                }
+                    bitmap_t *sprite = &state->player_sprites[entity->direction];
+                    push_bitmap(&piece_group, &state->shadow_sprite, _vec3f(0.0f), shadow_alpha, 0.0f);
+                    push_bitmap(&piece_group, sprite, _vec3f(0.0f, 0.0f, -0.4f));
+                    draw_hit_points(&piece_group, entity);
+                } break;
+                case ENTITY_TYPE_WALL: {
+                    push_bitmap(&piece_group, &state->wall_sprite, _vec3f(0.0f));
+                } break;
+                case ENTITY_TYPE_SWORD: {
+                    move_spec.unit_max_accel_vector = EX_FALSE;
+                    move_spec.speed = 0.0f;
+                    move_spec.drag = 0.0f;
 
-                f32 bob_sin = sin_f32(5.0f*entity->t_bob);
+                    // TODO(xkazu0x): IMPORTANT(xkazu0x): add the ability in the collision
+                    // routines to  understand a movement limit for an entity, and
+                    // then update this routine to use that to know when to kill the
+                    // sword.
+                    // TODO(xkazu0x): need to handle the fact that distance_traveled
+                    // might not have enough distance for the total entity move
+                    // for the frame
+                    vec2f old_pos = entity->pos;
+                    f32 distance_traveled = vec_length(entity->pos - old_pos);
+                    entity->distance_remaining -= distance_traveled;
+                    if (entity->distance_remaining < 0.0f) {
+                        make_entity_non_spatial(entity);
+                    }
+
+                    push_bitmap(&piece_group, &state->shadow_sprite, _vec3f(0.0f));
+                } break;
+                case ENTITY_TYPE_FAMILIAR: {
+                    sim_entity_t *closest_player = 0;
+                    f32 closest_player_distance_sqr = sqr(10.0f); // NOTE(xkazu0x): ten meter maximun search!
+
+                    // TODO(xkazu0x): make spatial queries easy for things!
+                    sim_entity_t *test_entity = sim_region->entities;
+                    for (u32 test_entity_index = 0;
+                         test_entity_index < sim_region->entity_count;
+                         ++test_entity_index, ++test_entity) {
+                        if (test_entity->type == ENTITY_TYPE_PLAYER) {
+                            f32 test_distance_sqr = vec_length_sqr(test_entity->pos - entity->pos);
+                            if (closest_player_distance_sqr > test_distance_sqr) {
+                                closest_player = test_entity;
+                                closest_player_distance_sqr = test_distance_sqr;
+                            }
+                        }
+                    }
+
+                    if ((closest_player) && (closest_player_distance_sqr > sqr(2.5f))) {
+                        f32 acceleration = 0.5f;
+                        f32 lenght_normalized = acceleration / sqrt_f32(closest_player_distance_sqr);
+                        dd_pos = lenght_normalized*(closest_player->pos - entity->pos);
+                    }
+
+                    move_spec.unit_max_accel_vector = EX_TRUE;
+                    move_spec.speed = 50.0f;
+                    move_spec.drag = 5.0f;
+    
+                    if (dd_pos.x == 0.0f && dd_pos.y == 0.0f) {
+                        entity->direction = 2;
+                    }
                 
-                push_bitmap(&piece_group, &state->shadow_sprite, _vec3f(0.0f), (0.5f*shadow_alpha) + 0.2f*bob_sin, 0.0f);
-                push_bitmap(&piece_group, &state->bat_sprite, _vec3f(0.0f, 0.0f, 0.2f*bob_sin - 0.6f));
-            } break;
-            case ENTITY_TYPE_MONSTER: {
-                update_monster(sim_region, entity, delta);
-                push_bitmap(&piece_group, &state->shadow_sprite, _vec3f(0.0f), shadow_alpha, 0.0f);
-                push_bitmap(&piece_group, &state->player_sprites[2], _vec3f(0.0f, 0.0f, -0.4f));
-                draw_hit_points(&piece_group, entity);
-            } break;
-            default: {
-                INVALID_CODE_PATH();
+                    entity->t_bob += delta;
+                    if (entity->t_bob > (2.0f*pi32)) {
+                        entity->t_bob -= (2.0f*pi32);
+                    }
+
+                    f32 bob_sin = sin_f32(5.0f*entity->t_bob);
+                
+                    push_bitmap(&piece_group, &state->shadow_sprite, _vec3f(0.0f), (0.5f*shadow_alpha) + 0.2f*bob_sin, 0.0f);
+                    push_bitmap(&piece_group, &state->bat_sprite, _vec3f(0.0f, 0.0f, 0.2f*bob_sin - 0.6f));
+                } break;
+                case ENTITY_TYPE_MONSTER: {
+                    push_bitmap(&piece_group, &state->shadow_sprite, _vec3f(0.0f), shadow_alpha, 0.0f);
+                    push_bitmap(&piece_group, &state->player_sprites[2], _vec3f(0.0f, 0.0f, -0.4f));
+                    draw_hit_points(&piece_group, entity);
+                } break;
+                default: {
+                    INVALID_CODE_PATH();
+                }
             }
-        }
 
-        f32 dd_z = -9.8f;
-        entity->z = 0.5f*dd_z*sqr(delta) + entity->d_z*delta + entity->z;
-        entity->d_z = dd_z*delta + entity->d_z;
-        if (entity->z < 0.0f) entity->z = 0.0f;
-        
-        f32 entity_ground_point_x = screen_center_x + meters_to_pixels*entity->pos.x;
-        f32 entity_ground_point_y = screen_center_y - meters_to_pixels*entity->pos.y;
-        f32 entity_z = -meters_to_pixels*entity->z;
+            if (!is_entity_flag_set(entity, ENTITY_FLAG_NON_SPATIAL)) {
+                move_entity(sim_region, entity, clock->delta_seconds, &move_spec, dd_pos);
+            }
+            
+            f32 entity_ground_point_x = screen_center_x + meters_to_pixels*entity->pos.x;
+            f32 entity_ground_point_y = screen_center_y - meters_to_pixels*entity->pos.y;
+            f32 entity_z = -meters_to_pixels*entity->z;
         
 #if 0
-        vec2f entity_left_top = _vec2f(entity_ground_point_x - 0.5f*meters_to_pixels*low_entity->sim.width,
-                                       entity_ground_point_y - 0.5f*meters_to_pixels*low_entity->sim.height);
-        vec2f entity_width_height = _vec2f(low_entity->sim.width, low_entity->sim.height);
-        draw_rectangle(framebuffer,
-                       entity_left_top,
-                       entity_left_top + meters_to_pixels*entity_width_height,
-                       _vec3f(0.0f, 0.0f, 1.0f));
+            vec2f entity_left_top = _vec2f(entity_ground_point_x - 0.5f*meters_to_pixels*low_entity->sim.width,
+                                           entity_ground_point_y - 0.5f*meters_to_pixels*low_entity->sim.height);
+            vec2f entity_width_height = _vec2f(low_entity->sim.width, low_entity->sim.height);
+            draw_rectangle(framebuffer,
+                           entity_left_top,
+                           entity_left_top + meters_to_pixels*entity_width_height,
+                           _vec3f(0.0f, 0.0f, 1.0f));
 #endif
 
-        for (u32 piece_index = 0; piece_index < piece_group.piece_count; piece_index++) {
-            entity_visible_piece_t *piece = piece_group.pieces + piece_index;
-            vec2f center = _vec2f(entity_ground_point_x + piece->offset.x,
-                                  entity_ground_point_y + piece->offset.y + piece->offset.z + piece->entity_zc*entity_z);
-            if (piece->bitmap) {
-                draw_bitmap(framebuffer, piece->bitmap, center.x, center.y, piece->color.a);
-            } else {
-                vec2f half_size = 0.5f*meters_to_pixels*piece->size;
-                vec3f color = _vec3f(piece->color.r, piece->color.g, piece->color.b);
-                draw_rectangle(framebuffer, center - half_size, center + half_size, color);
+            for (u32 piece_index = 0; piece_index < piece_group.piece_count; piece_index++) {
+                entity_visible_piece_t *piece = piece_group.pieces + piece_index;
+                vec2f center = _vec2f(entity_ground_point_x + piece->offset.x,
+                                      entity_ground_point_y + piece->offset.y + piece->offset.z + piece->entity_zc*entity_z);
+                if (piece->bitmap) {
+                    draw_bitmap(framebuffer, piece->bitmap, center.x, center.y, piece->color.a);
+                } else {
+                    vec2f half_size = 0.5f*meters_to_pixels*piece->size;
+                    vec3f color = _vec3f(piece->color.r, piece->color.g, piece->color.b);
+                    draw_rectangle(framebuffer, center - half_size, center + half_size, color);
+                }
             }
         }
     }
-
+    
     ////////////////////////////////
     // NOTE(xkazu0x): simulation end
     world_position_t world_origin = {};

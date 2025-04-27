@@ -36,7 +36,11 @@ enum sim_entity_flags_t {
 };
 
 struct sim_entity_t {
+    // NOTE(xkazu0x): only for the sim region
     u32 storage_index;
+    b32 updatable;
+    
+    // NOTE(xkazu0x):
     entity_type_t type;
     u32 flags;
     
@@ -76,6 +80,7 @@ struct sim_region_t {
     world_t *world;
     world_position_t origin;
     rect2f bounds;
+    rect2f updatable_bounds;
     
     u32 max_entity_count;
     u32 entity_count;

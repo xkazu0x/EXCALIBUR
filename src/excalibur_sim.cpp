@@ -29,13 +29,30 @@ get_entity_by_storage_index(sim_region_t *region, u32 storage_index) {
 internal sim_entity_t *
 add_sim_entity(game_state_t *state, sim_region_t *region, u32 storage_index, low_entity_t *stored, vec2f *pos);
 
+inline vec2f
+get_sim_space_pos(sim_region_t *region, low_entity_t *stored) {
+    // NOTE(xkazu0x): map the entity in camera space
+    vec2f result = INVALID_POS;
+    
+    if (!is_entity_flag_set(&stored->sim, ENTITY_FLAG_NON_SPATIAL)) {
+        vec3f diff = subtract(region->world, &stored->pos, &region->origin);
+        result = _vec2f(diff.x, diff.y);
+    }
+    
+    return(result);
+}
+
 inline void
 load_entity_reference(game_state_t *state, sim_region_t *region, entity_reference_t *reference) {
     if (reference->index) {
         sim_entity_hash_t *entry = get_hash_from_storage_index(region, reference->index);
         if (entry->ptr == 0) {
             entry->index = reference->index;
-            entry->ptr = add_sim_entity(state, region, reference->index, get_low_entity(state, reference->index), 0);
+            
+            low_entity_t *low_entity = get_low_entity(state, reference->index);
+            vec2f pos = get_sim_space_pos(region, low_entity);
+            
+            entry->ptr = add_sim_entity(state, region, reference->index, low_entity, &pos);
         }
         reference->ptr = entry->ptr;
     }
@@ -73,25 +90,13 @@ add_sim_entity_raw(game_state_t *state, sim_region_t *region,
             }
         
             entity->storage_index = storage_index;
+            entity->updatable = false;
         } else {
             INVALID_CODE_PATH();
         }
     }
 
     return(entity);
-}
-
-inline vec2f
-get_sim_space_pos(sim_region_t *region, low_entity_t *stored) {
-    // NOTE(xkazu0x): map the entity in camera space
-    vec2f result = INVALID_POS;
-    
-    if (!is_entity_flag_set(&stored->sim, ENTITY_FLAG_NON_SPATIAL)) {
-        vec3f diff = subtract(region->world, &stored->pos, &region->origin);
-        result = _vec2f(diff.x, diff.y);
-    }
-    
-    return(result);
 }
 
 internal sim_entity_t *
@@ -101,6 +106,7 @@ add_sim_entity(game_state_t *state, sim_region_t *region, u32 storage_index, low
     if (entity) {
         if (pos) {
             entity->pos = *pos;
+            entity->updatable = is_in_rect(region->updatable_bounds, entity->pos);
         } else {
             entity->pos = get_sim_space_pos(region, stored);
         }
@@ -112,17 +118,19 @@ add_sim_entity(game_state_t *state, sim_region_t *region, u32 storage_index, low
 internal sim_region_t *
 begin_sim(memory_arena_t *sim_arena, game_state_t *state, world_t *world, world_position_t origin, rect2f bounds) {
     // TODO(xkazu0x): if entities were stored in the world, we wouldn't need the game state here
-
-    // TODO(xkazu0x): IMPORTANT(xkazu0x): CLEAR THE HASH TABLE!!!
-    // TODO(xkazu0x): IMPORTANT(xkazu0x): NOTION OF ACTIVE vs. INACTIVE ENTITIES FOR APRON!
     
     sim_region_t *region = (sim_region_t *)memory_arena_push(sim_arena, sizeof(sim_region_t));
     zero_struct(region->hash);
+
+    // TODO(xkazu0x): IMPORTANT(xkazu0x): calculate this eventually from the maximun value
+    // of all entities radius plus their speed
+    f32 update_safety_margin = 1.0f;
     
     region->world = world;
     region->origin = origin;
-    region->bounds = bounds;
-
+    region->updatable_bounds = bounds;
+    region->bounds = add_radius_to(region->updatable_bounds, update_safety_margin, update_safety_margin);
+    
     // TODO(xkazu0x): need to be more specific about entity counts
     region->max_entity_count = 4096;
     region->entity_count = 0;
@@ -256,6 +264,11 @@ move_entity(sim_region_t *region, sim_entity_t *entity, f32 delta, move_spec_t *
     vec2f player_delta = (0.5f*dd_pos*sqr(delta) + entity->d_pos*delta);
     entity->d_pos = dd_pos*delta + entity->d_pos;
     //vec2f new_player_pos = old_player_pos + player_delta;
+
+    f32 dd_z = -9.8f;
+    entity->z = 0.5f*dd_z*sqr(delta) + entity->d_z*delta + entity->z;
+    entity->d_z = dd_z*delta + entity->d_z;
+    if (entity->z < 0.0f) entity->z = 0.0f;
     
     for (u32 iteration = 0;
          iteration < 4;

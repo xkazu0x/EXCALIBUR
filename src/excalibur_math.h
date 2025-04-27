@@ -133,4 +133,12 @@ internal inline vec2f rect_get_min_corner(rect2f rect);
 internal inline vec2f rect_get_max_corner(rect2f rect);
 internal inline vec2f rect_get_center(rect2f rect);
 
+internal inline rect2f
+add_radius_to(rect2f rect, f32 radius_width, f32 radius_height) {
+    rect2f result;
+    result.min = rect.min - _vec2f(radius_width, radius_height);
+    result.max = rect.max + _vec2f(radius_width, radius_height);
+    return(result);
+}
+
 #endif // EXCALIBUR_MATH_H
