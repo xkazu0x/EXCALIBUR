@@ -49,6 +49,9 @@ struct bitmap_t {
 };
 
 struct low_entity_t {
+    // TODO(xkazu0x): it's kind of busted that pos's can be invalid here,
+    // AND we store whether they would be invalid in the flags field...
+    // can we do something better here?
     world_position_t pos;
     sim_entity_t sim;
 };

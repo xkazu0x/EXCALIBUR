@@ -28,17 +28,26 @@ union entity_reference_t {
     u32 index;
 };
 
+enum sim_entity_flags_t {
+    ENTITY_FLAG_COLLIDES = (1 << 1),
+    ENTITY_FLAG_NON_SPATIAL = (1 << 2),
+    
+    ENTITY_FLAG_SIMMING = (1 << 30),
+};
+
 struct sim_entity_t {
     u32 storage_index;
     entity_type_t type;
+    u32 flags;
     
     vec2f pos;
-    u32 chunk_z;
-    
+    vec2f d_pos;
+
     f32 z;
     f32 d_z;
+    
+    u32 chunk_z;
 
-    vec2f d_pos;
     f32 width;
     f32 height;
     
@@ -46,7 +55,6 @@ struct sim_entity_t {
     f32 t_bob;
     
     s32 d_tile_z; // note(xkazu0x): this is for "stairs"
-    b32 collides;
 
     // TODO(xkazu0x): should hit point be entities?
     u32 hit_point_max;

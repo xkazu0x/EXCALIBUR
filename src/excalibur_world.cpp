@@ -245,11 +245,26 @@ change_entity_location_raw(memory_arena_t *arena, world_t *world, u32 low_entity
 internal void
 change_entity_location(memory_arena_t *arena, world_t *world,
                        u32 low_entity_index, low_entity_t *low_entity,
-                       world_position_t *old_pos, world_position_t *new_pos) {
+                       world_position_t new_pos_init)
+{
+    world_position_t *old_pos = 0;
+    world_position_t *new_pos = 0;
+
+    if (!is_entity_flag_set(&low_entity->sim, ENTITY_FLAG_NON_SPATIAL) &&
+        (is_valid(low_entity->pos))) {
+        old_pos = &low_entity->pos;
+    }
+    if (is_valid(new_pos_init)) {
+        new_pos = &new_pos_init;
+    }
+    
     change_entity_location_raw(arena, world, low_entity_index, old_pos, new_pos);
+    
     if (new_pos) {
         low_entity->pos = *new_pos;
+        clear_entity_flag(&low_entity->sim, ENTITY_FLAG_NON_SPATIAL);
     } else {
         low_entity->pos = null_position();
+        add_entity_flag(&low_entity->sim, ENTITY_FLAG_NON_SPATIAL);
     }
 }

@@ -52,17 +52,23 @@ update_monster(sim_region_t *sim_region, sim_entity_t *entity, f32 delta) {
 
 internal void
 update_sword(sim_region_t *sim_region, sim_entity_t *entity, f32 delta) {
-    move_spec_t move_spec = default_move_spec();
-    move_spec.unit_max_accel_vector = EX_FALSE;
-    move_spec.speed = 0.0f;
-    move_spec.drag = 0.0f;
+    if (is_entity_flag_set(entity, ENTITY_FLAG_NON_SPATIAL)) {
+    } else {
+        move_spec_t move_spec = default_move_spec();
+        move_spec.unit_max_accel_vector = EX_FALSE;
+        move_spec.speed = 0.0f;
+        move_spec.drag = 0.0f;
 
-    vec2f old_pos = entity->pos;
-    move_entity(sim_region, entity, delta, &move_spec, _vec2f(0.0f));
-    f32 distance_traveled = vec_length(entity->pos - old_pos);
-    
-    entity->distance_remaining -= distance_traveled;
-    if (entity->distance_remaining < 0.0f) {
-        EX_ASSERT(!"NEED TO MAKE ENTITIES BE ABLE TO NOT BE THERE!!!");
+        vec2f old_pos = entity->pos;
+        move_entity(sim_region, entity, delta, &move_spec, _vec2f(0.0f));
+        f32 distance_traveled = vec_length(entity->pos - old_pos);
+
+        // TODO(xkazu0x): need to handle the fact that distance_traveled
+        // might not have enough distance for the total entity move
+        // for the frame
+        entity->distance_remaining -= distance_traveled;
+        if (entity->distance_remaining < 0.0f) {
+            make_entity_non_spatial(entity);
+        }
     }
 }

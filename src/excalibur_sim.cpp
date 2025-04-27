@@ -27,7 +27,7 @@ get_entity_by_storage_index(sim_region_t *region, u32 storage_index) {
 }
 
 internal sim_entity_t *
-add_sim_entity(game_state_t *state, sim_region_t *region, u32 storage_index, low_entity_t *stored);
+add_sim_entity(game_state_t *state, sim_region_t *region, u32 storage_index, low_entity_t *stored, vec2f *pos);
 
 inline void
 load_entity_reference(game_state_t *state, sim_region_t *region, entity_reference_t *reference) {
@@ -35,7 +35,7 @@ load_entity_reference(game_state_t *state, sim_region_t *region, entity_referenc
         sim_entity_hash_t *entry = get_hash_from_storage_index(region, reference->index);
         if (entry->ptr == 0) {
             entry->index = reference->index;
-            entry->ptr = add_sim_entity(state, region, reference->index, get_low_entity(state, reference->index));
+            entry->ptr = add_sim_entity(state, region, reference->index, get_low_entity(state, reference->index), 0);
         }
         reference->ptr = entry->ptr;
     }
@@ -48,33 +48,34 @@ store_entity_reference(entity_reference_t *reference) {
     }
 }
 
-internal void
-map_storage_index_to_entity(sim_region_t *region, u32 storage_index, sim_entity_t *entity) {
-    sim_entity_hash_t *entry = get_hash_from_storage_index(region, storage_index);
-    EX_ASSERT((entry->index == 0) || (entry->index == storage_index));
-    entry->index = storage_index;
-    entry->ptr = entity;
-}
-
 internal sim_entity_t *
-add_sim_entity(game_state_t *state, sim_region_t *region, u32 storage_index, low_entity_t *stored) {
+add_sim_entity_raw(game_state_t *state, sim_region_t *region,
+                   u32 storage_index, low_entity_t *stored) {
     EX_ASSERT(storage_index);
     sim_entity_t *entity = 0;
     
-    if (region->entity_count < region->max_entity_count) {
-        entity = region->entities + region->entity_count++;
-        map_storage_index_to_entity(region, storage_index, entity);
+    sim_entity_hash_t *entry = get_hash_from_storage_index(region, storage_index);
+    if (entry->ptr == 0) {
+        if (region->entity_count < region->max_entity_count) {
+            entity = region->entities + region->entity_count++;
+
+            entry->index = storage_index;
+            entry->ptr = entity;
         
-        if (stored) {
-            // TODO(xkazu0x): this should really be a decompression step, not
-            // a copy!
-            *entity = stored->sim;
-            load_entity_reference(state, region, &entity->sword);
+            if (stored) {
+                // TODO(xkazu0x): this should really be a decompression step, not
+                // a copy!
+                *entity = stored->sim;
+                load_entity_reference(state, region, &entity->sword);
+
+                EX_ASSERT(!is_entity_flag_set(&stored->sim, ENTITY_FLAG_SIMMING));
+                add_entity_flag(&stored->sim, ENTITY_FLAG_SIMMING);
+            }
+        
+            entity->storage_index = storage_index;
+        } else {
+            INVALID_CODE_PATH();
         }
-        
-        entity->storage_index = storage_index;
-    } else {
-        INVALID_CODE_PATH();
     }
 
     return(entity);
@@ -83,14 +84,19 @@ add_sim_entity(game_state_t *state, sim_region_t *region, u32 storage_index, low
 inline vec2f
 get_sim_space_pos(sim_region_t *region, low_entity_t *stored) {
     // NOTE(xkazu0x): map the entity in camera space
-    vec3f diff = subtract(region->world, &stored->pos, &region->origin);
-    vec2f result = _vec2f(diff.x, diff.y);
+    vec2f result = INVALID_POS;
+    
+    if (!is_entity_flag_set(&stored->sim, ENTITY_FLAG_NON_SPATIAL)) {
+        vec3f diff = subtract(region->world, &stored->pos, &region->origin);
+        result = _vec2f(diff.x, diff.y);
+    }
+    
     return(result);
 }
 
 internal sim_entity_t *
 add_sim_entity(game_state_t *state, sim_region_t *region, u32 storage_index, low_entity_t *stored, vec2f *pos) {
-    sim_entity_t *entity = add_sim_entity(state, region, storage_index, stored);
+    sim_entity_t *entity = add_sim_entity_raw(state, region, storage_index, stored);
     
     if (entity) {
         if (pos) {
@@ -141,9 +147,12 @@ begin_sim(memory_arena_t *sim_arena, game_state_t *state, world_t *world, world_
                          entity_index++) {
                         u32 low_entity_index = block->low_entity_index[entity_index];
                         low_entity_t *low = state->low_entities + low_entity_index;
-                        vec2f sim_space_pos = get_sim_space_pos(region, low);
-                        if (is_in_rect(region->bounds, sim_space_pos)) {
-                            add_sim_entity(state, region, low_entity_index, low, &sim_space_pos);
+                        if (!is_entity_flag_set(&low->sim, ENTITY_FLAG_NON_SPATIAL))
+                        {
+                            vec2f sim_space_pos = get_sim_space_pos(region, low);
+                            if (is_in_rect(region->bounds, sim_space_pos)) {
+                                add_sim_entity(state, region, low_entity_index, low, &sim_space_pos);
+                            }
                         }
                     }
                 }
@@ -162,16 +171,23 @@ end_sim(sim_region_t *region, game_state_t *state) {
     sim_entity_t *entity = region->entities;
     for (u32 entity_index = 0;
          entity_index < region->entity_count;
-         ++entity_index, ++entity) {
+         ++entity_index, ++entity)
+    {
         low_entity_t *stored = state->low_entities + entity->storage_index;
+
+        EX_ASSERT(is_entity_flag_set(&stored->sim, ENTITY_FLAG_SIMMING));
         stored->sim = *entity;
+        EX_ASSERT(!is_entity_flag_set(&stored->sim, ENTITY_FLAG_SIMMING));
+        
         store_entity_reference(&stored->sim.sword);
         
         // TODO(xkazu0x): save stat back to the stored entity, once sim entities
         // do state decompression.
-        world_position_t new_pos = map_into_chunk_space(region->world, region->origin, entity->pos);
+        world_position_t new_pos = is_entity_flag_set(entity, ENTITY_FLAG_NON_SPATIAL) ?
+            null_position() :
+            map_into_chunk_space(region->world, region->origin, entity->pos);
         change_entity_location(&state->world_arena, state->world, entity->storage_index,
-                               stored, &stored->pos, &new_pos);
+                               stored, new_pos);
 
         if (entity->storage_index == state->camera_following_entity_index) {
             world_position_t new_camera_pos = state->camera_pos;
@@ -193,6 +209,7 @@ end_sim(sim_region_t *region, game_state_t *state) {
 #else
             new_camera_pos = stored->pos;
 #endif
+            state->camera_pos = new_camera_pos;
         }
     }
 }
@@ -219,6 +236,8 @@ test_wall(f32 wall_x, f32 rel_x, f32 rel_y, f32 player_delta_x, f32 player_delta
 
 internal void
 move_entity(sim_region_t *region, sim_entity_t *entity, f32 delta, move_spec_t *move_spec, vec2f dd_pos) {
+    EX_ASSERT(!is_entity_flag_set(entity, ENTITY_FLAG_NON_SPATIAL));
+    
     world_t *world = region->world;
 
     if (move_spec->unit_max_accel_vector) {
@@ -247,14 +266,20 @@ move_entity(sim_region_t *region, sim_entity_t *entity, f32 delta, move_spec_t *
 
         vec2f desired_pos = entity->pos + player_delta;
 
-        if (entity->collides) {
+        if (is_entity_flag_set(entity, ENTITY_FLAG_COLLIDES) &&
+            !is_entity_flag_set(entity, ENTITY_FLAG_NON_SPATIAL))
+        {
             // TODO(xkazu0x): spatial partition here!
             for (u32 test_high_entity_index = 0;
                  test_high_entity_index < region->entity_count;
-                 ++test_high_entity_index) {
+                 ++test_high_entity_index)
+            {
                 sim_entity_t *test_entity = region->entities + test_high_entity_index;
-                if (entity != test_entity) {
-                    if (test_entity->collides) {
+                if (entity != test_entity)
+                {
+                    if (is_entity_flag_set(test_entity, ENTITY_FLAG_COLLIDES) &&
+                        !is_entity_flag_set(entity, ENTITY_FLAG_NON_SPATIAL))
+                    {
                         f32 dim_w = test_entity->width + entity->width;
                         f32 dim_h = test_entity->width + entity->height;
             
