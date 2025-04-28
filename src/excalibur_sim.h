@@ -29,8 +29,8 @@ union entity_reference_t {
 };
 
 enum sim_entity_flags_t {
-    ENTITY_FLAG_COLLIDES = (1 << 1),
-    ENTITY_FLAG_NON_SPATIAL = (1 << 2),
+    ENTITY_FLAG_COLLIDES = (1 << 0),
+    ENTITY_FLAG_NON_SPATIAL = (1 << 1),
     
     ENTITY_FLAG_SIMMING = (1 << 30),
 };
@@ -50,6 +50,8 @@ struct sim_entity_t {
     f32 z;
     f32 d_z;
     
+    f32 distance_limit;
+    
     u32 chunk_z;
 
     f32 width;
@@ -65,7 +67,6 @@ struct sim_entity_t {
     hit_point_t hit_points[16];
 
     entity_reference_t sword;
-    f32 distance_remaining;
 };
 
 struct sim_entity_hash_t {

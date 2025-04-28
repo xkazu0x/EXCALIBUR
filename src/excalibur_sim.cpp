@@ -243,7 +243,21 @@ test_wall(f32 wall_x, f32 rel_x, f32 rel_y, f32 player_delta_x, f32 player_delta
 }
 
 internal void
-move_entity(sim_region_t *region, sim_entity_t *entity, f32 delta, move_spec_t *move_spec, vec2f dd_pos) {
+handle_collision(sim_entity_t *a, sim_entity_t *b) {
+    if ((a->type == ENTITY_TYPE_MONSTER) &&
+        (b->type == ENTITY_TYPE_SWORD)) {
+        make_entity_non_spatial(b);
+        if (a->hit_point_max == 1) {
+            make_entity_non_spatial(a);
+        } else {
+            --a->hit_point_max;
+        }
+    }
+}
+
+internal void
+move_entity(sim_region_t *region, sim_entity_t *entity, f32 delta,
+            move_spec_t *move_spec, vec2f dd_pos) {
     EX_ASSERT(!is_entity_flag_set(entity, ENTITY_FLAG_NON_SPATIAL));
     
     world_t *world = region->world;
@@ -269,79 +283,117 @@ move_entity(sim_region_t *region, sim_entity_t *entity, f32 delta, move_spec_t *
     entity->z = 0.5f*dd_z*sqr(delta) + entity->d_z*delta + entity->z;
     entity->d_z = dd_z*delta + entity->d_z;
     if (entity->z < 0.0f) entity->z = 0.0f;
-    
+
+    f32 distance_remaining = entity->distance_limit;
+    if (distance_remaining == 0.0f) {
+        // TODO(xkazu0x): do we want to formalize this number?
+        distance_remaining = 10000.0f;
+    }
+
     for (u32 iteration = 0;
          iteration < 4;
-         ++iteration) {
+         ++iteration)
+    {
         f32 t_min = 1.0f;
-        vec2f wall_normal = {};
-        sim_entity_t *hit_entity = 0;
+        
+        f32 player_delta_length = vec_length(player_delta);
+        // TODO(xkazu0x): what do we want to do for epsilons here?
+        // think this through for the final collision code
+        if (player_delta_length > 0.0f) {
+            if (player_delta_length > distance_remaining) {
+                t_min = (distance_remaining/player_delta_length);
+            }
+        
+            vec2f wall_normal = {};
+            sim_entity_t *hit_entity = 0;
 
-        vec2f desired_pos = entity->pos + player_delta;
-
-        if (is_entity_flag_set(entity, ENTITY_FLAG_COLLIDES) &&
-            !is_entity_flag_set(entity, ENTITY_FLAG_NON_SPATIAL))
-        {
-            // TODO(xkazu0x): spatial partition here!
-            for (u32 test_high_entity_index = 0;
-                 test_high_entity_index < region->entity_count;
-                 ++test_high_entity_index)
-            {
-                sim_entity_t *test_entity = region->entities + test_high_entity_index;
-                if (entity != test_entity)
-                {
-                    if (is_entity_flag_set(test_entity, ENTITY_FLAG_COLLIDES) &&
-                        !is_entity_flag_set(entity, ENTITY_FLAG_NON_SPATIAL))
-                    {
-                        f32 dim_w = test_entity->width + entity->width;
-                        f32 dim_h = test_entity->width + entity->height;
+            vec2f desired_pos = entity->pos + player_delta;
             
-                        vec2f min_corner = -0.5f*_vec2f(dim_w, dim_h);
-                        vec2f max_corner =  0.5f*_vec2f(dim_w, dim_h);
+            b32 stops_on_collision = is_entity_flag_set(entity, ENTITY_FLAG_COLLIDES);
+            
+            if (!is_entity_flag_set(entity, ENTITY_FLAG_NON_SPATIAL))
+            {
+                // TODO(xkazu0x): spatial partition here!
+                for (u32 test_high_entity_index = 0;
+                     test_high_entity_index < region->entity_count;
+                     ++test_high_entity_index)
+                {
+                    sim_entity_t *test_entity = region->entities + test_high_entity_index;
+                    if (entity != test_entity)
+                    {
+                        if (is_entity_flag_set(test_entity, ENTITY_FLAG_COLLIDES) &&
+                            !is_entity_flag_set(test_entity, ENTITY_FLAG_NON_SPATIAL))
+                        {
+                            f32 dim_w = test_entity->width + entity->width;
+                            f32 dim_h = test_entity->width + entity->height;
+            
+                            vec2f min_corner = -0.5f*_vec2f(dim_w, dim_h);
+                            vec2f max_corner =  0.5f*_vec2f(dim_w, dim_h);
                 
-                        vec2f rel = entity->pos - test_entity->pos;
+                            vec2f rel = entity->pos - test_entity->pos;
 
-                        if (test_wall(min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
-                                      &t_min, min_corner.y, max_corner.y)) {
-                            wall_normal = _vec2f(-1.0f, 0.0f);
-                            hit_entity = test_entity;
-                        }
+                            if (test_wall(min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
+                                          &t_min, min_corner.y, max_corner.y)) {
+                                wall_normal = _vec2f(-1.0f, 0.0f);
+                                hit_entity = test_entity;
+                            }
                 
-                        if (test_wall(max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
-                                      &t_min, min_corner.y, max_corner.y)) {
-                            wall_normal = _vec2f(1.0f, 0.0f);
-                            hit_entity = test_entity;
-                        }
+                            if (test_wall(max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
+                                          &t_min, min_corner.y, max_corner.y)) {
+                                wall_normal = _vec2f(1.0f, 0.0f);
+                                hit_entity = test_entity;
+                            }
                 
-                        if (test_wall(min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
-                                      &t_min, min_corner.x, max_corner.x)) {
-                            wall_normal = _vec2f(0.0f, -1.0f);
-                            hit_entity = test_entity;
-                        }
+                            if (test_wall(min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
+                                          &t_min, min_corner.x, max_corner.x)) {
+                                wall_normal = _vec2f(0.0f, -1.0f);
+                                hit_entity = test_entity;
+                            }
                 
-                        if (test_wall(max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
-                                      &t_min, min_corner.x, max_corner.x)) {
-                            wall_normal = _vec2f(0.0f, 1.0f);
-                            hit_entity = test_entity;
+                            if (test_wall(max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
+                                          &t_min, min_corner.x, max_corner.x)) {
+                                wall_normal = _vec2f(0.0f, 1.0f);
+                                hit_entity = test_entity;
+                            }
                         }
                     }
                 }
             }
-        }
             
-        entity->pos += t_min*player_delta;
-        if (hit_entity) {
-            entity->d_pos = entity->d_pos - 1*vec_dot(entity->d_pos, wall_normal)*wall_normal;
-            player_delta = desired_pos - entity->pos;
-            player_delta = player_delta - 1*vec_dot(player_delta, wall_normal)*wall_normal;
+            entity->pos += t_min*player_delta;
+            distance_remaining -= t_min*player_delta_length;
 
-            // TODO(xkazu0x): stairs
-            //entity->tile_z += hit_low_entity->simd_tile_z;
+            if (hit_entity) {
+                player_delta = desired_pos - entity->pos;
+                if (stops_on_collision) {
+                    player_delta = player_delta - 1*vec_dot(player_delta, wall_normal)*wall_normal;
+                    entity->d_pos = entity->d_pos - 1*vec_dot(entity->d_pos, wall_normal)*wall_normal;
+                }
+                // TODO(xkazu0x): IMPORTANT(xkazu0x): need out collision table here!
+                
+                sim_entity_t *a = entity;
+                sim_entity_t *b = hit_entity;
+                if (a->type > b->type) {
+                    sim_entity_t *temp = a;
+                    a = b;
+                    b = temp;
+                }
+                handle_collision(a, b);
+                
+                // TODO(xkazu0x): stairs
+                //entity->tile_z += hit_low_entity->simd_tile_z;
+            } else {
+                break;
+            }
         } else {
             break;
         }
     }
 
+    if (entity->distance_limit != 0.0f) {
+        entity->distance_limit = distance_remaining;
+    }
+    
     // NOTE(xkazu0x): update facing direction
     // TODO(xkazu0x): change to using the acceleration vector
     if ((entity->d_pos.x == 0.0f) && (entity->d_pos.y == 0.0f)) {

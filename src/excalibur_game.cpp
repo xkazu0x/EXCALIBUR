@@ -638,8 +638,8 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                             if ((controlled_player->d_sword.x != 0.0f) || (controlled_player->d_sword.y != 0.0f)) {
                                 sim_entity_t *sword = entity->sword.ptr;
                                 if (sword && is_entity_flag_set(sword, ENTITY_FLAG_NON_SPATIAL)) {
-                                    sword->distance_remaining = 3.0f;
-                                    make_entity_spatial(sword, entity->pos, 5.0f*controlled_player->d_sword);
+                                    sword->distance_limit = 3.0f;
+                                    make_entity_spatial(sword, entity->pos, 10.0f*controlled_player->d_sword);
                                 }
                             }
                         }
@@ -665,10 +665,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     // TODO(xkazu0x): need to handle the fact that distance_traveled
                     // might not have enough distance for the total entity move
                     // for the frame
-                    vec2f old_pos = entity->pos;
-                    f32 distance_traveled = vec_length(entity->pos - old_pos);
-                    entity->distance_remaining -= distance_traveled;
-                    if (entity->distance_remaining < 0.0f) {
+                    if (entity->distance_limit == 0.0f) {
                         make_entity_non_spatial(entity);
                     }
 
