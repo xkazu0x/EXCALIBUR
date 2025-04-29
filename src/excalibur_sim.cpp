@@ -242,21 +242,72 @@ test_wall(f32 wall_x, f32 rel_x, f32 rel_y, f32 player_delta_x, f32 player_delta
     return(hit);
 }
 
-internal void
+internal b32
+should_collide(game_state_t *state, sim_entity_t *a, sim_entity_t *b) {
+    b32 result = false;
+
+    if (a->storage_index > b->storage_index) {
+        sim_entity_t *temp = a;
+        a = b;
+        b = temp;
+    }
+    
+    if (!is_entity_flag_set(a, ENTITY_FLAG_NON_SPATIAL) &&
+        !is_entity_flag_set(b, ENTITY_FLAG_NON_SPATIAL)) {
+        // TODO(xkazu0x): property-based logic goes here
+        result = true;
+    }
+
+    // TODO(xkazu0x): BETTER HASH FUCTION
+    u32 hash_bucket = a->storage_index & (EX_ARRAY_COUNT(state->collision_rule_hash) - 1);
+    for (pairwise_collision_rule_t *rule = state->collision_rule_hash[hash_bucket];
+         rule;
+         rule = rule->next_in_hash)
+    {
+        if ((rule->storage_index_a == a->storage_index) &&
+            (rule->storage_index_b == b->storage_index)) {
+            result = rule->should_collide;
+            break;
+        }
+    }
+    
+    return(result);
+}
+
+internal b32
 handle_collision(sim_entity_t *a, sim_entity_t *b) {
+    b32 stops_on_collision = false;
+
+    if (a->type == ENTITY_TYPE_SWORD) {
+        stops_on_collision = false;
+    } else {
+        stops_on_collision = true;
+    }
+    
+    if (a->type > b->type) {
+        sim_entity_t *temp = a;
+        a = b;
+        b = temp;
+    }
+    
     if ((a->type == ENTITY_TYPE_MONSTER) &&
         (b->type == ENTITY_TYPE_SWORD)) {
-        make_entity_non_spatial(b);
         if (a->hit_point_max == 1) {
             make_entity_non_spatial(a);
         } else {
             --a->hit_point_max;
         }
     }
+    
+    // TODO(xkazu0x): stairs
+    //entity->tile_z += hit_low_entity->simd_tile_z;
+
+    // TODO(xkazu0x): real "stops on collision"
+    return(stops_on_collision);
 }
 
 internal void
-move_entity(sim_region_t *region, sim_entity_t *entity, f32 delta,
+move_entity(game_state_t *state, sim_region_t *region, sim_entity_t *entity, f32 delta,
             move_spec_t *move_spec, vec2f dd_pos) {
     EX_ASSERT(!is_entity_flag_set(entity, ENTITY_FLAG_NON_SPATIAL));
     
@@ -308,53 +359,47 @@ move_entity(sim_region_t *region, sim_entity_t *entity, f32 delta,
             sim_entity_t *hit_entity = 0;
 
             vec2f desired_pos = entity->pos + player_delta;
-            
-            b32 stops_on_collision = is_entity_flag_set(entity, ENTITY_FLAG_COLLIDES);
-            
-            if (!is_entity_flag_set(entity, ENTITY_FLAG_NON_SPATIAL))
-            {
+
+            // NOTE(xkazu0x): this is just an optimization to avoid enterring the
+            // loop in the case where the test entity is non-spatial
+            if (!is_entity_flag_set(entity, ENTITY_FLAG_NON_SPATIAL)) {
                 // TODO(xkazu0x): spatial partition here!
                 for (u32 test_high_entity_index = 0;
                      test_high_entity_index < region->entity_count;
                      ++test_high_entity_index)
                 {
                     sim_entity_t *test_entity = region->entities + test_high_entity_index;
-                    if (entity != test_entity)
-                    {
-                        if (is_entity_flag_set(test_entity, ENTITY_FLAG_COLLIDES) &&
-                            !is_entity_flag_set(test_entity, ENTITY_FLAG_NON_SPATIAL))
-                        {
-                            f32 dim_w = test_entity->width + entity->width;
-                            f32 dim_h = test_entity->width + entity->height;
+                    if (should_collide(state, entity, test_entity)) {
+                        f32 dim_w = test_entity->width + entity->width;
+                        f32 dim_h = test_entity->width + entity->height;
             
-                            vec2f min_corner = -0.5f*_vec2f(dim_w, dim_h);
-                            vec2f max_corner =  0.5f*_vec2f(dim_w, dim_h);
+                        vec2f min_corner = -0.5f*_vec2f(dim_w, dim_h);
+                        vec2f max_corner =  0.5f*_vec2f(dim_w, dim_h);
                 
-                            vec2f rel = entity->pos - test_entity->pos;
+                        vec2f rel = entity->pos - test_entity->pos;
 
-                            if (test_wall(min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
-                                          &t_min, min_corner.y, max_corner.y)) {
-                                wall_normal = _vec2f(-1.0f, 0.0f);
-                                hit_entity = test_entity;
-                            }
+                        if (test_wall(min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
+                                      &t_min, min_corner.y, max_corner.y)) {
+                            wall_normal = _vec2f(-1.0f, 0.0f);
+                            hit_entity = test_entity;
+                        }
                 
-                            if (test_wall(max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
-                                          &t_min, min_corner.y, max_corner.y)) {
-                                wall_normal = _vec2f(1.0f, 0.0f);
-                                hit_entity = test_entity;
-                            }
+                        if (test_wall(max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
+                                      &t_min, min_corner.y, max_corner.y)) {
+                            wall_normal = _vec2f(1.0f, 0.0f);
+                            hit_entity = test_entity;
+                        }
                 
-                            if (test_wall(min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
-                                          &t_min, min_corner.x, max_corner.x)) {
-                                wall_normal = _vec2f(0.0f, -1.0f);
-                                hit_entity = test_entity;
-                            }
+                        if (test_wall(min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
+                                      &t_min, min_corner.x, max_corner.x)) {
+                            wall_normal = _vec2f(0.0f, -1.0f);
+                            hit_entity = test_entity;
+                        }
                 
-                            if (test_wall(max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
-                                          &t_min, min_corner.x, max_corner.x)) {
-                                wall_normal = _vec2f(0.0f, 1.0f);
-                                hit_entity = test_entity;
-                            }
+                        if (test_wall(max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
+                                      &t_min, min_corner.x, max_corner.x)) {
+                            wall_normal = _vec2f(0.0f, 1.0f);
+                            hit_entity = test_entity;
                         }
                     }
                 }
@@ -365,23 +410,14 @@ move_entity(sim_region_t *region, sim_entity_t *entity, f32 delta,
 
             if (hit_entity) {
                 player_delta = desired_pos - entity->pos;
+                
+                b32 stops_on_collision = handle_collision(entity, hit_entity);
                 if (stops_on_collision) {
                     player_delta = player_delta - 1*vec_dot(player_delta, wall_normal)*wall_normal;
                     entity->d_pos = entity->d_pos - 1*vec_dot(entity->d_pos, wall_normal)*wall_normal;
+                } else {
+                    add_collision_rule(state, entity->storage_index, hit_entity->storage_index, false);
                 }
-                // TODO(xkazu0x): IMPORTANT(xkazu0x): need out collision table here!
-                
-                sim_entity_t *a = entity;
-                sim_entity_t *b = hit_entity;
-                if (a->type > b->type) {
-                    sim_entity_t *temp = a;
-                    a = b;
-                    b = temp;
-                }
-                handle_collision(a, b);
-                
-                // TODO(xkazu0x): stairs
-                //entity->tile_z += hit_low_entity->simd_tile_z;
             } else {
                 break;
             }

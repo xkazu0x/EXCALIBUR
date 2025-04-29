@@ -371,6 +371,72 @@ draw_hit_points(entity_visible_piece_group_t *piece_group, sim_entity_t *entity)
     }
 }
 
+internal void
+clear_collision_rules_for(game_state_t *state, u32 storage_index) {
+    // TODO(xkazu0x): need to make a better data structure that allows
+    // removal of collision rules without searching the entire table
+    for (u32 hash_bucket = 0;
+         hash_bucket < EX_ARRAY_COUNT(state->collision_rule_hash);
+         ++hash_bucket) {
+        for (pairwise_collision_rule_t **rule = &state->collision_rule_hash[hash_bucket];
+             *rule;
+             ) {
+            if (((*rule)->storage_index_a == storage_index) ||
+                ((*rule)->storage_index_b == storage_index)) {
+                pairwise_collision_rule_t *removed_rule = *rule;
+                *rule = (*rule)->next_in_hash;
+                
+                removed_rule->next_in_hash = state->first_free_collision_rule;
+                state->first_free_collision_rule = removed_rule;
+            } else {
+                rule = &(*rule)->next_in_hash;
+            }
+        }
+    }
+}
+
+internal void
+add_collision_rule(game_state_t *state, u32 storage_index_a, u32 storage_index_b, b32 should_collide) {
+    // TODO(xkazu0x): collapse this with should_collide
+    if (storage_index_a > storage_index_b) {
+        u32 temp = storage_index_a;
+        storage_index_a = storage_index_b;
+        storage_index_b = temp;
+    }
+
+    // TODO(xkazu0x): BETTER HASH FUCTION
+    pairwise_collision_rule_t *found = 0;
+    u32 hash_bucket = storage_index_a & (EX_ARRAY_COUNT(state->collision_rule_hash) - 1);
+    for (pairwise_collision_rule_t *rule = state->collision_rule_hash[hash_bucket];
+         rule;
+         rule = rule->next_in_hash)
+    {
+        if ((rule->storage_index_a == storage_index_a) &&
+            (rule->storage_index_b == storage_index_b)) {
+            found = rule;
+            break;
+        }
+    }
+
+    if (!found) {
+        found = state->first_free_collision_rule;
+        if (found) {
+            state->first_free_collision_rule = found->next_in_hash;
+        } else {
+            found = mema_push_struct(&state->world_arena, pairwise_collision_rule_t);
+        }
+        
+        found->next_in_hash = state->collision_rule_hash[hash_bucket];
+        state->collision_rule_hash[hash_bucket] = found;
+    }
+
+    if (found) {
+        found->storage_index_a = storage_index_a;
+        found->storage_index_b = storage_index_b;
+        found->should_collide = should_collide;
+    }
+}
+
 extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     EX_ASSERT(sizeof(game_state_t) <= memory->permanent_storage_size);
     game_state_t *state = (game_state_t *)memory->permanent_storage;
@@ -640,6 +706,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                                 if (sword && is_entity_flag_set(sword, ENTITY_FLAG_NON_SPATIAL)) {
                                     sword->distance_limit = 3.0f;
                                     make_entity_spatial(sword, entity->pos, 10.0f*controlled_player->d_sword);
+                                    add_collision_rule(state, sword->storage_index, entity->storage_index, false);
                                 }
                             }
                         }
@@ -666,6 +733,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     // might not have enough distance for the total entity move
                     // for the frame
                     if (entity->distance_limit == 0.0f) {
+                        clear_collision_rules_for(state, entity->storage_index);
                         make_entity_non_spatial(entity);
                     }
 
@@ -724,7 +792,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             }
 
             if (!is_entity_flag_set(entity, ENTITY_FLAG_NON_SPATIAL)) {
-                move_entity(sim_region, entity, clock->delta_seconds, &move_spec, dd_pos);
+                move_entity(state, sim_region, entity, clock->delta_seconds, &move_spec, dd_pos);
             }
             
             f32 entity_ground_point_x = screen_center_x + meters_to_pixels*entity->pos.x;

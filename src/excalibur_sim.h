@@ -9,8 +9,8 @@ struct move_spec_t {
 
 enum entity_type_t {
     ENTITY_TYPE_NULL,
-    ENTITY_TYPE_WALL,
     ENTITY_TYPE_PLAYER,
+    ENTITY_TYPE_WALL,
     ENTITY_TYPE_FAMILIAR,
     ENTITY_TYPE_MONSTER,
     ENTITY_TYPE_SWORD,
