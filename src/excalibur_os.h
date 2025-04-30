@@ -33,9 +33,9 @@ typedef DEBUG_OS_WRITE_FILE(debug_os_write_file_t);
 // TODO(xkazu0x): key codes for keyboard input
     
 typedef enum key_t {
+    KEY_ENTER  = 0x0D,
     KEY_SHIFT  = 0x10,
     KEY_ESCAPE = 0x1B,
-
     KEY_SPACE  = 0x20,
 
     KEY_LEFT   = 0x25,
@@ -106,7 +106,7 @@ typedef enum key_t {
     KEY_F23 = 0x86,
     KEY_F24 = 0x87,
 
-    KEY_MAX = 256,
+    KEY_MAX = 0xFF,
 } key_t;
 
 typedef struct digital_button_t {
@@ -156,15 +156,17 @@ typedef struct mouse_t {
     digital_button_t x2;
     s32 wheel;
     s32 delta_wheel;
-    vec2i position;
-    vec2i delta_position;
+    s32 x;
+    s32 y;
+    s32 dx;
+    s32 dy;
 } mouse_t;
 
-#define GAMEPAD_COUNT_MAX 4
+#define GAMEPAD_MAX 4
 typedef struct os_input_t {
     digital_button_t keyboard[KEY_MAX];
+    gamepad_t gamepads[GAMEPAD_MAX];
     mouse_t mouse;
-    gamepad_t gamepads[GAMEPAD_COUNT_MAX];
 } os_input_t;
 
 typedef struct os_framebuffer_t {

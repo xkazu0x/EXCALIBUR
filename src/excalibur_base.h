@@ -111,29 +111,26 @@
 #define ARCH_ARM64 0
 #endif
 
-#define EX_STMNT(x) do { x } while(0)
-#define EX_ASSERT_BREAK() (*(int *)0 = 0)
+#define STMNT(x) do { x } while(0)
+#define ASSERT_BREAK() (*(int *)0 = 0)
 
 #ifdef EXCALIBUR_DEBUG
-# define EX_ASSERT(x) EX_STMNT(if (!(x)) { EX_ASSERT_BREAK(); })
+#define ASSERT(x) STMNT(if (!(x)) { ASSERT_BREAK(); })
 #else
-# define EX_ASSERT(x)
+#define ASSERT(x)
 #endif
 
-#define INVALID_CODE_PATH() EX_ASSERT(!"INVALID_CODE_PATH");
+#define INVALID_CODE_PATH() ASSERT(!"INVALID_CODE_PATH");
 
-#define EX_KILOBYTES(x) ((x)*1024LL)
-#define EX_MEGABYTES(x) (EX_KILOBYTES(x)*1024LL)
-#define EX_GIGABYTES(x) (EX_MEGABYTES(x)*1024LL)
-#define EX_TERABYTES(x) (EX_GIGABYTES(x)*1024LL)
+#define KILOBYTES(x) ((x)*1024LL)
+#define MEGABYTES(x) (KILOBYTES(x)*1024LL)
+#define GIGABYTES(x) (MEGABYTES(x)*1024LL)
+#define TERABYTES(x) (GIGABYTES(x)*1024LL)
 
-#define EX_ARRAY_COUNT(x) (sizeof(x)/sizeof(*(x)))
+#define ARRAY_COUNT(x) (sizeof(x)/sizeof(*(x)))
 
-#define EX_MIN(a, b) ((a < b) ? (a) : (b))
-#define EX_MAX(a, b) ((a > b) ? (a) : (b))
-
-#define EX_FALSE 0
-#define EX_TRUE 1
+#define MIN(a, b) ((a < b) ? (a) : (b))
+#define MAX(a, b) ((a > b) ? (a) : (b))
 
 #define global static
 #define local static
@@ -152,8 +149,6 @@ typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
 
-typedef size_t memi;
-
 typedef s8 b8;
 typedef s16 b16;
 typedef s32 b32;
@@ -161,6 +156,8 @@ typedef s64 b64;
 
 typedef float f32;
 typedef double f64;
+
+typedef size_t memi;
 
 global s8  s8_min  = (s8) 0x80;
 global s16 s16_min = (s16)0x8000;

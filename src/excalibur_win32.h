@@ -6,6 +6,11 @@
 #include <timeapi.h>
 #include <xinput.h>
 
+struct win32_window_size_t {
+    s32 width;
+    s32 height;
+};
+
 struct win32_game_t {
     b32 loaded;
     HMODULE library;
@@ -17,7 +22,6 @@ struct win32_game_t {
 };
 
 #define WIN32_FILENAME_MAX MAX_PATH
-
 struct win32_state_t {
     BITMAPINFO bitmap_info;
     WINDOWPLACEMENT window_placement;
@@ -32,8 +36,8 @@ struct win32_state_t {
 
 #define WIN32_GET_PROC_ADDR(v, m, s) (*(PROC*)(&(v))) = GetProcAddress((m), (s))
 
-#define XINPUT_GET_STATE(name) DWORD WINAPI name(DWORD, XINPUT_STATE *)
-#define XINPUT_SET_STATE(name) DWORD WINAPI name(DWORD, XINPUT_VIBRATION *)
+#define XINPUT_GET_STATE(x) DWORD WINAPI x(DWORD, XINPUT_STATE *)
+#define XINPUT_SET_STATE(x) DWORD WINAPI x(DWORD, XINPUT_VIBRATION *)
 
 typedef XINPUT_GET_STATE(xinput_get_state_t);
 typedef XINPUT_SET_STATE(xinput_set_state_t);

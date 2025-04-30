@@ -44,8 +44,8 @@ struct sim_entity_t {
     entity_type_t type;
     u32 flags;
     
-    vec2f pos;
-    vec2f d_pos;
+    vec2 pos;
+    vec2 d_pos;
 
     f32 z;
     f32 d_z;
@@ -80,8 +80,8 @@ struct sim_region_t {
     
     world_t *world;
     world_position_t origin;
-    rect2f bounds;
-    rect2f updatable_bounds;
+    rect2 bounds;
+    rect2 updatable_bounds;
     
     u32 max_entity_count;
     u32 entity_count;

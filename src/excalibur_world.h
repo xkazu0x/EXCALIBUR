@@ -7,7 +7,7 @@ struct world_position_t {
     s32 chunk_z;
 
     // NOTE(xkazu0x): offset from the chunk center
-    vec2f offset_;
+    vec2 offset_;
 };
 
 struct world_entity_block_t {

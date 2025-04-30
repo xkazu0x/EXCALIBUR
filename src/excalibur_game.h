@@ -26,7 +26,7 @@ memory_arena_create(memi size, void *base) {
 
 internal void *
 memory_arena_push(memory_arena_t *arena, memi size) {
-    EX_ASSERT((arena->used + size) <= arena->size);
+    ASSERT((arena->used + size) <= arena->size);
     void *result = arena->base + arena->used;
     arena->used += size;
     return(result);
@@ -61,10 +61,10 @@ struct low_entity_t {
 
 struct entity_visible_piece_t {
     bitmap_t *bitmap;
-    vec3f offset;
+    vec3 offset;
     
-    vec4f color;
-    vec2f size;
+    vec4 color;
+    vec2 size;
     
     f32 entity_zc;
 };
@@ -72,8 +72,8 @@ struct entity_visible_piece_t {
 struct controlled_player_t {
     u32 entity_index;
     // NOTE(xkazu0x): these are the gamepad requests for simulation
-    vec2f dd_pos;
-    vec2f d_sword;
+    vec2 dd_pos;
+    vec2 d_sword;
     f32 d_z;
 };
 
@@ -92,7 +92,7 @@ struct game_state_t {
     u32 camera_following_entity_index;
     world_position_t camera_pos;
     
-    controlled_player_t controlled_players[GAMEPAD_COUNT_MAX];
+    controlled_player_t controlled_players[GAMEPAD_MAX];
     
     // TODO(xkazu0x): change the name to "stored entity"
     u32 low_entity_count;

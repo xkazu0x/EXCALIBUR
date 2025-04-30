@@ -2,14 +2,14 @@
 #include <stdarg.h>
 
 internal void
-log_output(log_level_t level, char *message, ...) {
+_log(log_level_t level, char *message, ...) {
     const char *levels[LOG_LEVEL_MAX] {
-        "[FATAL]: ! ",
-        "[ERROR]: ! ",
-        "[WARN]: < ",
-        "[INFO]: > ",
-        "[DEBUG]: > ",
-        "[TRACE]: - ",
+        "[FATAL]: ",
+        "[ERROR]: ",
+        "[WARN]: ",
+        "[INFO]: ",
+        "[DEBUG]: ",
+        "[TRACE]: ",
     };
 
     va_list arg_list;

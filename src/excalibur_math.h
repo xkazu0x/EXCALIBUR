@@ -1,17 +1,7 @@
 #ifndef EXCALIBUR_MATH_H
 #define EXCALIBUR_MATH_H
 
-union vec2i {
-    struct {
-        s32 x, y;
-    };
-    struct {
-        s32 u, v;
-    };
-    s32 e[2];
-};
-
-union vec2f {
+union vec2 {
     struct {
         f32 x, y;
     };
@@ -21,7 +11,7 @@ union vec2f {
     f32 e[2];
 };
 
-union vec3f {
+union vec3 {
     struct {
         f32 x, y, z;
     };
@@ -34,7 +24,7 @@ union vec3f {
     f32 e[3];
 };
 
-union vec4f {
+union vec4 {
     struct {
         f32 x, y, z, w;
     };
@@ -44,101 +34,88 @@ union vec4f {
     f32 e[4];
 };
 
-internal inline vec2i _vec2i(s32 x, s32 y);
-internal inline vec2i _vec2i(s32 s);
+internal inline vec2 make_vec2(f32 f);
+internal inline vec3 make_vec3(f32 f);
+internal inline vec4 make_vec4(f32 f);
 
-internal inline vec2f _vec2f(f32 x, f32 y);
-internal inline vec2f _vec2f(f32 f);
+internal inline vec2 make_vec2(f32 x, f32 y);
+internal inline vec3 make_vec3(f32 x, f32 y, f32 z);
+internal inline vec4 make_vec4(f32 x, f32 y, f32 z, f32 w);
 
-internal inline vec3f _vec3f(f32 x, f32 y, f32 z);
-internal inline vec3f _vec3f(vec2f v, f32 z);
-internal inline vec3f _vec3f(f32 f);
+internal inline vec3 make_vec3(vec2 xy, f32 z);
+internal inline vec4 make_vec4(vec2 xy, f32 z, f32 w);
+internal inline vec4 make_vec4(vec3 xyz, f32 w);
 
-internal inline vec4f _vec4f(f32 x, f32 y, f32 z, f32 w);
-internal inline vec4f _vec4f(vec2f v, f32 z, f32 w);
-internal inline vec4f _vec4f(vec3f v, f32 w);
-internal inline vec4f _vec4f(f32 f);
+internal inline vec2 operator+(vec2 a, vec2 b);
+internal inline vec3 operator+(vec3 a, vec3 b);
+internal inline vec4 operator+(vec4 a, vec4 b);
 
-internal inline vec2i operator+(vec2i a, vec2i b);
-internal inline vec2f operator+(vec2f a, vec2f b);
-internal inline vec3f operator+(vec3f a, vec3f b);
-internal inline vec4f operator+(vec4f a, vec4f b);
+internal inline vec2 &operator+=(vec2 &a, vec2 b);
+internal inline vec3 &operator+=(vec3 &a, vec3 b);
+internal inline vec4 &operator+=(vec4 &a, vec4 b);
 
-internal inline vec2i &operator+=(vec2i &a, vec2i b);
-internal inline vec2f &operator+=(vec2f &a, vec2f b);
-internal inline vec3f &operator+=(vec3f &a, vec3f b);
-internal inline vec4f &operator+=(vec4f &a, vec4f b);
+internal inline vec2 operator-(vec2 v);
+internal inline vec3 operator-(vec3 v);
+internal inline vec4 operator-(vec4 v);
 
-internal inline vec2i operator-(vec2i v);
-internal inline vec2f operator-(vec2f v);
-internal inline vec3f operator-(vec3f v);
-internal inline vec4f operator-(vec4f v);
+internal inline vec2 operator-(vec2 a, vec2 b);
+internal inline vec3 operator-(vec3 a, vec3 b);
+internal inline vec4 operator-(vec4 a, vec4 b);
 
-internal inline vec2i operator-(vec2i a, vec2i b);
-internal inline vec2f operator-(vec2f a, vec2f b);
-internal inline vec3f operator-(vec3f a, vec3f b);
-internal inline vec4f operator-(vec4f a, vec4f b);
+internal inline vec2 &operator-=(vec2 &a, vec2 b);
+internal inline vec3 &operator-=(vec3 &a, vec3 b);
+internal inline vec4 &operator-=(vec4 &a, vec4 b);
 
-internal inline vec2i &operator-=(vec2i &a, vec2i b);
-internal inline vec2f &operator-=(vec2f &a, vec2f b);
-internal inline vec3f &operator-=(vec3f &a, vec3f b);
-internal inline vec4f &operator-=(vec4f &a, vec4f b);
+internal inline vec2 operator*(f32 s, vec2 v);
+internal inline vec3 operator*(f32 s, vec3 v);
+internal inline vec4 operator*(f32 s, vec4 v);
 
-internal inline vec2i operator*(s32 s, vec2i v);
-internal inline vec2f operator*(f32 s, vec2f v);
-internal inline vec3f operator*(f32 s, vec3f v);
-internal inline vec4f operator*(f32 s, vec4f v);
+internal inline vec2 operator*(vec2 v, f32 s);
+internal inline vec3 operator*(vec3 v, f32 s);
+internal inline vec4 operator*(vec4 v, f32 s);
 
-internal inline vec2i operator*(vec2i v, s32 s);
-internal inline vec2f operator*(vec2f v, f32 s);
-internal inline vec3f operator*(vec3f v, f32 s);
-internal inline vec4f operator*(vec4f v, f32 s);
+internal inline vec2 &operator*=(vec2 &v, f32 s);
+internal inline vec3 &operator*=(vec3 &v, f32 s);
+internal inline vec4 &operator*=(vec4 &v, f32 s);
 
-internal inline vec2i &operator*=(vec2i &v, s32 s);
-internal inline vec2f &operator*=(vec2f &v, f32 s);
-internal inline vec3f &operator*=(vec3f &v, f32 s);
-internal inline vec4f &operator*=(vec4f &v, f32 s);
+internal inline b32 operator==(vec2 a, vec2 b);
+internal inline b32 operator==(vec3 a, vec3 b);
+internal inline b32 operator==(vec4 a, vec4 b);
 
-internal inline vec2i operator/(vec2i v, s32 s);
-internal inline vec2f operator/(vec2f v, f32 s);
-internal inline vec3f operator/(vec3f v, f32 s);
-internal inline vec4f operator/(vec4f v, f32 s);
+internal inline b32 operator!=(vec2 a, vec2 b);
+internal inline b32 operator!=(vec3 a, vec3 b);
+internal inline b32 operator!=(vec4 a, vec4 b);
 
-internal inline vec2f vec_hadamard(vec2f a, vec2f b);
-internal inline vec3f vec_hadamard(vec3f a, vec3f b);
-internal inline vec4f vec_hadamard(vec4f a, vec4f b);
+internal inline vec2 vec_hadamard(vec2 a, vec2 b);
+internal inline vec3 vec_hadamard(vec3 a, vec3 b);
+internal inline vec4 vec_hadamard(vec4 a, vec4 b);
 
-internal inline f32 vec_dot(vec2f a, vec2f b);
-internal inline f32 vec_dot(vec3f a, vec3f b);
-internal inline f32 vec_dot(vec4f a, vec4f b);
+internal inline f32 vec_dot(vec2 a, vec2 b);
+internal inline f32 vec_dot(vec3 a, vec3 b);
+internal inline f32 vec_dot(vec4 a, vec4 b);
 
-internal inline f32 vec_length_sqr(vec2f v);
-internal inline f32 vec_length(vec2f v);
+internal inline f32 vec_length_square(vec2 v);
+internal inline f32 vec_length(vec2 v);
 
-internal inline f32 sqr(f32 f);
+internal inline f32 square(f32 x);
 
-struct rect2f {
-    vec2f min;
-    vec2f max;
+struct rect2 {
+    vec2 min;
+    vec2 max;
 };
 
-internal inline rect2f rect2f_min_max(vec2f min, vec2f max);
-internal inline rect2f rect2f_min_dim(vec2f min, vec2f dim);
-internal inline rect2f rect2f_center_half_dim(vec2f center, vec2f half_dim);
-internal inline rect2f rect2f_center_dim(vec2f center, vec2f dim);
+internal inline rect2 make_rect2_min_max(vec2 min, vec2 max);
+internal inline rect2 make_rect2_min_dim(vec2 min, vec2 dim);
+internal inline rect2 make_rect2_center_half_dim(vec2 center, vec2 half_dim);
+internal inline rect2 make_rect2_center_dim(vec2 center, vec2 dim);
 
-internal inline b32 is_in_rect(rect2f rect, vec2f test);
+internal inline vec2 get_rect_min(rect2 rect);
+internal inline vec2 get_rect_max(rect2 rect);
+internal inline vec2 get_rect_center(rect2 rect);
 
-internal inline vec2f rect_get_min_corner(rect2f rect);
-internal inline vec2f rect_get_max_corner(rect2f rect);
-internal inline vec2f rect_get_center(rect2f rect);
+internal inline b32 is_in_rect(rect2 rect, vec2 test);
+internal inline rect2 rect_add_radius(rect2 rect, f32 radius_width, f32 radius_height);
 
-internal inline rect2f
-add_radius_to(rect2f rect, f32 radius_width, f32 radius_height) {
-    rect2f result;
-    result.min = rect.min - _vec2f(radius_width, radius_height);
-    result.max = rect.max + _vec2f(radius_width, radius_height);
-    return(result);
-}
+internal vec3 make_rgb(f32 r, f32 g, f32 b);
 
 #endif // EXCALIBUR_MATH_H
