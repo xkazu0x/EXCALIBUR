@@ -148,6 +148,8 @@ internal inline b32 is_in_rect(rect3 rect, vec3 test);
 //
 
 internal inline f32 square(f32 x);
+
 internal vec3 make_rgb(f32 r, f32 g, f32 b);
+internal vec4 make_rgba(f32 r, f32 g, f32 b, f32 a);
 
 #endif // EXCALIBUR_MATH_H

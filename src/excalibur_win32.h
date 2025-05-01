@@ -7,8 +7,8 @@
 #include <xinput.h>
 
 struct win32_window_size_t {
-    s32 width;
-    s32 height;
+    s32 x;
+    s32 y;
 };
 
 struct win32_game_t {

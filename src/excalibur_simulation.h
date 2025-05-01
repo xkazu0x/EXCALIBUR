@@ -1,5 +1,5 @@
-#ifndef EXCALIBUR_SIM_H
-#define EXCALIBUR_SIM_H
+#ifndef EXCALIBUR_SIMULATION_H
+#define EXCALIBUR_SIMULATION_H
 
 struct move_spec_t {
     b32 unit_max_accel_vector;
@@ -37,20 +37,16 @@ enum sim_entity_flags_t {
 
 struct sim_entity_t {
     // NOTE(xkazu0x): only for the sim region
+    world_chunk_t *old_chunk;
     u32 storage_index;
     b32 updatable;
     
-    // NOTE(xkazu0x):
     entity_type_t type;
     u32 flags;
-    
+
+    vec3 dim;
     vec3 pos;
     vec3 d_pos;
-    
-    f32 distance_limit;
-
-    f32 width;
-    f32 height;
     
     u32 direction;
     f32 t_bob;
@@ -60,7 +56,8 @@ struct sim_entity_t {
     // TODO(xkazu0x): should hit point be entities?
     u32 hit_point_max;
     hit_point_t hit_points[16];
-
+    
+    f32 distance_limit;
     entity_reference_t sword;
 };
 
@@ -74,6 +71,9 @@ struct sim_region_t {
     // to sim entities
     
     world_t *world;
+    f32 max_entity_radius;
+    f32 max_entity_velocity;
+    
     world_position_t origin;
     rect3 bounds;
     rect3 updatable_bounds;
@@ -87,4 +87,4 @@ struct sim_region_t {
     sim_entity_hash_t hash[4096];
 };
 
-#endif // EXCALIBUR_SIM_H
+#endif // EXCALIBUR_SIMULATION_H

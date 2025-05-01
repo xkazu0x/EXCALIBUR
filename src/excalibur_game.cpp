@@ -15,7 +15,7 @@
 
 #include "excalibur_random.h"
 #include "excalibur_world.h"
-#include "excalibur_sim.h"
+#include "excalibur_simulation.h"
 #include "excalibur_entity.h"
 
 #include "excalibur_game.h"
@@ -30,7 +30,7 @@ get_low_entity(game_state_t *state, u32 index) {
 }
 
 #include "excalibur_world.cpp"
-#include "excalibur_sim.cpp"
+#include "excalibur_simulation.cpp"
 #include "excalibur_entity.cpp"
 
 internal gamepad_t *
@@ -64,7 +64,7 @@ draw_rect(os_framebuffer_t *framebuffer, vec2 min, vec2 max, vec3 color) {
     u8 *row = ((u8 *)framebuffer->pixels +
                  (min_x * framebuffer->bytes_per_pixel) +
                  (min_y * framebuffer->pitch));
-    for (s32 y = min_y; y < max_y; y++) {
+    for (s32 y = min_y; y < max_y; ++y) {
         u32 *pixel = (u32 *)row;
         for (s32 x = min_x; x < max_x; ++x) {
             *pixel++ = out_color;
@@ -75,37 +75,38 @@ draw_rect(os_framebuffer_t *framebuffer, vec2 min, vec2 max, vec3 color) {
 
 internal void
 draw_bitmap(os_framebuffer_t *framebuffer, bitmap_t *bitmap,
-            f32 x_offset, f32 y_offset, f32 c_alpha = 1.0f) {
-    s32 x_min = round_f32_to_s32(x_offset);
-    s32 y_min = round_f32_to_s32(y_offset);
-    s32 x_max = x_min + bitmap->width;
-    s32 y_max = y_min + bitmap->height;
+            f32 offset_x, f32 offset_y, f32 c_alpha = 1.0f) {
+    s32 min_x = round_f32_to_s32(offset_x);
+    s32 min_y = round_f32_to_s32(offset_y);
+    s32 max_x = min_x + bitmap->width;
+    s32 max_y = min_y + bitmap->height;
 
     s32 source_offset_x = 0;
     s32 source_offset_y = 0;
     
-    if (x_min < 0) {
-        source_offset_x = -x_min;
-        x_min = 0;
+    if (min_x < 0) {
+        source_offset_x = -min_x;
+        min_x = 0;
     }
-    if (y_min < 0) {
-        source_offset_y = -y_min;
-        y_min = 0;
+    if (min_y < 0) {
+        source_offset_y = -min_y;
+        min_y = 0;
     }
-    if (x_max > framebuffer->width) x_max = framebuffer->width;
-    if (y_max > framebuffer->height) y_max = framebuffer->height;
+    
+    if (max_x > framebuffer->width) max_x = framebuffer->width;
+    if (max_y > framebuffer->height) max_y = framebuffer->height;
 
     // TODO(xkazu0x): source_row needs to be changed based on cliping
     u32 *source_row = bitmap->pixels + bitmap->width*(bitmap->height - 1);
     source_row += -source_offset_y*bitmap->width + source_offset_x;
     u8 *dest_row = ((u8 *)framebuffer->pixels +
-                    x_min*framebuffer->bytes_per_pixel +
-                    y_min*framebuffer->pitch);
+                    min_x*framebuffer->bytes_per_pixel +
+                    min_y*framebuffer->pitch);
     
-    for (s32 y = y_min; y < y_max; y++) {
+    for (s32 y = min_y; y < max_y; ++y) {
         u32 *dest = (u32 *)dest_row;
         u32 *source = source_row;
-        for (s32 x = x_min; x < x_max; x++) {
+        for (s32 x = min_x; x < max_x; ++x) {
             f32 alpha = (f32)((*source >> 24) & 0xFF)/255.0f;
             f32 src_red = (f32)((*source >> 16) & 0xFF);
             f32 src_green = (f32)((*source >> 8) & 0xFF);
@@ -232,8 +233,8 @@ add_wall(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
     world_position_t pos = chunk_position_from_tile_position(state->world, tile_x, tile_y, tile_z);
     add_low_entity_result entity = add_low_entity(state, ENTITY_TYPE_WALL, pos);
     
-    entity.low->sim.height = state->world->tile_side_in_meters;
-    entity.low->sim.width = entity.low->sim.height;
+    entity.low->sim.dim.y = state->world->tile_side_in_meters;
+    entity.low->sim.dim.x = entity.low->sim.dim.y;
     add_entity_flag(&entity.low->sim, ENTITY_FLAG_COLLIDES);
     
     return(entity);
@@ -256,8 +257,8 @@ internal add_low_entity_result
 add_sword(game_state_t *state) {
     add_low_entity_result entity = add_low_entity(state, ENTITY_TYPE_SWORD, null_position());
     
-    entity.low->sim.height = state->world->tile_side_in_meters;
-    entity.low->sim.width = entity.low->sim.height;
+    entity.low->sim.dim.y = state->world->tile_side_in_meters;
+    entity.low->sim.dim.x = entity.low->sim.dim.y;
     
     return(entity);
 }
@@ -270,8 +271,8 @@ add_player(game_state_t *state) {
     // TODO(xkazu0x): colliding is not happening in perfect tile size,
     // theres is something sketchy on how we are representing the
     // colliding dimensions
-    entity.low->sim.height = 0.9f*state->world->tile_side_in_meters;
-    entity.low->sim.width = entity.low->sim.height;
+    entity.low->sim.dim.y = 0.9f*state->world->tile_side_in_meters;
+    entity.low->sim.dim.x = entity.low->sim.dim.y;
     add_entity_flag(&entity.low->sim, ENTITY_FLAG_COLLIDES);
     
     init_hit_points(entity.low, 3);
@@ -291,8 +292,8 @@ add_familiar(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
     world_position_t pos = chunk_position_from_tile_position(state->world, tile_x, tile_y, tile_z);
     add_low_entity_result entity = add_low_entity(state, ENTITY_TYPE_FAMILIAR, pos);
     
-    entity.low->sim.height = 0.5f*state->world->tile_side_in_meters;
-    entity.low->sim.width = entity.low->sim.height;
+    entity.low->sim.dim.y = 0.5f*state->world->tile_side_in_meters;
+    entity.low->sim.dim.x = entity.low->sim.dim.y;
     add_entity_flag(&entity.low->sim, ENTITY_FLAG_COLLIDES);
 
     return(entity);
@@ -303,8 +304,8 @@ add_monster(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
     world_position_t pos = chunk_position_from_tile_position(state->world, tile_x, tile_y, tile_z);
     add_low_entity_result entity = add_low_entity(state, ENTITY_TYPE_MONSTER, pos);
     
-    entity.low->sim.height = state->world->tile_side_in_meters;
-    entity.low->sim.width = entity.low->sim.height;
+    entity.low->sim.dim.y = state->world->tile_side_in_meters;
+    entity.low->sim.dim.x = entity.low->sim.dim.y;
     add_entity_flag(&entity.low->sim, ENTITY_FLAG_COLLIDES);
     
     init_hit_points(entity.low, 5);
@@ -315,8 +316,8 @@ add_monster(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
 internal void
 push_piece(entity_visible_piece_group_t *group, bitmap_t *bitmap,
            vec3 offset, vec2 size, vec4 color, f32 entity_zc = 1.0f) {
-
     ASSERT(group->piece_count < ARRAY_COUNT(group->pieces));
+    
     entity_visible_piece_t *piece = group->pieces + group->piece_count++;
     piece->bitmap = bitmap;
     piece->offset = group->game_state->meters_to_pixels*make_vec3(offset.x, -offset.y, offset.z);
@@ -341,19 +342,23 @@ internal void
 draw_hit_points(entity_visible_piece_group_t *piece_group, sim_entity_t *entity) {
     if (entity->hit_point_max >= 1) {
         vec2 health_dim = make_vec2(0.125f*1.4f);
+        
         f32 spacing_x = 1.5f*health_dim.x;
-        f32 offset_x = (entity->width + (spacing_x/2))/2;
+        f32 offset_x = (entity->dim.x + (spacing_x/2))/2;
+        
         vec2 hit_pos = make_vec2((-0.5f*(entity->hit_point_max - 1)*spacing_x) + offset_x, 0.7f);
         vec2 hit_dpos = make_vec2(spacing_x, 0.0f);
                         
         for (u32 health_index = 0;
              health_index < entity->hit_point_max;
-             health_index++) {
+             ++health_index) {
             hit_point_t *hit_point = entity->hit_points + health_index;
-            vec4 color = make_vec4(222.0f/255.0f, 214.0f/255.0f, 222.0f/255.0f, 1.0f);
+            vec4 color = make_rgba(222.0f, 214.0f, 222.0f, 255.0f);
+            
             if (hit_point->filled_amount == 0) {
-                color = make_vec4(164.0f/255.0f, 157.0f/255.0f, 164.0f/255.0f, 1.0f);
+                color = make_rgba(164.0f, 157.0f, 164.0f, 255.0f);
             }
+            
             push_rect(piece_group, make_vec3(hit_pos, 0.0f), health_dim, color, 0.0f);
             hit_pos += hit_dpos;
         }
@@ -622,13 +627,12 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 if (input->keyboard[KEY_S].down) controlled_player->dd_pos.y = -1.0f;
                 if (input->keyboard[KEY_A].down) controlled_player->dd_pos.x = -1.0f;
                 if (input->keyboard[KEY_D].down) controlled_player->dd_pos.x = 1.0f;
+                if (input->keyboard[KEY_SPACE].pressed) controlled_player->d_z = 3.0f;
                 
                 if (input->keyboard[KEY_UP].pressed) controlled_player->d_sword = make_vec2(0.0f, 1.0f);
                 if (input->keyboard[KEY_DOWN].pressed) controlled_player->d_sword = make_vec2(0.0f, -1.0f);
                 if (input->keyboard[KEY_LEFT].pressed) controlled_player->d_sword = make_vec2(-1.0f, 0.0f);
                 if (input->keyboard[KEY_RIGHT].pressed) controlled_player->d_sword = make_vec2(1.0f, 0.0f);
-
-                if (input->keyboard[KEY_SPACE].pressed) controlled_player->d_z = 3.0f;
             }
         }
     }
@@ -645,17 +649,16 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                                                           (f32)tile_span_z));
     
     memory_arena_t sim_arena = memory_arena_create(memory->transient_storage_size, memory->transient_storage);
-    sim_region_t *sim_region = begin_sim(&sim_arena, state, world, state->camera_pos, camera_bounds);
+    sim_region_t *sim_region = begin_sim(&sim_arena, state, world, state->camera_pos, camera_bounds, clock->delta_seconds);
 
     ///////////////////////////////////
     // NOTE(xkazu0x): update and render
     for (u32 y = 0; y < 12; ++y) {
         for (u32 x = 0; x < 20; ++x) {
-            vec3 color = make_vec3(57.0f/255.0f, 44.0f/255.0f, 49.0f/255.0f);
+            vec3 color = make_rgb(57.0f, 44.0f, 49.0f);
             
-            if (((y % 2 == 0) && (x % 2 == 0)) ||
-                ((y % 2 == 1) && (x % 2 == 1))) {
-                color = make_vec3(74.0f/255.0f, 60.0f/255.0f, 74.0f/255.0f);
+            if ((x + y) % 2 == 0) {
+                color = make_rgb(74.0f, 60.0f, 74.0f);
             }
             
             vec2 min = make_vec2(x*tile_size_in_pixels, y*tile_size_in_pixels);
@@ -800,11 +803,11 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             f32 entity_ground_point_x = screen_center_x + meters_to_pixels*entity->pos.x;
             f32 entity_ground_point_y = screen_center_y - meters_to_pixels*entity->pos.y;
             f32 entity_z = -meters_to_pixels*entity->pos.z;
-        
+            
 #if 0
-            vec2 entity_left_top = make_vec2(entity_ground_point_x - 0.5f*meters_to_pixels*low_entity->sim.width,
-                                           entity_ground_point_y - 0.5f*meters_to_pixels*low_entity->sim.height);
-            vec2 entity_width_height = make_vec2(low_entity->sim.width, low_entity->sim.height);
+            vec2 entity_left_top = make_vec2(entity_ground_point_x - 0.5f*meters_to_pixels*low_entity->sim.dim.x,
+                                           entity_ground_point_y - 0.5f*meters_to_pixels*low_entity->sim.dim.y);
+            vec2 entity_width_height = make_vec2(low_entity->sim.dim.x, low_entity->sim.dim.y);
             draw_rectangle(framebuffer,
                            entity_left_top,
                            entity_left_top + meters_to_pixels*entity_width_height,

@@ -26,7 +26,7 @@ struct world_chunk_t {
 
 struct world_t {
     f32 tile_side_in_meters;
-    f32 tile_dim_in_meters;
+    f32 tile_depth_in_meters;
     vec3 chunk_dim_in_meters;
     
     // NOTE(xkazu0x): at the moment, this needs to be a power of two!

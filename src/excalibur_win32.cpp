@@ -236,8 +236,8 @@ win32_get_window_size(HWND window) {
     GetClientRect(window, &client_rectangle);
     
     win32_window_size_t result = {};
-    result.width = client_rectangle.right - client_rectangle.left;
-    result.height = client_rectangle.bottom - client_rectangle.top;
+    result.x = client_rectangle.right - client_rectangle.left;
+    result.y = client_rectangle.bottom - client_rectangle.top;
     
     return(result);
 }
@@ -707,8 +707,8 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
 
         // NOTE(xkazu0x): display framebuffer
         win32_window_size_t window_size = win32_get_window_size(window_handle);
-        window_width = window_size.width;
-        window_height = window_size.height;
+        window_width = window_size.x;
+        window_height = window_size.y;
         win32_display_framebuffer(framebuffer, window_handle, window_width, window_height);
 #if 1
         // NOTE(xkazu0x): log time

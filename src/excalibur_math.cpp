@@ -549,3 +549,13 @@ make_rgb(f32 r, f32 g, f32 b) {
     result.b = b/255.0f;
     return(result);
 }
+
+internal vec4
+make_rgba(f32 r, f32 g, f32 b, f32 a) {
+    vec4 result;
+    result.r = r/255.0f;
+    result.g = g/255.0f;
+    result.b = b/255.0f;
+    result.a = a/255.0f;
+    return(result);
+}

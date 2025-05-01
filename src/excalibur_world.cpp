@@ -19,9 +19,9 @@ is_valid(world_position_t pos) {
 
 inline b32
 is_canonical(f32 chunk_dim, f32 tile_rel) {
-    f32 epsilon = 0.01f;
+    f32 epsilon = 0.1f;
     b32 result = ((tile_rel >= -(0.5f*chunk_dim + epsilon)) &&
-                  (tile_rel <=  (0.5f*chunk_dim + epsilon)));
+                  (tile_rel <= (0.5f*chunk_dim + epsilon)));
     return(result);
 }
 
@@ -92,10 +92,10 @@ get_world_chunk(world_t *world, s32 chunk_x, s32 chunk_y, s32 chunk_z,
 internal void
 initialize_world(world_t *world, f32 tile_side_in_meters) {
     world->tile_side_in_meters = tile_side_in_meters;
-    world->tile_dim_in_meters = tile_side_in_meters;
+    world->tile_depth_in_meters = tile_side_in_meters;
     world->chunk_dim_in_meters = make_vec3(((f32)TILES_PER_CHUNK)*tile_side_in_meters,
                                            ((f32)TILES_PER_CHUNK)*tile_side_in_meters,
-                                           tile_side_in_meters);
+                                           world->tile_depth_in_meters);
     world->first_free = 0;
     for (u32 chunk_index = 0;
          chunk_index < ARRAY_COUNT(world->chunk_hash);
