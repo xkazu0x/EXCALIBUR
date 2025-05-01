@@ -26,22 +26,20 @@ get_entity_by_storage_index(sim_region_t *region, u32 storage_index) {
     return(result);
 }
 
-internal sim_entity_t *
-add_sim_entity(game_state_t *state, sim_region_t *region, u32 storage_index, low_entity_t *stored, vec2 *pos);
-
-inline vec2
+inline vec3
 get_sim_space_pos(sim_region_t *region, low_entity_t *stored) {
     // NOTE(xkazu0x): map the entity in camera space
-    vec2 result = INVALID_POS;
+    vec3 result = INVALID_POS;
     
     if (!is_entity_flag_set(&stored->sim, ENTITY_FLAG_NON_SPATIAL)) {
-        vec3 diff = subtract(region->world, &stored->pos, &region->origin);
-        result = make_vec2(diff.x, diff.y);
+        result = subtract(region->world, &stored->pos, &region->origin);
     }
     
     return(result);
 }
 
+internal sim_entity_t *
+add_sim_entity(game_state_t *state, sim_region_t *region, u32 storage_index, low_entity_t *stored, vec3 *pos);
 inline void
 load_entity_reference(game_state_t *state, sim_region_t *region, entity_reference_t *reference) {
     if (reference->index) {
@@ -50,7 +48,7 @@ load_entity_reference(game_state_t *state, sim_region_t *region, entity_referenc
             entry->index = reference->index;
             
             low_entity_t *low_entity = get_low_entity(state, reference->index);
-            vec2 pos = get_sim_space_pos(region, low_entity);
+            vec3 pos = get_sim_space_pos(region, low_entity);
             
             entry->ptr = add_sim_entity(state, region, reference->index, low_entity, &pos);
         }
@@ -100,7 +98,7 @@ add_sim_entity_raw(game_state_t *state, sim_region_t *region,
 }
 
 internal sim_entity_t *
-add_sim_entity(game_state_t *state, sim_region_t *region, u32 storage_index, low_entity_t *stored, vec2 *pos) {
+add_sim_entity(game_state_t *state, sim_region_t *region, u32 storage_index, low_entity_t *stored, vec3 *pos) {
     sim_entity_t *entity = add_sim_entity_raw(state, region, storage_index, stored);
     
     if (entity) {
@@ -116,7 +114,7 @@ add_sim_entity(game_state_t *state, sim_region_t *region, u32 storage_index, low
 }
 
 internal sim_region_t *
-begin_sim(memory_arena_t *sim_arena, game_state_t *state, world_t *world, world_position_t origin, rect2 bounds) {
+begin_sim(memory_arena_t *sim_arena, game_state_t *state, world_t *world, world_position_t origin, rect3 bounds) {
     // TODO(xkazu0x): if entities were stored in the world, we wouldn't need the game state here
     
     sim_region_t *region = (sim_region_t *)memory_arena_push(sim_arena, sizeof(sim_region_t));
@@ -125,11 +123,12 @@ begin_sim(memory_arena_t *sim_arena, game_state_t *state, world_t *world, world_
     // TODO(xkazu0x): IMPORTANT(xkazu0x): calculate this eventually from the maximun value
     // of all entities radius plus their speed
     f32 update_safety_margin = 1.0f;
+    f32 update_safety_margin_z = 1.0f;
     
     region->world = world;
     region->origin = origin;
     region->updatable_bounds = bounds;
-    region->bounds = rect_add_radius(region->updatable_bounds, update_safety_margin, update_safety_margin);
+    region->bounds = rect_add_radius(region->updatable_bounds, make_vec3(update_safety_margin, update_safety_margin, update_safety_margin_z));
     
     // TODO(xkazu0x): need to be more specific about entity counts
     region->max_entity_count = 4096;
@@ -157,7 +156,7 @@ begin_sim(memory_arena_t *sim_arena, game_state_t *state, world_t *world, world_
                         low_entity_t *low = state->low_entities + low_entity_index;
                         if (!is_entity_flag_set(&low->sim, ENTITY_FLAG_NON_SPATIAL))
                         {
-                            vec2 sim_space_pos = get_sim_space_pos(region, low);
+                            vec3 sim_space_pos = get_sim_space_pos(region, low);
                             if (is_in_rect(region->bounds, sim_space_pos)) {
                                 add_sim_entity(state, region, low_entity_index, low, &sim_space_pos);
                             }
@@ -308,7 +307,7 @@ handle_collision(sim_entity_t *a, sim_entity_t *b) {
 
 internal void
 move_entity(game_state_t *state, sim_region_t *region, sim_entity_t *entity, f32 delta,
-            move_spec_t *move_spec, vec2 dd_pos) {
+            move_spec_t *move_spec, vec3 dd_pos) {
     ASSERT(!is_entity_flag_set(entity, ENTITY_FLAG_NON_SPATIAL));
     
     world_t *world = region->world;
@@ -324,16 +323,12 @@ move_entity(game_state_t *state, sim_region_t *region, sim_entity_t *entity, f32
     
     // TODO(xkazu0x): ODE here!
     dd_pos += -move_spec->drag*entity->d_pos;
+    dd_pos += make_vec3(0.0f, 0.0f, -9.8f);
     
     //vec2 old_player_pos = entity->pos;
-    vec2 player_delta = (0.5f*dd_pos*square(delta) + entity->d_pos*delta);
+    vec3 player_delta = (0.5f*dd_pos*square(delta) + entity->d_pos*delta);
     entity->d_pos = dd_pos*delta + entity->d_pos;
     //vec2 new_player_pos = old_player_pos + player_delta;
-
-    f32 dd_z = -9.8f;
-    entity->z = 0.5f*dd_z*square(delta) + entity->d_z*delta + entity->z;
-    entity->d_z = dd_z*delta + entity->d_z;
-    if (entity->z < 0.0f) entity->z = 0.0f;
 
     f32 distance_remaining = entity->distance_limit;
     if (distance_remaining == 0.0f) {
@@ -355,10 +350,10 @@ move_entity(game_state_t *state, sim_region_t *region, sim_entity_t *entity, f32
                 t_min = (distance_remaining/player_delta_length);
             }
         
-            vec2 wall_normal = {};
+            vec3 wall_normal = {};
             sim_entity_t *hit_entity = 0;
 
-            vec2 desired_pos = entity->pos + player_delta;
+            vec3 desired_pos = entity->pos + player_delta;
 
             // NOTE(xkazu0x): this is just an optimization to avoid enterring the
             // loop in the case where the test entity is non-spatial
@@ -370,35 +365,37 @@ move_entity(game_state_t *state, sim_region_t *region, sim_entity_t *entity, f32
                 {
                     sim_entity_t *test_entity = region->entities + test_high_entity_index;
                     if (should_collide(state, entity, test_entity)) {
-                        f32 dim_w = test_entity->width + entity->width;
-                        f32 dim_h = test_entity->width + entity->height;
+                        // TODO(xkazu0x): entities have height?
+                        vec3 minkowski_diameter = make_vec3(test_entity->width + entity->width,
+                                                  test_entity->width + entity->height,
+                                                  world->tile_dim_in_meters);
             
-                        vec2 min_corner = -0.5f*make_vec2(dim_w, dim_h);
-                        vec2 max_corner =  0.5f*make_vec2(dim_w, dim_h);
+                        vec3 min_corner = -0.5f*minkowski_diameter;
+                        vec3 max_corner =  0.5f*minkowski_diameter;
                 
-                        vec2 rel = entity->pos - test_entity->pos;
+                        vec3 rel = entity->pos - test_entity->pos;
 
                         if (test_wall(min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
                                       &t_min, min_corner.y, max_corner.y)) {
-                            wall_normal = make_vec2(-1.0f, 0.0f);
+                            wall_normal = make_vec3(-1.0f, 0.0f, 0.0f);
                             hit_entity = test_entity;
                         }
                 
                         if (test_wall(max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
                                       &t_min, min_corner.y, max_corner.y)) {
-                            wall_normal = make_vec2(1.0f, 0.0f);
+                            wall_normal = make_vec3(1.0f, 0.0f, 0.0f);
                             hit_entity = test_entity;
                         }
                 
                         if (test_wall(min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
                                       &t_min, min_corner.x, max_corner.x)) {
-                            wall_normal = make_vec2(0.0f, -1.0f);
+                            wall_normal = make_vec3(0.0f, -1.0f, 0.0f);
                             hit_entity = test_entity;
                         }
                 
                         if (test_wall(max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
                                       &t_min, min_corner.x, max_corner.x)) {
-                            wall_normal = make_vec2(0.0f, 1.0f);
+                            wall_normal = make_vec3(0.0f, 1.0f, 0.0f);
                             hit_entity = test_entity;
                         }
                     }
@@ -426,6 +423,9 @@ move_entity(game_state_t *state, sim_region_t *region, sim_entity_t *entity, f32
         }
     }
 
+    // TODO(xkazu0x): this has to become real height handling / ground collision
+    if (entity->pos.z < 0.0f) entity->pos.z = 0.0f;
+    
     if (entity->distance_limit != 0.0f) {
         entity->distance_limit = distance_remaining;
     }

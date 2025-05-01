@@ -1,7 +1,7 @@
 #ifndef EXCALIBUR_ENTITY_H
 #define EXCALIBUR_ENTITY_H
 
-#define INVALID_POS make_vec2(100000.0f)
+#define INVALID_POS make_vec3(100000.0f)
 
 inline b32
 is_entity_flag_set(sim_entity_t *entity, u32 flag) {
@@ -26,7 +26,7 @@ make_entity_non_spatial(sim_entity_t *entity) {
 }
 
 inline void
-make_entity_spatial(sim_entity_t *entity, vec2 pos, vec2 d_pos) {
+make_entity_spatial(sim_entity_t *entity, vec3 pos, vec3 d_pos) {
     clear_entity_flag(entity, ENTITY_FLAG_NON_SPATIAL);
     entity->pos = pos;
     entity->d_pos = d_pos;

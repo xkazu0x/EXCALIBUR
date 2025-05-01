@@ -203,14 +203,6 @@ debug_load_bitmap(debug_os_read_file_t *debug_os_read_file, os_thread_t *thread,
     return(result);
 }
 
-inline vec2
-get_camera_space_pos(game_state_t *state, low_entity_t *low_entity) {
-    // NOTE(xkazu0x): map the entity in camera space
-    vec3 diff = subtract(state->world, &low_entity->pos, &state->camera_pos);
-    vec2 result = make_vec2(diff.x, diff.y);
-    return(result);
-}
-
 struct add_low_entity_result {
     u32 low_index;
     low_entity_t *low;
@@ -372,6 +364,14 @@ internal void
 clear_collision_rules_for(game_state_t *state, u32 storage_index) {
     // TODO(xkazu0x): need to make a better data structure that allows
     // removal of collision rules without searching the entire table
+    // NOTE(xkazu0x): one way to make removal easy would be to always
+    // add _both_ orders of the pairs of storage indices to the
+    // hash table, so no matter which position the entity is in,
+    // you can always find it. then, when you do your first pass
+    // through for removal, you just remember the original top
+    // of the free list, and when you're done, do a pass through all
+    // the new things on the free list, and remove the reverse of
+    // those pairs.
     for (u32 hash_bucket = 0;
          hash_bucket < ARRAY_COUNT(state->collision_rule_hash);
          ++hash_bucket) {
@@ -462,7 +462,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                                                  (u8 *)memory->permanent_storage + sizeof(game_state_t));
         state->world = (world_t *)memory_arena_push(&state->world_arena, sizeof(world_t));
         world_t *world = state->world;
-        world_initialize(world, 1.4f);
+        initialize_world(world, 1.4f);
 
         state->meters_to_pixels = (f32)tile_size_in_pixels / (f32)world->tile_side_in_meters;
         
@@ -637,15 +637,20 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     // NOTE(xkazu0x): simulation begin
     u32 tile_span_x = 17*3;
     u32 tile_span_y = 9*3;
-    rect2 camera_bounds = rect2_center_dim(make_vec2(0.0f), world->tile_side_in_meters*make_vec2((f32)tile_span_x, (f32)tile_span_y));
+    u32 tile_span_z = 1.0f;
+    rect3 camera_bounds = make_rect3_center_dim(make_vec3(0.0f),
+                                                world->tile_side_in_meters*
+                                                make_vec3((f32)tile_span_x,
+                                                          (f32)tile_span_y,
+                                                          (f32)tile_span_z));
     
     memory_arena_t sim_arena = memory_arena_create(memory->transient_storage_size, memory->transient_storage);
     sim_region_t *sim_region = begin_sim(&sim_arena, state, world, state->camera_pos, camera_bounds);
 
     ///////////////////////////////////
     // NOTE(xkazu0x): update and render
-    for (u32 y = 0; y < 12; y++) {
-        for (u32 x = 0; x < 20; x++) {
+    for (u32 y = 0; y < 12; ++y) {
+        for (u32 x = 0; x < 20; ++x) {
             vec3 color = make_vec3(57.0f/255.0f, 44.0f/255.0f, 49.0f/255.0f);
             
             if (((y % 2 == 0) && (x % 2 == 0)) ||
@@ -676,11 +681,11 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             piece_group.piece_count = 0;
             f32 delta = clock->delta_seconds;
 
-            f32 shadow_alpha = 1.0f - 0.5f*entity->z;
+            f32 shadow_alpha = 1.0f - 0.5f*entity->pos.z;
             if (shadow_alpha < 0.0f) shadow_alpha = 0.0f;
 
             move_spec_t move_spec = default_move_spec();
-            vec2 dd_pos = make_vec2(0.0f);
+            vec3 dd_pos = make_vec3(0.0f);
             
             switch (entity->type) {
                 case ENTITY_TYPE_PLAYER: {
@@ -690,19 +695,19 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                         controlled_player_t *controlled_player = state->controlled_players + controlled_index;
                         if (entity->storage_index == controlled_player->entity_index) {
                             if (controlled_player->d_z != 0.0f) {
-                                entity->d_z = controlled_player->d_z;
+                                entity->d_pos.z = controlled_player->d_z;
                             }
 
                             move_spec.unit_max_accel_vector = true;
                             move_spec.speed = 50.0f;
                             move_spec.drag = 5.0f;
-                            dd_pos = controlled_player->dd_pos;
+                            dd_pos = make_vec3(controlled_player->dd_pos, 0.0f);
                             
                             if ((controlled_player->d_sword.x != 0.0f) || (controlled_player->d_sword.y != 0.0f)) {
                                 sim_entity_t *sword = entity->sword.ptr;
                                 if (sword && is_entity_flag_set(sword, ENTITY_FLAG_NON_SPATIAL)) {
                                     sword->distance_limit = 3.0f;
-                                    make_entity_spatial(sword, entity->pos, 10.0f*controlled_player->d_sword);
+                                    make_entity_spatial(sword, entity->pos, 10.0f*make_vec3(controlled_player->d_sword, 0.0f));
                                     add_collision_rule(state, sword->storage_index, entity->storage_index, false);
                                 }
                             }
@@ -794,7 +799,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             
             f32 entity_ground_point_x = screen_center_x + meters_to_pixels*entity->pos.x;
             f32 entity_ground_point_y = screen_center_y - meters_to_pixels*entity->pos.y;
-            f32 entity_z = -meters_to_pixels*entity->z;
+            f32 entity_z = -meters_to_pixels*entity->pos.z;
         
 #if 0
             vec2 entity_left_top = make_vec2(entity_ground_point_x - 0.5f*meters_to_pixels*low_entity->sim.width,
@@ -825,7 +830,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     // NOTE(xkazu0x): simulation end
     world_position_t world_origin = {};
     vec3 delta_origin = subtract(sim_region->world, &world_origin, &sim_region->origin);
-    draw_rect(framebuffer, make_vec2(delta_origin.x, delta_origin.y), make_vec2(tile_size_in_pixels), make_vec3(1.0f));
+    draw_rect(framebuffer, delta_origin.xy, make_vec2(tile_size_in_pixels), make_vec3(1.0f));
     
     end_sim(sim_region, state);
 }

@@ -8,7 +8,3 @@ default_move_spec(void) {
     
     return(result);
 }
-
-internal void
-update_familiar(sim_region_t *sim_region, sim_entity_t *entity, f32 delta) {
-}

@@ -21,6 +21,10 @@ union vec3 {
     struct {
         f32 r, g, b;
     };
+    struct {
+        vec2 xy;
+        f32 ignored0_;
+    };
     f32 e[3];
 };
 
@@ -95,27 +99,55 @@ internal inline f32 vec_dot(vec3 a, vec3 b);
 internal inline f32 vec_dot(vec4 a, vec4 b);
 
 internal inline f32 vec_length_square(vec2 v);
-internal inline f32 vec_length(vec2 v);
+internal inline f32 vec_length_square(vec3 v);
+internal inline f32 vec_length_square(vec4 v);
 
-internal inline f32 square(f32 x);
+internal inline f32 vec_length(vec2 v);
+internal inline f32 vec_length(vec3 v);
+internal inline f32 vec_length(vec4 v);
 
 struct rect2 {
     vec2 min;
     vec2 max;
 };
 
+struct rect3 {
+    vec3 min;
+    vec3 max;
+};
+
 internal inline rect2 make_rect2_min_max(vec2 min, vec2 max);
+internal inline rect3 make_rect3_min_max(vec3 min, vec3 max);
+
 internal inline rect2 make_rect2_min_dim(vec2 min, vec2 dim);
+internal inline rect3 make_rect3_min_dim(vec3 min, vec3 dim);
+
 internal inline rect2 make_rect2_center_half_dim(vec2 center, vec2 half_dim);
+internal inline rect3 make_rect3_center_half_dim(vec3 center, vec3 half_dim);
+
 internal inline rect2 make_rect2_center_dim(vec2 center, vec2 dim);
+internal inline rect3 make_rect3_center_dim(vec3 center, vec3 dim);
 
 internal inline vec2 get_rect_min(rect2 rect);
+internal inline vec3 get_rect_min(rect3 rect);
+
 internal inline vec2 get_rect_max(rect2 rect);
+internal inline vec3 get_rect_max(rect3 rect);
+
 internal inline vec2 get_rect_center(rect2 rect);
+internal inline vec3 get_rect_center(rect3 rect);
+
+internal inline rect2 rect_add_radius(rect2 rect, vec2 radiuse);
+internal inline rect3 rect_add_radius(rect3 rect, vec3 radius);
 
 internal inline b32 is_in_rect(rect2 rect, vec2 test);
-internal inline rect2 rect_add_radius(rect2 rect, f32 radius_width, f32 radius_height);
+internal inline b32 is_in_rect(rect3 rect, vec3 test);
 
+//
+//
+//
+
+internal inline f32 square(f32 x);
 internal vec3 make_rgb(f32 r, f32 g, f32 b);
 
 #endif // EXCALIBUR_MATH_H

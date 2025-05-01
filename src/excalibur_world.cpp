@@ -18,16 +18,18 @@ is_valid(world_position_t pos) {
 }
 
 inline b32
-is_canonical(world_t *world, f32 tile_rel) {
-    f32 epsilon = 0.0001f;
-    b32 result = ((tile_rel >= -(0.5f*world->chunk_side_in_meters + epsilon)) &&
-                  (tile_rel <= (0.5f*world->chunk_side_in_meters + epsilon)));
+is_canonical(f32 chunk_dim, f32 tile_rel) {
+    f32 epsilon = 0.01f;
+    b32 result = ((tile_rel >= -(0.5f*chunk_dim + epsilon)) &&
+                  (tile_rel <=  (0.5f*chunk_dim + epsilon)));
     return(result);
 }
 
 inline b32
-is_canonical(world_t *world, vec2 offset) {
-    b32 result = (is_canonical(world, offset.x) && is_canonical(world, offset.y));
+is_canonical(world_t *world, vec3 offset) {
+    b32 result = (is_canonical(world->chunk_dim_in_meters.x, offset.x) &&
+                  is_canonical(world->chunk_dim_in_meters.y, offset.y) &&
+                  is_canonical(world->chunk_dim_in_meters.z, offset.z));
     return(result);
 }
 
@@ -39,6 +41,7 @@ are_in_same_chunk(world_t *world, world_position_t *a, world_position_t *b) {
     b32 result = ((a->chunk_x == b->chunk_x) &&
                   (a->chunk_y == b->chunk_y) &&
                   (a->chunk_z == b->chunk_z));
+    
     return(result);
 }
 
@@ -87,64 +90,53 @@ get_world_chunk(world_t *world, s32 chunk_x, s32 chunk_y, s32 chunk_z,
 }
 
 internal void
-world_initialize(world_t *world, f32 tile_side_in_meters) {
+initialize_world(world_t *world, f32 tile_side_in_meters) {
     world->tile_side_in_meters = tile_side_in_meters;
-    world->chunk_side_in_meters = (f32)TILES_PER_CHUNK*tile_side_in_meters;
+    world->tile_dim_in_meters = tile_side_in_meters;
+    world->chunk_dim_in_meters = make_vec3(((f32)TILES_PER_CHUNK)*tile_side_in_meters,
+                                           ((f32)TILES_PER_CHUNK)*tile_side_in_meters,
+                                           tile_side_in_meters);
     world->first_free = 0;
-        
     for (u32 chunk_index = 0;
          chunk_index < ARRAY_COUNT(world->chunk_hash);
-         chunk_index++) {
+         ++chunk_index) {
         world->chunk_hash[chunk_index].chunk_x = WORLD_CHUNK_UNINITIALIZED;
         world->chunk_hash[chunk_index].entity_block.entity_count = 0;
     }
 }
 
 inline void
-recanonicalize_coord(world_t *world, s32 *chunk_index, f32 *chunk_offset) {
+recanonicalize_coord(f32 chunk_dim, s32 *tile, f32 *tile_rel) {
     // NOTE(xkazu0x): wrapping is not allowed, so all coordinates are assumed
     // to be within the safe margin
     // TODO(xkazu0x): assert that we are nowhere near the edges of the world
     
-    s32 offset = round_f32_to_s32(*chunk_offset / world->chunk_side_in_meters);
-    *chunk_index += offset;
-    *chunk_offset -= offset*world->chunk_side_in_meters;
+    s32 offset = round_f32_to_s32(*tile_rel/chunk_dim);
+    *tile += offset;
+    *tile_rel -= offset*chunk_dim;
 
-    ASSERT(is_canonical(world, *chunk_offset));
+    ASSERT(is_canonical(chunk_dim, *tile_rel));
 }
 
 inline world_position_t
-map_into_chunk_space(world_t *world, world_position_t base_pos, vec2 offset) {
+map_into_chunk_space(world_t *world, world_position_t base_pos, vec3 offset) {
     world_position_t result = base_pos;
+    
     result.offset_ += offset;
-    recanonicalize_coord(world, &result.chunk_x, &result.offset_.x);
-    recanonicalize_coord(world, &result.chunk_y, &result.offset_.y);
+    recanonicalize_coord(world->chunk_dim_in_meters.x, &result.chunk_x, &result.offset_.x);
+    recanonicalize_coord(world->chunk_dim_in_meters.y, &result.chunk_y, &result.offset_.y);
+    recanonicalize_coord(world->chunk_dim_in_meters.z, &result.chunk_z, &result.offset_.z);
+    
     return(result);
 }
 
 inline world_position_t
 chunk_position_from_tile_position(world_t *world, s32 tile_x, s32 tile_y, s32 tile_z) {
-    world_position_t result = {};
+    world_position_t base_pos = {};
     
-    result.chunk_x = tile_x / TILES_PER_CHUNK;
-    result.chunk_y = tile_y / TILES_PER_CHUNK;
-    result.chunk_z = tile_z / TILES_PER_CHUNK;
-
-    // TODO(xkazu0x):
-    if (tile_x < 0) {
-        --result.chunk_x;
-    }
-    if (tile_y < 0) {
-        --result.chunk_y;
-    }
-    if (tile_z < 0) {
-        --result.chunk_z;
-    }
+    vec3 offset = world->tile_side_in_meters*make_vec3((f32)tile_x, (f32)tile_y, (f32)tile_z);
+    world_position_t result = map_into_chunk_space(world, base_pos, offset);
     
-    result.offset_.x = (f32)((tile_x - TILES_PER_CHUNK/2) - (result.chunk_x*TILES_PER_CHUNK))*world->tile_side_in_meters;
-    result.offset_.y = (f32)((tile_y - TILES_PER_CHUNK/2) - (result.chunk_y*TILES_PER_CHUNK))*world->tile_side_in_meters;
-    // TODO(xkazu0x): move to 3D z!!
-
     ASSERT(is_canonical(world, result.offset_));
     
     return(result);
@@ -152,15 +144,11 @@ chunk_position_from_tile_position(world_t *world, s32 tile_x, s32 tile_y, s32 ti
 
 inline vec3
 subtract(world_t *world, world_position_t *a, world_position_t *b) {
-    vec3 result = {};
-
-    f32 chunk_dx = (f32)a->chunk_x - (f32)b->chunk_x;
-    f32 chunk_dy = (f32)a->chunk_y - (f32)b->chunk_y;
-    f32 chunk_dz = (f32)a->chunk_z - (f32)b->chunk_z;
+    vec3 delta_chunk = make_vec3((f32)a->chunk_x - (f32)b->chunk_x,
+                                 (f32)a->chunk_y - (f32)b->chunk_y,
+                                 (f32)a->chunk_z - (f32)b->chunk_z);
     
-    result.x = world->chunk_side_in_meters*chunk_dx + (a->offset_.x - b->offset_.x);
-    result.y = world->chunk_side_in_meters*chunk_dy + (a->offset_.y - b->offset_.y);
-    result.z = world->chunk_side_in_meters*chunk_dz;
+    vec3 result = vec_hadamard(world->chunk_dim_in_meters, delta_chunk) + (a->offset_ - b->offset_);
 
     return(result);
 }

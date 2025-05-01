@@ -35,8 +35,6 @@ memory_arena_push(memory_arena_t *arena, memi size) {
 #define mema_push_struct(arena, type) (type *)memory_arena_push(arena, sizeof(type))
 #define mema_push_array(arena, count, type) (type *)memory_arena_push(arena, (count)*sizeof(type))
 
-#define zero_struct(instance) zero_size(sizeof(instance), &(instance))
-
 internal inline void
 zero_size(memi size, void *ptr) {
     u8 *byte = (u8 *)ptr;
@@ -44,6 +42,8 @@ zero_size(memi size, void *ptr) {
         *byte++ = 0;
     }
 }
+
+#define zero_struct(instance) zero_size(sizeof(instance), &(instance))
 
 struct bitmap_t {
     s32 width;

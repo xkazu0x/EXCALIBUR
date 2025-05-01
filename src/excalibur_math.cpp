@@ -93,8 +93,8 @@ internal inline vec3
 operator+(vec3 a, vec3 b) {
     vec3 result;
     result.x = a.x + b.x;
-    result.x = a.y + b.y;
-    result.x = a.z + b.z;
+    result.y = a.y + b.y;
+    result.z = a.z + b.z;
     return(result);
 }
 
@@ -102,9 +102,9 @@ internal inline vec4
 operator+(vec4 a, vec4 b) {
     vec4 result;
     result.x = a.x + b.x;
-    result.x = a.y + b.y;
-    result.x = a.z + b.z;
-    result.x = a.w + b.w;
+    result.y = a.y + b.y;
+    result.z = a.z + b.z;
+    result.w = a.w + b.w;
     return(result);
 }
 
@@ -165,8 +165,8 @@ internal inline vec3
 operator-(vec3 a, vec3 b) {
     vec3 result;
     result.x = a.x - b.x;
-    result.x = a.y - b.y;
-    result.x = a.z - b.z;
+    result.y = a.y - b.y;
+    result.z = a.z - b.z;
     return(result);
 }
 
@@ -174,9 +174,9 @@ internal inline vec4
 operator-(vec4 a, vec4 b) {
     vec4 result;
     result.x = a.x - b.x;
-    result.x = a.y - b.y;
-    result.x = a.z - b.z;
-    result.x = a.w - b.w;
+    result.y = a.y - b.y;
+    result.z = a.z - b.z;
+    result.w = a.w - b.w;
     return(result);
 }
 
@@ -370,20 +370,46 @@ vec_length_square(vec2 v) {
 }
 
 internal inline f32
+vec_length_square(vec3 v) {
+    f32 result = vec_dot(v, v);
+    return(result);
+}
+
+internal inline f32
+vec_length_square(vec4 v) {
+    f32 result = vec_dot(v, v);
+    return(result);
+}
+
+internal inline f32
 vec_length(vec2 v) {
     f32 result = square_root(vec_length_square(v));
     return(result);
 }
 
-internal inline
-f32 square(f32 x) {
-    f32 result = x*x;
+internal inline f32
+vec_length(vec3 v) {
+    f32 result = square_root(vec_length_square(v));
+    return(result);
+}
+
+internal inline f32
+vec_length(vec4 v) {
+    f32 result = square_root(vec_length_square(v));
     return(result);
 }
 
 internal inline rect2
 make_rect2_min_max(vec2 min, vec2 max) {
     rect2 result;
+    result.min = min;
+    result.min = max;
+    return(result);
+}
+
+internal inline rect3
+make_rect3_min_max(vec3 min, vec3 max) {
+    rect3 result;
     result.min = min;
     result.min = max;
     return(result);
@@ -397,6 +423,14 @@ make_rect2_min_dim(vec2 min, vec2 dim) {
     return(result);
 }
 
+internal inline rect3
+make_rect3_min_dim(vec3 min, vec3 dim) {
+    rect3 result;
+    result.min = min;
+    result.min = min + dim;
+    return(result);
+}
+
 internal inline rect2
 make_rect2_center_half_dim(vec2 center, vec2 half_dim) {
     rect2 result;
@@ -405,9 +439,23 @@ make_rect2_center_half_dim(vec2 center, vec2 half_dim) {
     return(result);
 }
 
+internal inline rect3
+make_rect3_center_half_dim(vec3 center, vec3 half_dim) {
+    rect3 result;
+    result.min = center - half_dim;
+    result.max = center + half_dim;
+    return(result);
+}
+
 internal inline rect2
-rect2_center_dim(vec2 center, vec2 dim) {
+make_rect2_center_dim(vec2 center, vec2 dim) {
     rect2 result = make_rect2_center_half_dim(center, 0.5f*dim);
+    return(result);
+}
+
+internal inline rect3
+make_rect3_center_dim(vec3 center, vec3 dim) {
+    rect3 result = make_rect3_center_half_dim(center, 0.5f*dim);
     return(result);
 }
 
@@ -417,15 +465,49 @@ get_rect_min(rect2 rect) {
     return(result);
 }
 
+internal inline vec3
+get_rect_min(rect3 rect) {
+    vec3 result = rect.min;
+    return(result);
+}
+
 internal inline vec2
 get_rect_max(rect2 rect) {
     vec2 result = rect.max;
     return(result);
 }
 
+internal inline vec3
+get_rect_max(rect3 rect) {
+    vec3 result = rect.max;
+    return(result);
+}
+
 internal inline vec2
 get_rect_center(rect2 rect) {
     vec2 result = 0.5f*(rect.min + rect.max);
+    return(result);
+}
+
+internal inline vec3
+get_rect_center(rect3 rect) {
+    vec3 result = 0.5f*(rect.min + rect.max);
+    return(result);
+}
+
+internal inline rect2
+rect_add_radius(rect2 rect, vec2 radius) {
+    rect2 result;
+    result.min = rect.min - radius;
+    result.max = rect.max + radius;
+    return(result);
+}
+
+internal inline rect3
+rect_add_radius(rect3 rect, vec3 radius) {
+    rect3 result;
+    result.min = rect.min - radius;
+    result.max = rect.max + radius;
     return(result);
 }
 
@@ -438,11 +520,24 @@ is_in_rect(rect2 rect, vec2 test) {
     return(result);
 }
 
-internal inline rect2
-rect_add_radius(rect2 rect, f32 radius_width, f32 radius_height) {
-    rect2 result;
-    result.min = rect.min - make_vec2(radius_width, radius_height);
-    result.max = rect.max + make_vec2(radius_width, radius_height);
+internal inline b32
+is_in_rect(rect3 rect, vec3 test) {
+    b32 result = ((test.x >= rect.min.x) &&
+                  (test.y >= rect.min.y) &&
+                  (test.z >= rect.min.z) &&
+                  (test.x < rect.max.x) &&
+                  (test.y < rect.max.y) &&
+                  (test.z < rect.max.z));
+    return(result);
+}
+
+//
+//
+//
+
+internal inline
+f32 square(f32 x) {
+    f32 result = x*x;
     return(result);
 }
 

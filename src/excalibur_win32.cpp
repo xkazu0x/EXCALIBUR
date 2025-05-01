@@ -31,11 +31,11 @@ global win32_state_t global_win32;
 global xinput_get_state_t *xinput_get_state;
 global xinput_set_state_t *xinput_set_state;
 
-XINPUT_GET_STATE(xinput_get_state_) {
+XINPUT_GET_STATE(_xinput_get_state) {
     return(ERROR_DEVICE_NOT_CONNECTED);
 }
 
-XINPUT_SET_STATE(xinput_set_state_) {
+XINPUT_SET_STATE(_xinput_set_state) {
     return(ERROR_DEVICE_NOT_CONNECTED);
 }
 
@@ -439,8 +439,8 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
         WIN32_GET_PROC_ADDR(xinput_get_state, xinput_library, "XInputGetState");
         WIN32_GET_PROC_ADDR(xinput_set_state, xinput_library, "XInputSetState");
     } else {
-        xinput_get_state = xinput_get_state_;
-        xinput_set_state = xinput_set_state_;
+        xinput_get_state = _xinput_get_state;
+        xinput_set_state = _xinput_set_state;
     }
 
     /////////////////////////////
@@ -718,7 +718,7 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
         time_ms += ms_per_frame;
         if (time_ms - last_print_time > 500.0f) {
             char new_window_title[512];
-            sprintf(new_window_title, "%s - fixed: %.02ff/s, %.02fms/f, %.02fmc/f | raw: %.02ff/s, %.02fms/f, %.02fmc/f", window_title, frames_per_second, ms_per_frame, mega_cycles_per_frame, raw_frames_per_second, raw_ms_per_frame, raw_mega_cycles_per_frame);
+            sprintf(new_window_title, "%s [fixed: %.02ffps, %.02fms, %.02fmc] [raw: %.02ffps, %.02fms, %.02fmc]", window_title, frames_per_second, ms_per_frame, mega_cycles_per_frame, raw_frames_per_second, raw_ms_per_frame, raw_mega_cycles_per_frame);
             SetWindowTextA(window_handle, new_window_title);
             last_print_time = time_ms;
         }

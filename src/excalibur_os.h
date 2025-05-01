@@ -32,7 +32,7 @@ typedef DEBUG_OS_WRITE_FILE(debug_os_write_file_t);
 // NOTE(xkazu0x): services that the game provides to the platform layer
 // TODO(xkazu0x): key codes for keyboard input
     
-typedef enum key_t {
+typedef enum key_code_t {
     KEY_ENTER  = 0x0D,
     KEY_SHIFT  = 0x10,
     KEY_ESCAPE = 0x1B,
@@ -107,7 +107,7 @@ typedef enum key_t {
     KEY_F24 = 0x87,
 
     KEY_MAX = 0xFF,
-} key_t;
+} key_code_t;
 
 typedef struct digital_button_t {
     b32 down;
@@ -194,7 +194,6 @@ typedef struct os_memory_t {
 typedef struct os_clock_t {
     f32 delta_seconds;
 } os_clock_t;
-
 
 #define GAME_UPDATE_AND_RENDER(name) void name(os_framebuffer_t *framebuffer, os_input_t *input, os_memory_t *memory, os_clock_t *clock, os_thread_t *thread)
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render_t);
