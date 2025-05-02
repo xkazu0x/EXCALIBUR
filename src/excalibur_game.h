@@ -32,8 +32,8 @@ memory_arena_push(memory_arena_t *arena, memi size) {
     return(result);
 }
 
-#define mema_push_struct(arena, type) (type *)memory_arena_push(arena, sizeof(type))
-#define mema_push_array(arena, count, type) (type *)memory_arena_push(arena, (count)*sizeof(type))
+#define push_struct(arena, type) (type *)memory_arena_push(arena, sizeof(type))
+#define push_array(arena, count, type) (type *)memory_arena_push(arena, (count)*sizeof(type))
 
 internal inline void
 zero_size(memi size, void *ptr) {
@@ -77,6 +77,11 @@ struct controlled_player_t {
     f32 d_z;
 };
 
+enum pairwise_collision_rule_flag_t {
+    PAIR_COLLISION_FLAG_SHOULD_COLLIDE = 0x1,
+    PAIR_COLLISION_FLAG_TEMPORARY = 0x2,
+};
+
 struct pairwise_collision_rule_t {
     b32 should_collide;
     u32 storage_index_a;
@@ -84,6 +89,9 @@ struct pairwise_collision_rule_t {
 
     pairwise_collision_rule_t *next_in_hash;
 };
+struct game_state_t;
+internal void add_collision_rule(game_state_t *state, u32 storage_index_a, u32 storage_index_b, b32 should_collide);
+internal void clear_collision_rules_for(game_state_t *state, u32 storage_index);
 
 struct game_state_t {
     memory_arena_t world_arena;
@@ -100,11 +108,12 @@ struct game_state_t {
 
     f32 meters_to_pixels;
     bitmap_t player_sprites[4];
-    bitmap_t wall_sprite;
+    bitmap_t sprite_wall;
+    bitmap_t sprite_stairwell;
     bitmap_t bat_sprite;
     bitmap_t shadow_sprite;
     bitmap_t sword_sprite;
-
+    
     // TODO(xkazu0x): must be power of two
     pairwise_collision_rule_t *collision_rule_hash[256];
     pairwise_collision_rule_t *first_free_collision_rule;
@@ -118,7 +127,5 @@ struct entity_visible_piece_group_t {
     u32 piece_count;
     entity_visible_piece_t pieces[32];
 };
-
-internal void add_collision_rule(game_state_t *state, u32 storage_index_a, u32 storage_index_b, b32 should_collide);
 
 #endif // EXCALIBUR_GAME_H

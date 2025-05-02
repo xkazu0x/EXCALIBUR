@@ -143,13 +143,15 @@ internal inline rect3 rect_add_radius(rect3 rect, vec3 radius);
 internal inline b32 is_in_rect(rect2 rect, vec2 test);
 internal inline b32 is_in_rect(rect3 rect, vec3 test);
 
+internal inline b32 rect_intersect(rect3 a, rect3 b);
+
 //
 //
 //
 
 internal inline f32 square(f32 x);
 
-internal vec3 make_rgb(f32 r, f32 g, f32 b);
-internal vec4 make_rgba(f32 r, f32 g, f32 b, f32 a);
+internal inline vec3 make_rgb(f32 r, f32 g, f32 b);
+internal inline vec4 make_rgba(f32 r, f32 g, f32 b, f32 a);
 
 #endif // EXCALIBUR_MATH_H

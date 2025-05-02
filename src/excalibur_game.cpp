@@ -240,6 +240,18 @@ add_wall(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
     return(entity);
 }
 
+internal add_low_entity_result
+add_stair(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
+    world_position_t pos = chunk_position_from_tile_position(state->world, tile_x, tile_y, tile_z);
+    add_low_entity_result entity = add_low_entity(state, ENTITY_TYPE_STAIRWELL, pos);
+    
+    entity.low->sim.dim.y = 0.5f*state->world->tile_side_in_meters;
+    entity.low->sim.dim.x = state->world->tile_side_in_meters;
+    entity.low->sim.dim.z = state->world->tile_depth_in_meters;
+    
+    return(entity);
+}
+
 internal void
 init_hit_points(low_entity_t *low_entity, u32 hit_point_count) {
     ASSERT(hit_point_count < ARRAY_COUNT(low_entity->sim.hit_points));
@@ -425,7 +437,7 @@ add_collision_rule(game_state_t *state, u32 storage_index_a, u32 storage_index_b
         if (found) {
             state->first_free_collision_rule = found->next_in_hash;
         } else {
-            found = mema_push_struct(&state->world_arena, pairwise_collision_rule_t);
+            found = push_struct(&state->world_arena, pairwise_collision_rule_t);
         }
         
         found->next_in_hash = state->collision_rule_hash[hash_bucket];
@@ -450,22 +462,21 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     if (!memory->initialized) {
         add_low_entity(state, ENTITY_TYPE_NULL, null_position());
 
-        state->player_sprites[0] =
-            debug_load_bitmap(memory->debug_os_read_file, thread, "res/skull_back.bmp");
-        state->player_sprites[1] =
-            debug_load_bitmap(memory->debug_os_read_file, thread, "res/skull_right.bmp");
-        state->player_sprites[2] =
-            debug_load_bitmap(memory->debug_os_read_file, thread, "res/skull_front.bmp");
-        state->player_sprites[3] =
-            debug_load_bitmap(memory->debug_os_read_file, thread, "res/skull_left.bmp");
-        state->wall_sprite = debug_load_bitmap(memory->debug_os_read_file, thread, "res/wall.bmp");
+        state->player_sprites[0] = debug_load_bitmap(memory->debug_os_read_file, thread, "res/skull_back.bmp");
+        state->player_sprites[1] = debug_load_bitmap(memory->debug_os_read_file, thread, "res/skull_right.bmp");
+        state->player_sprites[2] = debug_load_bitmap(memory->debug_os_read_file, thread, "res/skull_front.bmp");
+        state->player_sprites[3] = debug_load_bitmap(memory->debug_os_read_file, thread, "res/skull_left.bmp");
+        
+        state->sprite_wall = debug_load_bitmap(memory->debug_os_read_file, thread, "res/wall.bmp");
+        state->sprite_stairwell = debug_load_bitmap(memory->debug_os_read_file, thread, "res/stair_up.bmp");
+        
         state->bat_sprite = debug_load_bitmap(memory->debug_os_read_file, thread, "res/bat.bmp");
         state->shadow_sprite = debug_load_bitmap(memory->debug_os_read_file, thread, "res/shadow.bmp");
-        state->sword_sprite = debug_load_bitmap(memory->debug_os_read_file, thread, "res/floor.bmp");
+        state->sword_sprite = debug_load_bitmap(memory->debug_os_read_file, thread, "res/shadow.bmp");
         
         state->world_arena = memory_arena_create(memory->permanent_storage_size - sizeof(game_state_t),
                                                  (u8 *)memory->permanent_storage + sizeof(game_state_t));
-        state->world = (world_t *)memory_arena_push(&state->world_arena, sizeof(world_t));
+        state->world = push_struct(&state->world_arena, world_t);
         world_t *world = state->world;
         initialize_world(world, 1.4f);
 
@@ -491,12 +502,14 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         for (u32 screen_index = 0; screen_index < 10; screen_index++) {
             // TODO(xkazu0x): random number generator
             ASSERT(random_number_index < ARRAY_COUNT(random_number_table));
+            
             u32 random_choice;
-            if (1) { //(door_up || door_down) {
+            if (door_up || door_down) {
                 random_choice = random_number_table[random_number_index++] % 2;
             } else {
                 random_choice = random_number_table[random_number_index++] % 3;
             }
+            
             b32 created_z_door = false;
             if (random_choice == 2) {
                 created_z_door = true;
@@ -511,40 +524,34 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 door_top = true;
             }
             
-            for (u32 tile_y = 0; tile_y < tile_count_y; tile_y++) {
-                for (u32 tile_x = 0; tile_x < tile_count_x; tile_x++) {
+            for (u32 tile_y = 0; tile_y < tile_count_y; ++tile_y) {
+                for (u32 tile_x = 0; tile_x < tile_count_x; ++tile_x) {
                     u32 abs_tile_x = screen_x*tile_count_x + tile_x;
                     u32 abs_tile_y = screen_y*tile_count_y + tile_y;
                     
-                    u32 tile_value = 1;
+                    b32 should_be_door = false;
                     if ((tile_x == 0) && (!door_left || (tile_y != (tile_count_y/2)))) {
-                        tile_value = 2;
+                        should_be_door = true;
                     }
                     
                     if ((tile_x == (tile_count_x - 1)) && (!door_right || (tile_y != (tile_count_y/2)))) {
-                        tile_value = 2;
+                        should_be_door = true;
                     }
                     
                     if ((tile_y == 0) && (!door_bottom || (tile_x != (tile_count_x/2)))) {
-                        tile_value = 2;
+                        should_be_door = true;
                     }
                     
                     if ((tile_y == (tile_count_y - 1)) && (!door_top || (tile_x != (tile_count_x/2)))) {
-                        tile_value = 2;
+                        should_be_door = true;
                     }
-
-                    if ((tile_x == 10) && (tile_y == 6)) {
-                        if (door_up) {
-                            tile_value = 3;
-                        }
-                        
-                        if (door_down) {
-                            tile_value = 4;
-                        }
-                    }
-                        
-                    if (tile_value == 2) {
+                    
+                    if (should_be_door) {
                         add_wall(state, abs_tile_x, abs_tile_y, abs_tile_z);
+                    } else if (created_z_door) {
+                        if ((tile_x == 10) && (tile_y == 6)) {
+                            add_stair(state, abs_tile_x, abs_tile_y, door_down ? abs_tile_z - 1 : abs_tile_z);
+                        }
                     }
                 }
             }
@@ -723,7 +730,10 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     draw_hit_points(&piece_group, entity);
                 } break;
                 case ENTITY_TYPE_WALL: {
-                    push_bitmap(&piece_group, &state->wall_sprite, make_vec3(0.0f));
+                    push_bitmap(&piece_group, &state->sprite_wall, make_vec3(0.0f));
+                } break;
+                case ENTITY_TYPE_STAIRWELL: {
+                    push_bitmap(&piece_group, &state->sprite_stairwell, make_vec3(0.0f));
                 } break;
                 case ENTITY_TYPE_SWORD: {
                     move_spec.unit_max_accel_vector = false;
@@ -742,7 +752,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                         make_entity_non_spatial(entity);
                     }
 
-                    push_bitmap(&piece_group, &state->shadow_sprite, make_vec3(0.0f));
+                    push_bitmap(&piece_group, &state->sword_sprite, make_vec3(0.0f));
                 } break;
                 case ENTITY_TYPE_FAMILIAR: {
                     sim_entity_t *closest_player = 0;

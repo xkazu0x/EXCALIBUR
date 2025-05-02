@@ -531,6 +531,17 @@ is_in_rect(rect3 rect, vec3 test) {
     return(result);
 }
 
+internal inline b32
+rect_intersect(rect3 a, rect3 b) {
+    b32 result = !((b.max.x < a.min.x) ||
+                   (b.min.x > a.max.x) ||
+                   (b.max.y < a.min.y) ||
+                   (b.min.y > a.max.y) ||
+                   (b.max.z < a.min.z) ||
+                   (b.min.z > a.max.z));
+    return(result);
+}
+
 //
 //
 //
@@ -541,7 +552,7 @@ f32 square(f32 x) {
     return(result);
 }
 
-internal vec3
+internal inline vec3
 make_rgb(f32 r, f32 g, f32 b) {
     vec3 result;
     result.r = r/255.0f;
@@ -550,7 +561,7 @@ make_rgb(f32 r, f32 g, f32 b) {
     return(result);
 }
 
-internal vec4
+internal inline vec4
 make_rgba(f32 r, f32 g, f32 b, f32 a) {
     vec4 result;
     result.r = r/255.0f;
