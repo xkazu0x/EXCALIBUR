@@ -33,6 +33,7 @@ union entity_reference_t {
 enum sim_entity_flags_t {
     ENTITY_FLAG_COLLIDES = (1 << 0),
     ENTITY_FLAG_NON_SPATIAL = (1 << 1),
+    ENTITY_FLAG_MOVEABLE = (1 << 2),
     
     ENTITY_FLAG_SIMMING = (1 << 30),
 };

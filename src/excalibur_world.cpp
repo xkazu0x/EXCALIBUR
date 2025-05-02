@@ -131,11 +131,12 @@ map_into_chunk_space(world_t *world, world_position_t base_pos, vec3 offset) {
 }
 
 inline world_position_t
-chunk_position_from_tile_position(world_t *world, s32 tile_x, s32 tile_y, s32 tile_z) {
+chunk_position_from_tile_position(world_t *world, s32 tile_x, s32 tile_y, s32 tile_z,
+                                  vec3 additional_offset = make_vec3(0.0f)) {
     world_position_t base_pos = {};
     
     vec3 offset = world->tile_side_in_meters*make_vec3((f32)tile_x, (f32)tile_y, (f32)tile_z);
-    world_position_t result = map_into_chunk_space(world, base_pos, offset);
+    world_position_t result = map_into_chunk_space(world, base_pos, additional_offset + offset);
     
     ASSERT(is_canonical(world, result.offset_));
     
@@ -250,9 +251,9 @@ change_entity_location(memory_arena_t *arena, world_t *world,
     
     if (new_pos) {
         low_entity->pos = *new_pos;
-        clear_entity_flag(&low_entity->sim, ENTITY_FLAG_NON_SPATIAL);
+        clear_entity_flags(&low_entity->sim, ENTITY_FLAG_NON_SPATIAL);
     } else {
         low_entity->pos = null_position();
-        add_entity_flag(&low_entity->sim, ENTITY_FLAG_NON_SPATIAL);
+        add_entity_flags(&low_entity->sim, ENTITY_FLAG_NON_SPATIAL);
     }
 }

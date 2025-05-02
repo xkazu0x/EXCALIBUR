@@ -235,19 +235,21 @@ add_wall(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
     
     entity.low->sim.dim.y = state->world->tile_side_in_meters;
     entity.low->sim.dim.x = entity.low->sim.dim.y;
-    add_entity_flag(&entity.low->sim, ENTITY_FLAG_COLLIDES);
+    add_entity_flags(&entity.low->sim, ENTITY_FLAG_COLLIDES);
     
     return(entity);
 }
 
 internal add_low_entity_result
 add_stair(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
-    world_position_t pos = chunk_position_from_tile_position(state->world, tile_x, tile_y, tile_z);
+    world_position_t pos = chunk_position_from_tile_position(state->world, tile_x, tile_y, tile_z,
+                                                             make_vec3(0.0f, 0.0f, 0.5f*state->world->tile_depth_in_meters));
     add_low_entity_result entity = add_low_entity(state, ENTITY_TYPE_STAIRWELL, pos);
     
-    entity.low->sim.dim.y = 0.5f*state->world->tile_side_in_meters;
-    entity.low->sim.dim.x = state->world->tile_side_in_meters;
-    entity.low->sim.dim.z = state->world->tile_depth_in_meters;
+    entity.low->sim.dim.y = state->world->tile_side_in_meters;
+    entity.low->sim.dim.x = entity.low->sim.dim.y;
+    // TODO(xkazu0x): 
+    entity.low->sim.dim.z = 1.2f*state->world->tile_depth_in_meters;
     
     return(entity);
 }
@@ -272,6 +274,8 @@ add_sword(game_state_t *state) {
     entity.low->sim.dim.y = state->world->tile_side_in_meters;
     entity.low->sim.dim.x = entity.low->sim.dim.y;
     
+    add_entity_flags(&entity.low->sim, ENTITY_FLAG_MOVEABLE);
+    
     return(entity);
 }
 
@@ -285,7 +289,7 @@ add_player(game_state_t *state) {
     // colliding dimensions
     entity.low->sim.dim.y = 0.9f*state->world->tile_side_in_meters;
     entity.low->sim.dim.x = entity.low->sim.dim.y;
-    add_entity_flag(&entity.low->sim, ENTITY_FLAG_COLLIDES);
+    add_entity_flags(&entity.low->sim, ENTITY_FLAG_COLLIDES | ENTITY_FLAG_MOVEABLE);
     
     init_hit_points(entity.low, 3);
 
@@ -306,7 +310,7 @@ add_familiar(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
     
     entity.low->sim.dim.y = 0.5f*state->world->tile_side_in_meters;
     entity.low->sim.dim.x = entity.low->sim.dim.y;
-    add_entity_flag(&entity.low->sim, ENTITY_FLAG_COLLIDES);
+    add_entity_flags(&entity.low->sim, ENTITY_FLAG_COLLIDES | ENTITY_FLAG_MOVEABLE);
 
     return(entity);
 }
@@ -318,7 +322,7 @@ add_monster(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
     
     entity.low->sim.dim.y = state->world->tile_side_in_meters;
     entity.low->sim.dim.x = entity.low->sim.dim.y;
-    add_entity_flag(&entity.low->sim, ENTITY_FLAG_COLLIDES);
+    add_entity_flags(&entity.low->sim, ENTITY_FLAG_COLLIDES | ENTITY_FLAG_MOVEABLE);
     
     init_hit_points(entity.low, 5);
     
@@ -410,7 +414,7 @@ clear_collision_rules_for(game_state_t *state, u32 storage_index) {
 }
 
 internal void
-add_collision_rule(game_state_t *state, u32 storage_index_a, u32 storage_index_b, b32 should_collide) {
+add_collision_rule(game_state_t *state, u32 storage_index_a, u32 storage_index_b, b32 can_collide) {
     // TODO(xkazu0x): collapse this with should_collide
     if (storage_index_a > storage_index_b) {
         u32 temp = storage_index_a;
@@ -447,7 +451,7 @@ add_collision_rule(game_state_t *state, u32 storage_index_a, u32 storage_index_b
     if (found) {
         found->storage_index_a = storage_index_a;
         found->storage_index_b = storage_index_b;
-        found->should_collide = should_collide;
+        found->can_collide = can_collide;
     }
 }
 
@@ -733,6 +737,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     push_bitmap(&piece_group, &state->sprite_wall, make_vec3(0.0f));
                 } break;
                 case ENTITY_TYPE_STAIRWELL: {
+                    push_rect(&piece_group, make_vec3(0.0f), entity->dim.xy, make_vec4(1.0f, 1.0f, 0.0f, 1.0f));
                     push_bitmap(&piece_group, &state->sprite_stairwell, make_vec3(0.0f));
                 } break;
                 case ENTITY_TYPE_SWORD: {
@@ -806,7 +811,8 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 }
             }
 
-            if (!is_entity_flag_set(entity, ENTITY_FLAG_NON_SPATIAL)) {
+            if (!is_entity_flag_set(entity, ENTITY_FLAG_NON_SPATIAL) &&
+                is_entity_flag_set(entity, ENTITY_FLAG_MOVEABLE)) {
                 move_entity(state, sim_region, entity, clock->delta_seconds, &move_spec, dd_pos);
             }
             
@@ -827,13 +833,13 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             for (u32 piece_index = 0; piece_index < piece_group.piece_count; piece_index++) {
                 entity_visible_piece_t *piece = piece_group.pieces + piece_index;
                 vec2 center = make_vec2(entity_ground_point_x + piece->offset.x,
-                                      entity_ground_point_y + piece->offset.y + piece->offset.z + piece->entity_zc*entity_z);
+                                        entity_ground_point_y + piece->offset.y + piece->offset.z + piece->entity_zc*entity_z);
                 if (piece->bitmap) {
                     draw_bitmap(framebuffer, piece->bitmap, center.x, center.y, piece->color.a);
                 } else {
-                    vec2 half_size = 0.5f*meters_to_pixels*piece->size;
+                    vec2 size = meters_to_pixels*piece->size;
                     vec3 color = make_vec3(piece->color.r, piece->color.g, piece->color.b);
-                    draw_rect(framebuffer, center - half_size, center + half_size, color);
+                    draw_rect(framebuffer, center, center + size, color);
                 }
             }
         }

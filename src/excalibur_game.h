@@ -77,13 +77,8 @@ struct controlled_player_t {
     f32 d_z;
 };
 
-enum pairwise_collision_rule_flag_t {
-    PAIR_COLLISION_FLAG_SHOULD_COLLIDE = 0x1,
-    PAIR_COLLISION_FLAG_TEMPORARY = 0x2,
-};
-
 struct pairwise_collision_rule_t {
-    b32 should_collide;
+    b32 can_collide;
     u32 storage_index_a;
     u32 storage_index_b;
 

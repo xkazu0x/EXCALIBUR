@@ -546,9 +546,71 @@ rect_intersect(rect3 a, rect3 b) {
 //
 //
 
-internal inline
-f32 square(f32 x) {
+internal inline f32
+square(f32 x) {
     f32 result = x*x;
+    return(result);
+}
+
+internal inline f32
+lerp(f32 a, f32 t, f32 b) {
+    f32 result = (1.0f - t)*a + t*b;
+    return(result);
+}
+
+internal inline f32
+clamp(f32 min, f32 value, f32 max) {
+    f32 result = value;
+    if (result < min) {
+        result = min;
+    } else if (result > max) {
+        result = max;
+    }
+    return(result);
+}
+
+internal inline f32
+clamp01(f32 value) {
+    f32 result = clamp(0.0f, value, 1.0f);
+    return(result);
+}
+
+internal inline vec3
+clamp01(vec3 value) {
+    vec3 result;
+    result.x = clamp01(value.x);
+    result.y = clamp01(value.y);
+    result.z = clamp01(value.z);
+    return(result);
+}
+
+internal inline f32
+safe_ratio(f32 numerator, f32 divisor, f32 n) {
+    f32 result = n;
+    if (divisor != 0.0f) {
+        result = numerator/divisor;
+    }
+    return(result);
+}
+
+internal inline f32
+safe_ratio0(f32 numerator, f32 divisor) {
+    f32 result = safe_ratio(numerator, divisor, 0.0f);
+    return(result);
+}
+
+internal inline f32
+safe_ratio1(f32 numerator, f32 divisor) {
+    f32 result = safe_ratio(numerator, divisor, 1.0f);
+    return(result);
+}
+
+internal inline vec3
+get_barycentric(rect3 rect, vec3 point) {
+    vec3 result;
+    result.x = safe_ratio0(point.x - rect.min.x, rect.max.x - rect.min.x);
+    result.y = safe_ratio0(point.y - rect.min.y, rect.max.y - rect.min.y);
+    result.z = safe_ratio0(point.z - rect.min.z, rect.max.z - rect.min.z);
     return(result);
 }
 
