@@ -31,11 +31,12 @@ union entity_reference_t {
 };
 
 enum sim_entity_flags_t {
-    ENTITY_FLAG_COLLIDES = (1 << 0),
+    ENTITY_FLAG_COLLIDES    = (1 << 0),
     ENTITY_FLAG_NON_SPATIAL = (1 << 1),
-    ENTITY_FLAG_MOVEABLE = (1 << 2),
+    ENTITY_FLAG_MOVEABLE    = (1 << 2),
+    ENTITY_FLAG_Z_SUPPORTED = (1 << 4),
     
-    ENTITY_FLAG_SIMMING = (1 << 30),
+    ENTITY_FLAG_SIMMING     = (1 << 30),
 };
 
 struct sim_entity_t {
@@ -85,6 +86,8 @@ struct sim_region_t {
     u32 entity_count;
     sim_entity_t *entities;
 
+    f32 base_ground_z;
+    
     // TODO(xkazu0x): do i really want a hash for this??
     // NOTE(xkazu0x): must be a power of two!
     sim_entity_hash_t hash[4096];

@@ -274,11 +274,6 @@ can_collide(game_state_t *state, sim_entity_t *a, sim_entity_t *b) {
         result = true;
     }
 
-    if ((a->type == ENTITY_TYPE_STAIRWELL) ||
-        (b->type == ENTITY_TYPE_STAIRWELL)) {
-        result = false;
-    }
-
     // TODO(xkazu0x): BETTER HASH FUCTION
     u32 hash_bucket = a->storage_index & (ARRAY_COUNT(state->collision_rule_hash) - 1);
     for (pairwise_collision_rule_t *rule = state->collision_rule_hash[hash_bucket];
@@ -321,9 +316,6 @@ handle_collision(game_state_t *state, sim_entity_t *a, sim_entity_t *b) {
         }
     }
     
-    // TODO(xkazu0x): stairs
-    //entity->tile_z += hit_low_entity->simd_tile_z;
-
     return(stops_on_collision);
 }
 
@@ -347,6 +339,21 @@ handle_overlap(game_state_t *state, sim_entity_t *mover, sim_entity_t *region,
         *ground = lerp(region_rect.min.z, bary.y, region_rect.max.z);
     }
 }
+
+internal b32
+speculative_collide(sim_entity_t *mover, sim_entity_t *region) {
+    b32 result = true;
+    if (region->type == ENTITY_TYPE_STAIRWELL) {
+        rect3 region_rect = make_rect3_center_dim(region->pos, region->dim);
+        vec3 bary = clamp01(get_barycentric(region_rect, mover->pos));
+
+        f32 ground = lerp(region_rect.min.z, bary.y, region_rect.max.z);
+        f32 step_height = 0.1f;
+        result = ((abs_f32(mover->pos.z - ground) > step_height) ||
+                  ((bary.y > 0.1f) && (bary.y < 0.9f)));
+    }
+    return(result);
+}
     
 internal void
 move_entity(game_state_t *state, sim_region_t *region, sim_entity_t *entity, f32 delta,
@@ -354,7 +361,7 @@ move_entity(game_state_t *state, sim_region_t *region, sim_entity_t *entity, f32
     ASSERT(!is_entity_flag_set(entity, ENTITY_FLAG_NON_SPATIAL));
     
     world_t *world = region->world;
-
+    
     if (move_spec->unit_max_accel_vector) {
         f32 dd_pos_length = vec_length_square(dd_pos);
         if (dd_pos_length > 1.0f) {
@@ -366,7 +373,9 @@ move_entity(game_state_t *state, sim_region_t *region, sim_entity_t *entity, f32
     
     // TODO(xkazu0x): ODE here!
     dd_pos += -move_spec->drag*entity->d_pos;
-    dd_pos += make_vec3(0.0f, 0.0f, -9.8f); // NOTE(xkazu0x): gravity
+    if (!is_entity_flag_set(entity, ENTITY_FLAG_Z_SUPPORTED)) {
+        dd_pos += make_vec3(0.0f, 0.0f, -9.8f); // NOTE(xkazu0x): gravity
+    }
     
     //vec2 old_player_pos = entity->pos;
     vec3 player_delta = (0.5f*dd_pos*square(delta) + entity->d_pos*delta);
@@ -404,13 +413,12 @@ move_entity(game_state_t *state, sim_region_t *region, sim_entity_t *entity, f32
             // loop in the case where the test entity is non-spatial
             if (!is_entity_flag_set(entity, ENTITY_FLAG_NON_SPATIAL)) {
                 // TODO(xkazu0x): spatial partition here!
-                for (u32 test_high_entity_index = 0;
-                     test_high_entity_index < region->entity_count;
-                     ++test_high_entity_index) {
-                    sim_entity_t *test_entity = region->entities + test_high_entity_index;
-                    if (can_collide(state, entity, test_entity) &&
-                        (test_entity->pos.z == entity->pos.z)) {
-                        // TODO(xkazu0x): entities have height?
+                for (u32 test_entity_index = 0;
+                     test_entity_index < region->entity_count;
+                     ++test_entity_index) {
+                    sim_entity_t *test_entity = region->entities + test_entity_index;
+                    if (can_collide(state, entity, test_entity)) { //&&
+                        //(test_entity->pos.z == entity->pos.z)) {
                         vec3 minkowski_diameter = test_entity->dim + entity->dim;
                             
                         vec3 min_corner = -0.5f*minkowski_diameter;
@@ -418,28 +426,41 @@ move_entity(game_state_t *state, sim_region_t *region, sim_entity_t *entity, f32
                 
                         vec3 rel = entity->pos - test_entity->pos;
 
+                        f32 t_min_test = t_min;
+                        vec3 test_wall_normal = {};
+                        b32 hit_this = false;
+                        
                         if (test_wall(min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
-                                      &t_min, min_corner.y, max_corner.y)) {
-                            wall_normal = make_vec3(-1.0f, 0.0f, 0.0f);
-                            hit_entity = test_entity;
+                                      &t_min_test, min_corner.y, max_corner.y)) {
+                            test_wall_normal = make_vec3(-1.0f, 0.0f, 0.0f);
+                            b32 hit_this = true;
                         }
                 
                         if (test_wall(max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
-                                      &t_min, min_corner.y, max_corner.y)) {
-                            wall_normal = make_vec3(1.0f, 0.0f, 0.0f);
-                            hit_entity = test_entity;
+                                      &t_min_test, min_corner.y, max_corner.y)) {
+                            test_wall_normal = make_vec3(1.0f, 0.0f, 0.0f);
+                            b32 hit_this = true;
                         }
                 
                         if (test_wall(min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
-                                      &t_min, min_corner.x, max_corner.x)) {
-                            wall_normal = make_vec3(0.0f, -1.0f, 0.0f);
-                            hit_entity = test_entity;
+                                      &t_min_test, min_corner.x, max_corner.x)) {
+                            test_wall_normal = make_vec3(0.0f, -1.0f, 0.0f);
+                            b32 hit_this = true;
                         }
                 
                         if (test_wall(max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
-                                      &t_min, min_corner.x, max_corner.x)) {
-                            wall_normal = make_vec3(0.0f, 1.0f, 0.0f);
-                            hit_entity = test_entity;
+                                      &t_min_test, min_corner.x, max_corner.x)) {
+                            test_wall_normal = make_vec3(0.0f, 1.0f, 0.0f);
+                            b32 hit_this = true;
+                        }
+
+                        if (hit_this) {
+                            //vec3 test_pos = entity->pos + t_min_test*player_delta;
+                            if (speculative_collide(entity, test_entity)) {
+                                t_min = t_min_test;
+                                wall_normal = test_wall_normal;
+                                hit_entity = test_entity;
+                            }
                         }
                     }
                 }
@@ -465,15 +486,16 @@ move_entity(game_state_t *state, sim_region_t *region, sim_entity_t *entity, f32
     }
 
     f32 ground = 0.0f;
+    
     // NOTE(xkazu0x): handle events based on area overlapping 
     // TODO(xkazu0x): handle overlapping precisely by moving it into the collision loop?
     {
         rect3 entity_rect = make_rect3_center_dim(entity->pos, entity->dim);
         // TODO(xkazu0x): spatial partition here!
-        for (u32 test_high_entity_index = 0;
-             test_high_entity_index < region->entity_count;
-             ++test_high_entity_index) {
-            sim_entity_t *test_entity = region->entities + test_high_entity_index;
+        for (u32 test_entity_index = 0;
+             test_entity_index < region->entity_count;
+             ++test_entity_index) {
+            sim_entity_t *test_entity = region->entities + test_entity_index;
             if (can_overlap(state, entity, test_entity)) {
                 rect3 test_entity_rect = make_rect3_center_dim(test_entity->pos, test_entity->dim);
                 if (rect_intersect(entity_rect, test_entity_rect)) {
@@ -483,10 +505,14 @@ move_entity(game_state_t *state, sim_region_t *region, sim_entity_t *entity, f32
         }
     }
 
-    // TODO(xkazu0x): this has to become real height handling / ground collision
-    if (entity->pos.z < ground) {
+    if ((entity->pos.z <= ground) ||
+        (is_entity_flag_set(entity, ENTITY_FLAG_Z_SUPPORTED) &&
+         (entity->d_pos.z == 0.0f))) {
         entity->pos.z = ground;
         entity->d_pos.z = 0.0f;
+        add_entity_flags(entity, ENTITY_FLAG_Z_SUPPORTED);
+    } else {
+        clear_entity_flags(entity, ENTITY_FLAG_Z_SUPPORTED);
     }
     
     if (entity->distance_limit != 0.0f) {
