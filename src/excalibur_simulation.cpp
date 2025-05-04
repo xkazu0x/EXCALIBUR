@@ -97,10 +97,10 @@ add_sim_entity_raw(game_state_t *state, sim_region_t *region,
     return(entity);
 }
 
-internal b32
-entity_overlaps_rect(vec3 pos, vec3 dim, rect3 rect) {
-    rect3 grown = rect_add_radius(rect, 0.5f*dim);
-    b32 result = is_in_rect(grown, pos);
+internal inline b32
+entity_overlaps_rect(vec3 pos, sim_entity_collision_volume_t volume, rect3 rect) {
+    rect3 grown = rect_add_radius(rect, 0.5f*volume.dim);
+    b32 result = is_in_rect(grown, pos + volume.offset);
     return(result);
 }
 
@@ -111,7 +111,7 @@ add_sim_entity(game_state_t *state, sim_region_t *region, u32 storage_index, low
     if (entity) {
         if (pos) {
             entity->pos = *pos;
-            entity->updatable = entity_overlaps_rect(entity->pos, entity->dim, region->updatable_bounds);
+            entity->updatable = entity_overlaps_rect(entity->pos, entity->collision->total_volume, region->updatable_bounds);
         } else {
             entity->pos = get_sim_space_pos(region, stored);
         }
@@ -125,7 +125,7 @@ begin_sim(memory_arena_t *sim_arena, game_state_t *state, world_t *world,
           world_position_t origin, rect3 bounds, f32 delta_time) {
     // TODO(xkazu0x): if entities were stored in the world, we wouldn't need the game state here
     
-    sim_region_t *region = push_struct(sim_arena, sim_region_t);
+    sim_region_t *region = memory_arena_push_struct(sim_arena, sim_region_t);
     zero_struct(region->hash);
 
     // TODO(xkazu0x): try to make these get enforced more rigoriously
@@ -142,7 +142,7 @@ begin_sim(memory_arena_t *sim_arena, game_state_t *state, world_t *world,
     // TODO(xkazu0x): need to be more specific about entity counts
     region->max_entity_count = 4096;
     region->entity_count = 0;
-    region->entities = push_array(sim_arena, region->max_entity_count, sim_entity_t);
+    region->entities = memory_arena_push_array(sim_arena, region->max_entity_count, sim_entity_t);
     
     world_position_t min_chunk_pos = map_into_chunk_space(world, region->origin, get_rect_min(region->bounds));
     world_position_t max_chunk_pos = map_into_chunk_space(world, region->origin, get_rect_max(region->bounds));
@@ -171,7 +171,7 @@ begin_sim(memory_arena_t *sim_arena, game_state_t *state, world_t *world,
                             if (!is_entity_flag_set(&low->sim, ENTITY_FLAG_NON_SPATIAL)) {
                                 vec3 sim_space_pos = get_sim_space_pos(region, low);
                             
-                                if (entity_overlaps_rect(sim_space_pos, low->sim.dim, region->bounds)) {
+                                if (entity_overlaps_rect(sim_space_pos, low->sim.collision->total_volume, region->bounds)) {
                                     add_sim_entity(state, region, low_entity_index, low, &sim_space_pos);
                                 }
                             }
@@ -371,7 +371,9 @@ move_entity(game_state_t *state, sim_region_t *region, sim_entity_t *entity, f32
     dd_pos *= move_spec->speed;
     
     // TODO(xkazu0x): ODE here!
-    dd_pos += -move_spec->drag*entity->d_pos;
+    vec3 drag = -move_spec->drag*entity->d_pos;
+    drag.z = 0.0f;
+    dd_pos += drag;
     if (!is_entity_flag_set(entity, ENTITY_FLAG_Z_SUPPORTED)) {
         dd_pos += make_vec3(0.0f, 0.0f, -9.8f); // NOTE(xkazu0x): gravity
     }
@@ -417,48 +419,62 @@ move_entity(game_state_t *state, sim_region_t *region, sim_entity_t *entity, f32
                      ++test_entity_index) {
                     sim_entity_t *test_entity = region->entities + test_entity_index;
                     if (can_collide(state, entity, test_entity)) {
-                        vec3 minkowski_diameter = test_entity->dim + entity->dim;
+                        for (u32 volume_index = 0;
+                             volume_index < entity->collision->volume_count;
+                             ++volume_index) {
+                            sim_entity_collision_volume_t *volume =
+                                entity->collision->volumes + volume_index;
+                            for (u32 test_volume_index = 0;
+                                 test_volume_index < test_entity->collision->volume_count;
+                                 ++test_volume_index) {
+                                sim_entity_collision_volume_t *test_volume =
+                                    test_entity->collision->volumes + test_volume_index;
+                                
+                                vec3 minkowski_diameter = test_volume->dim + volume->dim;
                             
-                        vec3 min_corner = -0.5f*minkowski_diameter;
-                        vec3 max_corner =  0.5f*minkowski_diameter;
+                                vec3 min_corner = -0.5f*minkowski_diameter;
+                                vec3 max_corner =  0.5f*minkowski_diameter;
                 
-                        vec3 rel = entity->pos - test_entity->pos;
+                                vec3 rel = ((entity->pos + volume->offset) -
+                                            (test_entity->pos + test_volume->offset));
 
-                        if ((rel.z >= min_corner.z) && (rel.z < max_corner.z)) {
-                            f32 t_min_test = t_min;
-                            vec3 test_wall_normal = {};
-                            b32 hit_this = false;
+                                if ((rel.z >= min_corner.z) && (rel.z < max_corner.z)) {
+                                    f32 t_min_test = t_min;
+                                    vec3 test_wall_normal = {};
+                                    b32 hit_this = false;
                         
-                            if (test_wall(min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
-                                          &t_min_test, min_corner.y, max_corner.y)) {
-                                test_wall_normal = make_vec3(-1.0f, 0.0f, 0.0f);
-                                hit_this = true;
-                            }
+                                    if (test_wall(min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
+                                                  &t_min_test, min_corner.y, max_corner.y)) {
+                                        test_wall_normal = make_vec3(-1.0f, 0.0f, 0.0f);
+                                        hit_this = true;
+                                    }
                 
-                            if (test_wall(max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
-                                          &t_min_test, min_corner.y, max_corner.y)) {
-                                test_wall_normal = make_vec3(1.0f, 0.0f, 0.0f);
-                                hit_this = true;
-                            }
+                                    if (test_wall(max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
+                                                  &t_min_test, min_corner.y, max_corner.y)) {
+                                        test_wall_normal = make_vec3(1.0f, 0.0f, 0.0f);
+                                        hit_this = true;
+                                    }
                 
-                            if (test_wall(min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
-                                          &t_min_test, min_corner.x, max_corner.x)) {
-                                test_wall_normal = make_vec3(0.0f, -1.0f, 0.0f);
-                                hit_this = true;
-                            }
+                                    if (test_wall(min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
+                                                  &t_min_test, min_corner.x, max_corner.x)) {
+                                        test_wall_normal = make_vec3(0.0f, -1.0f, 0.0f);
+                                        hit_this = true;
+                                    }
                 
-                            if (test_wall(max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
-                                          &t_min_test, min_corner.x, max_corner.x)) {
-                                test_wall_normal = make_vec3(0.0f, 1.0f, 0.0f);
-                                hit_this = true;
-                            }
+                                    if (test_wall(max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
+                                                  &t_min_test, min_corner.x, max_corner.x)) {
+                                        test_wall_normal = make_vec3(0.0f, 1.0f, 0.0f);
+                                        hit_this = true;
+                                    }
 
-                            if (hit_this) {
-                                //vec3 test_pos = entity->pos + t_min_test*player_delta;
-                                if (speculative_collide(entity, test_entity)) {
-                                    t_min = t_min_test;
-                                    wall_normal = test_wall_normal;
-                                    hit_entity = test_entity;
+                                    if (hit_this) {
+                                        //vec3 test_pos = entity->pos + t_min_test*player_delta;
+                                        if (speculative_collide(entity, test_entity)) {
+                                            t_min = t_min_test;
+                                            wall_normal = test_wall_normal;
+                                            hit_entity = test_entity;
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -486,25 +502,28 @@ move_entity(game_state_t *state, sim_region_t *region, sim_entity_t *entity, f32
     }
 
     f32 ground = 0.0f;
-    
+
+    // TODO(xkazu0x): handle multi-volumes here?
     // NOTE(xkazu0x): handle events based on area overlapping 
     // TODO(xkazu0x): handle overlapping precisely by moving it into the collision loop?
     {
-        rect3 entity_rect = make_rect3_center_dim(entity->pos, entity->dim);
+        rect3 entity_rect = make_rect3_center_dim(entity->pos + entity->collision->total_volume.offset,
+                                                  entity->collision->total_volume.dim);
         // TODO(xkazu0x): spatial partition here!
         for (u32 test_entity_index = 0;
              test_entity_index < region->entity_count;
              ++test_entity_index) {
             sim_entity_t *test_entity = region->entities + test_entity_index;
             if (can_overlap(state, entity, test_entity)) {
-                rect3 test_entity_rect = make_rect3_center_dim(test_entity->pos, test_entity->dim);
+                rect3 test_entity_rect = make_rect3_center_dim(test_entity->pos + test_entity->collision->total_volume.offset,
+                                                               test_entity->collision->total_volume.dim);
                 if (rect_intersect(entity_rect, test_entity_rect)) {
                     handle_overlap(state, entity, test_entity, delta, &ground);
                 }
             }
         }
     }
-
+    
     ground += entity->pos.z - get_entity_ground_point(entity).z;
     if ((entity->pos.z <= ground) ||
         (is_entity_flag_set(entity, ENTITY_FLAG_Z_SUPPORTED) &&

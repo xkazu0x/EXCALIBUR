@@ -573,6 +573,14 @@ clamp01(f32 value) {
     return(result);
 }
 
+internal inline vec2
+clamp01(vec2 value) {
+    vec2 result;
+    result.x = clamp01(value.x);
+    result.y = clamp01(value.y);
+    return(result);
+}
+
 internal inline vec3
 clamp01(vec3 value) {
     vec3 result;
@@ -600,6 +608,14 @@ safe_ratio0(f32 numerator, f32 divisor) {
 internal inline f32
 safe_ratio1(f32 numerator, f32 divisor) {
     f32 result = safe_ratio(numerator, divisor, 1.0f);
+    return(result);
+}
+
+internal inline vec2
+get_barycentric(rect2 rect, vec2 point) {
+    vec2 result;
+    result.x = safe_ratio0(point.x - rect.min.x, rect.max.x - rect.min.x);
+    result.y = safe_ratio0(point.y - rect.min.y, rect.max.y - rect.min.y);
     return(result);
 }
 

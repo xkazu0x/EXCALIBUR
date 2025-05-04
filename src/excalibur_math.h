@@ -152,12 +152,14 @@ internal inline f32 lerp(f32 a, f32 t, f32 b);
 
 internal inline f32 clamp(f32 min, f32 value, f32 max);
 internal inline f32 clamp01(f32 value);
+internal inline vec2 clamp01(vec2 value);
 internal inline vec3 clamp01(vec3 value);
 
 internal inline f32 safe_ratio(f32 numerator, f32 divisor, f32 n);
 internal inline f32 safe_ratio0(f32 numerator, f32 divisor);
 internal inline f32 safe_ratio1(f32 numerator, f32 divisor);
 
+internal inline vec2 get_barycentric(rect2 rect, vec2 point);
 internal inline vec3 get_barycentric(rect3 rect, vec3 point);
 
 internal inline vec3 make_rgb(f32 r, f32 g, f32 b);

@@ -39,6 +39,22 @@ enum sim_entity_flags_t {
     ENTITY_FLAG_SIMMING     = (1 << 30),
 };
 
+struct sim_entity_collision_volume_t {
+    vec3 offset;
+    vec3 dim;
+};
+
+struct sim_entity_collision_volume_group_t {
+    sim_entity_collision_volume_t total_volume;
+
+    // TODO(xkazu0x): volume_count is always expected to be greater than 0 if
+    // the entity has any volume... in the future, this could be compressed if
+    // necessary to say that the volume_count can be 0 if the total_value should
+    // be used as only collision volume for the entity.
+    u32 volume_count;
+    sim_entity_collision_volume_t *volumes;
+};
+
 struct sim_entity_t {
     // NOTE(xkazu0x): only for the sim region
     world_chunk_t *old_chunk;
@@ -48,9 +64,10 @@ struct sim_entity_t {
     entity_type_t type;
     u32 flags;
 
-    vec3 dim;
     vec3 pos;
     vec3 d_pos;
+    
+    sim_entity_collision_volume_group_t *collision;
     
     u32 direction;
     f32 t_bob;
@@ -65,6 +82,7 @@ struct sim_entity_t {
     entity_reference_t sword;
 
     // NOTE(xkazu0x): only for stairwells
+    vec2 walkable_dim;
     f32 walkable_height;
 };
 

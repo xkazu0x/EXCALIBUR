@@ -16,7 +16,7 @@ struct memory_arena_t {
 };
 
 internal memory_arena_t
-memory_arena_create(memi size, void *base) {
+create_memory_arena(memi size, void *base) {
     memory_arena_t result;
     result.size = size;
     result.used = 0;
@@ -32,8 +32,8 @@ memory_arena_push(memory_arena_t *arena, memi size) {
     return(result);
 }
 
-#define push_struct(arena, type) (type *)memory_arena_push(arena, sizeof(type))
-#define push_array(arena, count, type) (type *)memory_arena_push(arena, (count)*sizeof(type))
+#define memory_arena_push_struct(arena, type) (type *)memory_arena_push(arena, sizeof(type))
+#define memory_arena_push_array(arena, count, type) (type *)memory_arena_push(arena, (count)*sizeof(type))
 
 internal inline void
 zero_size(memi size, void *ptr) {
@@ -103,8 +103,8 @@ struct game_state_t {
 
     f32 meters_to_pixels;
     bitmap_t player_sprites[4];
-    bitmap_t sprite_wall;
-    bitmap_t sprite_stairwell;
+    bitmap_t wall_sprite;
+    bitmap_t stairwell_sprite;
     bitmap_t bat_sprite;
     bitmap_t shadow_sprite;
     bitmap_t sword_sprite;
@@ -112,6 +112,15 @@ struct game_state_t {
     // TODO(xkazu0x): must be power of two
     pairwise_collision_rule_t *collision_rule_hash[256];
     pairwise_collision_rule_t *first_free_collision_rule;
+
+    sim_entity_collision_volume_group_t *null_collision;
+    sim_entity_collision_volume_group_t *wall_collision;
+    sim_entity_collision_volume_group_t *stair_collision;
+    sim_entity_collision_volume_group_t *sword_collision;
+    sim_entity_collision_volume_group_t *player_collision;
+    sim_entity_collision_volume_group_t *monster_collision;
+    sim_entity_collision_volume_group_t *familiar_collision;
+
 };
 
 // TODO(xkazu0x): this is dumb, this should just be part of

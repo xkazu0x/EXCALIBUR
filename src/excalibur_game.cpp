@@ -217,6 +217,7 @@ add_low_entity(game_state_t *state, entity_type_t type, world_position_t pos) {
     low_entity_t *low_entity = state->low_entities + entity_index;
     *low_entity = {};
     low_entity->sim.type = type;
+    low_entity->sim.collision = state->null_collision;
     low_entity->pos = null_position();
 
     change_entity_location(&state->world_arena, state->world, entity_index, low_entity, pos);
@@ -227,22 +228,21 @@ add_low_entity(game_state_t *state, entity_type_t type, world_position_t pos) {
     
     return(result);
 }
+
 internal add_low_entity_result
-add_grounded_entity(game_state_t *state, entity_type_t type, world_position_t pos, vec3 dim) {
-    world_position_t offset_pos = map_into_chunk_space(state->world, pos, make_vec3(0.0f, 0.0f, 0.5f*dim.z));
-    add_low_entity_result entity = add_low_entity(state, type, offset_pos);
-    entity.low->sim.dim = dim;
+add_grounded_entity(game_state_t *state, entity_type_t type, world_position_t pos,
+                    sim_entity_collision_volume_group_t *collision) {
+    add_low_entity_result entity = add_low_entity(state, type, pos);
+    entity.low->sim.collision = collision;
     return(entity);
 }
 
 internal add_low_entity_result
 add_wall(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
     world_position_t pos = chunk_position_from_tile_position(state->world, tile_x, tile_y, tile_z);
-    vec3 dim = make_vec3(state->world->tile_side_in_meters,
-                         state->world->tile_side_in_meters,
-                         state->world->tile_depth_in_meters);
     
-    add_low_entity_result entity = add_grounded_entity(state, ENTITY_TYPE_WALL, pos, dim);
+    add_low_entity_result entity = add_grounded_entity(state, ENTITY_TYPE_WALL, pos,
+                                                       state->wall_collision);
     add_entity_flags(&entity.low->sim, ENTITY_FLAG_COLLIDES);
     
     return(entity);
@@ -251,14 +251,13 @@ add_wall(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
 internal add_low_entity_result
 add_stair(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
     world_position_t pos = chunk_position_from_tile_position(state->world, tile_x, tile_y, tile_z);
-    vec3 dim = make_vec3(state->world->tile_side_in_meters,
-                         2.0f*state->world->tile_side_in_meters,
-                         1.1f*state->world->tile_depth_in_meters);
     
-    add_low_entity_result entity = add_grounded_entity(state, ENTITY_TYPE_STAIRWELL, pos, dim);
-    add_entity_flags(&entity.low->sim, ENTITY_FLAG_COLLIDES);
-
+    add_low_entity_result entity = add_grounded_entity(state, ENTITY_TYPE_STAIRWELL, pos,
+                                                       state->stair_collision);
+    entity.low->sim.walkable_dim = entity.low->sim.collision->total_volume.dim.xy;
     entity.low->sim.walkable_height = state->world->tile_depth_in_meters;
+    
+    add_entity_flags(&entity.low->sim, ENTITY_FLAG_COLLIDES);
     
     return(entity);
 }
@@ -269,7 +268,7 @@ init_hit_points(low_entity_t *low_entity, u32 hit_point_count) {
     low_entity->sim.hit_point_max = hit_point_count;
     for (u32 hit_point_index = 0;
          hit_point_index < hit_point_count;
-         hit_point_index++) {
+         ++hit_point_index) {
         hit_point_t *hit_point = low_entity->sim.hit_points + hit_point_index;
         hit_point->flags = 0;
         hit_point->filled_amount = HIT_POINT_FILLED_MAX;
@@ -279,10 +278,7 @@ init_hit_points(low_entity_t *low_entity, u32 hit_point_count) {
 internal add_low_entity_result
 add_sword(game_state_t *state) {
     add_low_entity_result entity = add_low_entity(state, ENTITY_TYPE_SWORD, null_position());
-
-    entity.low->sim.dim.x = state->world->tile_side_in_meters;
-    entity.low->sim.dim.y = state->world->tile_side_in_meters;
-    entity.low->sim.dim.z = 0.1f;
+    entity.low->sim.collision = state->sword_collision;
     
     add_entity_flags(&entity.low->sim, ENTITY_FLAG_MOVEABLE);
     
@@ -292,9 +288,9 @@ add_sword(game_state_t *state) {
 internal add_low_entity_result
 add_player(game_state_t *state) {
     world_position_t pos = state->camera_pos;
-    vec3 dim = make_vec3(1.0f, 0.5f, 1.0f);
     
-    add_low_entity_result entity = add_grounded_entity(state, ENTITY_TYPE_PLAYER, pos, dim);
+    add_low_entity_result entity = add_grounded_entity(state, ENTITY_TYPE_PLAYER, pos,
+                                                       state->player_collision);
     add_entity_flags(&entity.low->sim, ENTITY_FLAG_COLLIDES | ENTITY_FLAG_MOVEABLE);
     init_hit_points(entity.low, 3);
 
@@ -309,27 +305,25 @@ add_player(game_state_t *state) {
 }
 
 internal add_low_entity_result
-add_familiar(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
+add_monster(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
     world_position_t pos = chunk_position_from_tile_position(state->world, tile_x, tile_y, tile_z);
-    vec3 dim = make_vec3(0.5f*state->world->tile_side_in_meters);
     
-    add_low_entity_result entity = add_grounded_entity(state, ENTITY_TYPE_FAMILIAR, pos, dim);
+    add_low_entity_result entity = add_grounded_entity(state, ENTITY_TYPE_MONSTER, pos,
+                                                       state->monster_collision);
     add_entity_flags(&entity.low->sim, ENTITY_FLAG_COLLIDES | ENTITY_FLAG_MOVEABLE);
-
+    init_hit_points(entity.low, 5);
+    
     return(entity);
 }
 
 internal add_low_entity_result
-add_monster(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
+add_familiar(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
     world_position_t pos = chunk_position_from_tile_position(state->world, tile_x, tile_y, tile_z);
-    vec3 dim = make_vec3(0.8f*state->world->tile_side_in_meters,
-                         0.5f*state->world->tile_side_in_meters,
-                         state->world->tile_side_in_meters);
     
-    add_low_entity_result entity = add_grounded_entity(state, ENTITY_TYPE_MONSTER, pos, dim);
+    add_low_entity_result entity = add_grounded_entity(state, ENTITY_TYPE_FAMILIAR, pos,
+                                                       state->familiar_collision);
     add_entity_flags(&entity.low->sim, ENTITY_FLAG_COLLIDES | ENTITY_FLAG_MOVEABLE);
-    init_hit_points(entity.low, 5);
-    
+
     return(entity);
 }
 
@@ -366,7 +360,7 @@ draw_hit_points(entity_visible_piece_group_t *piece_group, sim_entity_t *entity)
         vec2 health_dim = make_vec2(0.125f*1.4f);
         
         f32 spacing_x = 1.5f*health_dim.x;
-        f32 offset_x = (entity->dim.x + (spacing_x/2))/2;
+        f32 offset_x = (entity->collision->total_volume.dim.x + (spacing_x/2))/2;
         
         vec2 hit_pos = make_vec2((-0.5f*(entity->hit_point_max - 1)*spacing_x) + offset_x, 1.0f);
         vec2 hit_dpos = make_vec2(spacing_x, 0.0f);
@@ -447,7 +441,7 @@ add_collision_rule(game_state_t *state, u32 storage_index_a, u32 storage_index_b
         if (found) {
             state->first_free_collision_rule = found->next_in_hash;
         } else {
-            found = push_struct(&state->world_arena, pairwise_collision_rule_t);
+            found = memory_arena_push_struct(&state->world_arena, pairwise_collision_rule_t);
         }
         
         found->next_in_hash = state->collision_rule_hash[hash_bucket];
@@ -461,6 +455,30 @@ add_collision_rule(game_state_t *state, u32 storage_index_a, u32 storage_index_b
     }
 }
 
+internal sim_entity_collision_volume_group_t *
+make_simple_grounded_collision(game_state_t *state, f32 dim_x, f32 dim_y, f32 dim_z) {
+    // TODO(xkazu0x): NOT WORLD ARENA! change to using the fundamental types arena.
+    sim_entity_collision_volume_group_t *collision = memory_arena_push_struct(&state->world_arena, sim_entity_collision_volume_group_t);
+    collision->volume_count = 1;
+    collision->volumes = memory_arena_push_array(&state->world_arena, collision->volume_count, sim_entity_collision_volume_t);
+    collision->total_volume.offset = make_vec3(0.0f, 0.0f, 0.5f*dim_z);
+    collision->total_volume.dim = make_vec3(dim_x, dim_y, dim_z);
+    collision->volumes[0] = collision->total_volume;
+    return(collision);
+}
+
+internal sim_entity_collision_volume_group_t *
+make_null_collision(game_state_t *state) {
+    // TODO(xkazu0x): NOT WORLD ARENA! change to using the fundamental types arena.
+    sim_entity_collision_volume_group_t *collision = memory_arena_push_struct(&state->world_arena, sim_entity_collision_volume_group_t);
+    collision->volume_count = 0;
+    collision->volumes = 0;
+    collision->total_volume.offset = make_vec3(0.0f);
+    // TODO(xkazu0x): should this be negative?
+    collision->total_volume.dim = make_vec3(0.0f);
+    return(collision);
+}
+
 extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     ASSERT(sizeof(game_state_t) <= memory->permanent_storage_size);
     game_state_t *state = (game_state_t *)memory->permanent_storage;
@@ -470,27 +488,49 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     s32 tile_size_in_pixels = 16;
     
     if (!memory->initialized) {
-        add_low_entity(state, ENTITY_TYPE_NULL, null_position());
+        // TODO(xkazu0x): start partioning memory space
+        state->world_arena = create_memory_arena(memory->permanent_storage_size - sizeof(game_state_t),
+                                                 (u8 *)memory->permanent_storage + sizeof(game_state_t));
+        state->world = memory_arena_push_struct(&state->world_arena, world_t);
+        
+        world_t *world = state->world;
+        initialize_world(world, 1.4f, 3.0f);
+        state->meters_to_pixels = (f32)tile_size_in_pixels / (f32)world->tile_side_in_meters;
 
+        state->null_collision = make_null_collision(state);
+        state->wall_collision = make_simple_grounded_collision(state,
+                                                               state->world->tile_side_in_meters,
+                                                               state->world->tile_side_in_meters,
+                                                               state->world->tile_depth_in_meters);
+        state->stair_collision = make_simple_grounded_collision(state,
+                                                                state->world->tile_side_in_meters,
+                                                                2.0f*state->world->tile_side_in_meters,
+                                                                1.1f*state->world->tile_depth_in_meters);
+        state->sword_collision = make_simple_grounded_collision(state,
+                                                                state->world->tile_side_in_meters,
+                                                                state->world->tile_side_in_meters,
+                                                                0.1f);
+        state->player_collision = make_simple_grounded_collision(state, 1.0f, 0.5f, 1.0f);
+        state->monster_collision = make_simple_grounded_collision(state,
+                                                                  0.8f*state->world->tile_side_in_meters,
+                                                                  0.5f*state->world->tile_side_in_meters,
+                                                                  state->world->tile_side_in_meters);
+        state->familiar_collision = make_simple_grounded_collision(state,
+                                                                   0.5f*state->world->tile_side_in_meters,
+                                                                   0.5f*state->world->tile_side_in_meters,
+                                                                   0.5f*state->world->tile_side_in_meters);
+        
         state->player_sprites[0] = debug_load_bitmap(memory->debug_os_read_file, thread, "res/skull_back.bmp");
         state->player_sprites[1] = debug_load_bitmap(memory->debug_os_read_file, thread, "res/skull_right.bmp");
         state->player_sprites[2] = debug_load_bitmap(memory->debug_os_read_file, thread, "res/skull_front.bmp");
         state->player_sprites[3] = debug_load_bitmap(memory->debug_os_read_file, thread, "res/skull_left.bmp");
-        
-        state->sprite_wall = debug_load_bitmap(memory->debug_os_read_file, thread, "res/wall.bmp");
-        state->sprite_stairwell = debug_load_bitmap(memory->debug_os_read_file, thread, "res/stair_up.bmp");
-        
-        state->bat_sprite = debug_load_bitmap(memory->debug_os_read_file, thread, "res/bat.bmp");
-        state->shadow_sprite = debug_load_bitmap(memory->debug_os_read_file, thread, "res/shadow.bmp");
-        state->sword_sprite = debug_load_bitmap(memory->debug_os_read_file, thread, "res/shadow.bmp");
-        
-        state->world_arena = memory_arena_create(memory->permanent_storage_size - sizeof(game_state_t),
-                                                 (u8 *)memory->permanent_storage + sizeof(game_state_t));
-        state->world = push_struct(&state->world_arena, world_t);
-        world_t *world = state->world;
-        initialize_world(world, 1.4f, 3.0f);
+        state->wall_sprite       = debug_load_bitmap(memory->debug_os_read_file, thread, "res/wall.bmp");
+        state->stairwell_sprite  = debug_load_bitmap(memory->debug_os_read_file, thread, "res/stair_up.bmp");
+        state->bat_sprite        = debug_load_bitmap(memory->debug_os_read_file, thread, "res/bat.bmp");
+        state->shadow_sprite     = debug_load_bitmap(memory->debug_os_read_file, thread, "res/shadow.bmp");
+        state->sword_sprite      = debug_load_bitmap(memory->debug_os_read_file, thread, "res/shadow.bmp");
 
-        state->meters_to_pixels = (f32)tile_size_in_pixels / (f32)world->tile_side_in_meters;
+        add_low_entity(state, ENTITY_TYPE_NULL, null_position());
         
         u32 screen_base_x = 0;
         u32 screen_base_y = 0;
@@ -508,7 +548,8 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         b32 door_top = false;
         b32 door_bottom = false;
         b32 door_up = false;
-        b32 door_down = false;        
+        b32 door_down = false;
+        
         for (u32 screen_index = 0; screen_index < 10; screen_index++) {
             // TODO(xkazu0x): random number generator
             ASSERT(random_number_index < ARRAY_COUNT(random_number_table));
@@ -665,7 +706,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                                                           (f32)tile_span_y,
                                                           (f32)tile_span_z));
     
-    memory_arena_t sim_arena = memory_arena_create(memory->transient_storage_size, memory->transient_storage);
+    memory_arena_t sim_arena = create_memory_arena(memory->transient_storage_size, memory->transient_storage);
     sim_region_t *sim_region = begin_sim(&sim_arena, state, world, state->camera_pos, camera_bounds, clock->delta_seconds);
 
     ///////////////////////////////////
@@ -701,7 +742,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             piece_group.piece_count = 0;
             f32 delta = clock->delta_seconds;
 
-            f32 shadow_alpha = 1.0f - 0.5f*(entity->pos.z + entity->dim.z);
+            f32 shadow_alpha = 1.0f - 0.5f*entity->pos.z;
             if (shadow_alpha < 0.0f) shadow_alpha = 0.0f;
 
             move_spec_t move_spec = default_move_spec();
@@ -734,28 +775,29 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                         }
                     }
 
+#if 0
                     vec3 offset = make_vec3((state->world->tile_side_in_meters - entity->dim.x)/2,
                                             -(state->world->tile_side_in_meters - entity->dim.y)/2,
                                             0.0f);
-
+#endif
                     
                     bitmap_t *sprite = &state->player_sprites[entity->direction];
                     push_bitmap(&piece_group, &state->shadow_sprite, make_vec3(0.0f, 0.3f, 0.0f), shadow_alpha, 0.0f);
                     push_bitmap(&piece_group, sprite, make_vec3(0.0f, 0.0f, -0.7f));
                     draw_hit_points(&piece_group, entity);
                     
-                    push_rect(&piece_group, offset, entity->dim.xy, make_vec4(1.0f, 1.0f, 0.0f, 1.0f));
+                    //push_rect(&piece_group, offset, entity->dim.xy, make_vec4(1.0f, 1.0f, 0.0f, 1.0f));
                 } break;
                 case ENTITY_TYPE_WALL: {
-                    push_bitmap(&piece_group, &state->sprite_wall, make_vec3(0.0f));
+                    push_bitmap(&piece_group, &state->wall_sprite, make_vec3(0.0f));
                 } break;
                 case ENTITY_TYPE_STAIRWELL: {
-                    vec3 offset = make_vec3((state->world->tile_side_in_meters - entity->dim.x)/2,
-                                            -(state->world->tile_side_in_meters - entity->dim.y)/2,
+                    vec3 offset = make_vec3((state->world->tile_side_in_meters - entity->walkable_dim.x)/2,
+                                            -(state->world->tile_side_in_meters - entity->walkable_dim.y)/2,
                                             0.0f);
                     
-                    push_rect(&piece_group, offset, entity->dim.xy, make_vec4(1.0f, 0.0f, 1.0f, 1.0f));
-                    push_rect(&piece_group, make_vec3(offset.x, offset.y, offset.z + 0.5f*entity->dim.z), entity->dim.xy, make_vec4(0.0f, 1.0f, 1.0f, 1.0f));
+                    push_rect(&piece_group, offset, entity->walkable_dim, make_vec4(1.0f, 0.0f, 1.0f, 1.0f));
+                    push_rect(&piece_group, make_vec3(offset.x, offset.y, offset.z + 0.5f*entity->walkable_height), entity->walkable_dim, make_vec4(0.0f, 1.0f, 1.0f, 1.0f));
                     //push_bitmap(&piece_group, &state->sprite_stairwell, make_vec3(0.0f));
                 } break;
                 case ENTITY_TYPE_SWORD: {

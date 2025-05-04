@@ -67,7 +67,7 @@ get_world_chunk(world_t *world, s32 chunk_x, s32 chunk_y, s32 chunk_z,
         }
 
         if (arena && (chunk->chunk_x != WORLD_CHUNK_UNINITIALIZED) && (!chunk->next_in_hash)) {
-            chunk->next_in_hash = (world_chunk_t *)memory_arena_push(arena, sizeof(world_chunk_t));
+            chunk->next_in_hash = memory_arena_push_struct(arena, world_chunk_t);
             chunk = chunk->next_in_hash;
             chunk->chunk_x = WORLD_CHUNK_UNINITIALIZED;
         }
@@ -216,7 +216,7 @@ change_entity_location_raw(memory_arena_t *arena, world_t *world, u32 low_entity
                 if (old_block) {
                     world->first_free = old_block->next;
                 } else {
-                    old_block = (world_entity_block_t *)memory_arena_push(arena, sizeof(world_entity_block_t));
+                    old_block = memory_arena_push_struct(arena, world_entity_block_t);
                 }
             
                 *old_block = *block;

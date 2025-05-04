@@ -34,16 +34,16 @@ make_entity_spatial(sim_entity_t *entity, vec3 pos, vec3 d_pos) {
 
 internal vec3
 get_entity_ground_point(sim_entity_t *entity) {
-    vec3 result = entity->pos + make_vec3(0.0f, 0.0f, -0.5f*entity->dim.z);
+    vec3 result = entity->pos;
     return(result);
 }
 
 inline f32
 get_stair_ground(sim_entity_t *entity, vec3 at_ground_point) {
     ASSERT(entity->type == ENTITY_TYPE_STAIRWELL);
-    rect3 region_rect = make_rect3_center_dim(entity->pos, entity->dim);
-    vec3 bary = clamp01(get_barycentric(region_rect, at_ground_point));
-    f32 result = region_rect.min.z + bary.y*entity->walkable_height;
+    rect2 region_rect = make_rect2_center_dim(entity->pos.xy, entity->walkable_dim);
+    vec2 bary = clamp01(get_barycentric(region_rect, at_ground_point.xy));
+    f32 result = entity->pos.z + bary.y*entity->walkable_height;
     return(result);
 }
 
