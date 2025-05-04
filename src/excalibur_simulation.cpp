@@ -334,9 +334,7 @@ internal void
 handle_overlap(game_state_t *state, sim_entity_t *mover, sim_entity_t *region,
                f32 delta_time, f32 *ground) {
     if (region->type == ENTITY_TYPE_STAIRWELL) {
-        rect3 region_rect = make_rect3_center_dim(region->pos, region->dim);
-        vec3 bary = clamp01(get_barycentric(region_rect, mover->pos));
-        *ground = lerp(region_rect.min.z, bary.y, region_rect.max.z);
+        *ground = get_stair_ground(region, get_entity_ground_point(mover));
     }
 }
 
@@ -344,13 +342,14 @@ internal b32
 speculative_collide(sim_entity_t *mover, sim_entity_t *region) {
     b32 result = true;
     if (region->type == ENTITY_TYPE_STAIRWELL) {
-        rect3 region_rect = make_rect3_center_dim(region->pos, region->dim);
-        vec3 bary = clamp01(get_barycentric(region_rect, mover->pos));
-
-        f32 ground = lerp(region_rect.min.z, bary.y, region_rect.max.z);
         f32 step_height = 0.1f;
-        result = ((abs_f32(mover->pos.z - ground) > step_height) ||
+#if 0
+        result = ((abs_f32(get_entity_ground_point(mover).z - ground) > step_height) ||
                   ((bary.y > 0.1f) && (bary.y < 0.9f)));
+#endif
+        vec3 mover_ground_point = get_entity_ground_point(mover);
+        f32 ground = get_stair_ground(region, mover_ground_point);
+        result = (abs_f32(mover_ground_point.z - ground) > step_height);
     }
     return(result);
 }
@@ -506,6 +505,7 @@ move_entity(game_state_t *state, sim_region_t *region, sim_entity_t *entity, f32
         }
     }
 
+    ground += entity->pos.z - get_entity_ground_point(entity).z;
     if ((entity->pos.z <= ground) ||
         (is_entity_flag_set(entity, ENTITY_FLAG_Z_SUPPORTED) &&
          (entity->d_pos.z == 0.0f))) {

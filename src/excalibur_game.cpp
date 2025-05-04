@@ -253,10 +253,12 @@ add_stair(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
     world_position_t pos = chunk_position_from_tile_position(state->world, tile_x, tile_y, tile_z);
     vec3 dim = make_vec3(state->world->tile_side_in_meters,
                          2.0f*state->world->tile_side_in_meters,
-                         state->world->tile_depth_in_meters);
+                         1.1f*state->world->tile_depth_in_meters);
     
     add_low_entity_result entity = add_grounded_entity(state, ENTITY_TYPE_STAIRWELL, pos, dim);
     add_entity_flags(&entity.low->sim, ENTITY_FLAG_COLLIDES);
+
+    entity.low->sim.walkable_height = state->world->tile_depth_in_meters;
     
     return(entity);
 }
@@ -290,7 +292,7 @@ add_sword(game_state_t *state) {
 internal add_low_entity_result
 add_player(game_state_t *state) {
     world_position_t pos = state->camera_pos;
-    vec3 dim = make_vec3(1.0f, 0.5f, 0.5f);
+    vec3 dim = make_vec3(1.0f, 0.5f, 1.0f);
     
     add_low_entity_result entity = add_grounded_entity(state, ENTITY_TYPE_PLAYER, pos, dim);
     add_entity_flags(&entity.low->sim, ENTITY_FLAG_COLLIDES | ENTITY_FLAG_MOVEABLE);
@@ -338,7 +340,9 @@ push_piece(entity_visible_piece_group_t *group, bitmap_t *bitmap,
     
     entity_visible_piece_t *piece = group->pieces + group->piece_count++;
     piece->bitmap = bitmap;
-    piece->offset = group->game_state->meters_to_pixels*make_vec3(offset.x, -offset.y, offset.z);
+    piece->offset = make_vec3(group->game_state->meters_to_pixels*offset.x,
+                              group->game_state->meters_to_pixels*(-offset.y),
+                              offset.z);
     piece->color = color;
     piece->size = size;
     piece->entity_zc = entity_zc;
@@ -697,7 +701,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             piece_group.piece_count = 0;
             f32 delta = clock->delta_seconds;
 
-            f32 shadow_alpha = 1.0f - 0.5f*entity->pos.z;
+            f32 shadow_alpha = 1.0f - 0.5f*(entity->pos.z + entity->dim.z);
             if (shadow_alpha < 0.0f) shadow_alpha = 0.0f;
 
             move_spec_t move_spec = default_move_spec();
@@ -733,18 +737,25 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     vec3 offset = make_vec3((state->world->tile_side_in_meters - entity->dim.x)/2,
                                             -(state->world->tile_side_in_meters - entity->dim.y)/2,
                                             0.0f);
-                    push_rect(&piece_group, offset, entity->dim.xy, make_vec4(1.0f, 1.0f, 0.0f, 1.0f));
+
                     
                     bitmap_t *sprite = &state->player_sprites[entity->direction];
                     push_bitmap(&piece_group, &state->shadow_sprite, make_vec3(0.0f, 0.3f, 0.0f), shadow_alpha, 0.0f);
                     push_bitmap(&piece_group, sprite, make_vec3(0.0f, 0.0f, -0.7f));
                     draw_hit_points(&piece_group, entity);
+                    
+                    push_rect(&piece_group, offset, entity->dim.xy, make_vec4(1.0f, 1.0f, 0.0f, 1.0f));
                 } break;
                 case ENTITY_TYPE_WALL: {
                     push_bitmap(&piece_group, &state->sprite_wall, make_vec3(0.0f));
                 } break;
                 case ENTITY_TYPE_STAIRWELL: {
-                    push_rect(&piece_group, make_vec3(0.0f), entity->dim.xy, make_vec4(1.0f, 1.0f, 0.0f, 1.0f));
+                    vec3 offset = make_vec3((state->world->tile_side_in_meters - entity->dim.x)/2,
+                                            -(state->world->tile_side_in_meters - entity->dim.y)/2,
+                                            0.0f);
+                    
+                    push_rect(&piece_group, offset, entity->dim.xy, make_vec4(1.0f, 0.0f, 1.0f, 1.0f));
+                    push_rect(&piece_group, make_vec3(offset.x, offset.y, offset.z + 0.5f*entity->dim.z), entity->dim.xy, make_vec4(0.0f, 1.0f, 1.0f, 1.0f));
                     //push_bitmap(&piece_group, &state->sprite_stairwell, make_vec3(0.0f));
                 } break;
                 case ENTITY_TYPE_SWORD: {
@@ -824,17 +835,19 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 is_entity_flag_set(entity, ENTITY_FLAG_MOVEABLE)) {
                 move_entity(state, sim_region, entity, clock->delta_seconds, &move_spec, dd_pos);
             }
-
-            f32 fudge_z = (1.0f + 0.1f*entity->pos.z);
-            
-            f32 entity_ground_point_x = screen_center_x + meters_to_pixels*fudge_z*entity->pos.x;
-            f32 entity_ground_point_y = screen_center_y - meters_to_pixels*fudge_z*entity->pos.y;
-            f32 entity_z = -meters_to_pixels*entity->pos.z;
             
             for (u32 piece_index = 0; piece_index < piece_group.piece_count; piece_index++) {
                 entity_visible_piece_t *piece = piece_group.pieces + piece_index;
+                                
+                vec3 entity_base_pos = get_entity_ground_point(entity);
+                f32 fudge_z = (1.0f + 0.1f*entity_base_pos.z + piece->offset.z);
+            
+                f32 entity_ground_point_x = screen_center_x + meters_to_pixels*fudge_z*entity_base_pos.x;
+                f32 entity_ground_point_y = screen_center_y - meters_to_pixels*fudge_z*entity_base_pos.y;
+                f32 entity_z = -meters_to_pixels*entity_base_pos.z;
+                
                 vec2 center = make_vec2(entity_ground_point_x + piece->offset.x,
-                                        entity_ground_point_y + piece->offset.y + piece->offset.z + piece->entity_zc*entity_z);
+                                        entity_ground_point_y + piece->offset.y + piece->entity_zc*entity_z);
                 if (piece->bitmap) {
                     draw_bitmap(framebuffer, piece->bitmap, center.x, center.y, piece->color.a);
                 } else {

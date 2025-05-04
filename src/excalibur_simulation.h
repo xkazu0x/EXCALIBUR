@@ -63,6 +63,9 @@ struct sim_entity_t {
     
     f32 distance_limit;
     entity_reference_t sword;
+
+    // NOTE(xkazu0x): only for stairwells
+    f32 walkable_height;
 };
 
 struct sim_entity_hash_t {
