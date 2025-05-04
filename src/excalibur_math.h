@@ -145,9 +145,7 @@ internal inline b32 is_in_rect(rect3 rect, vec3 test);
 
 internal inline b32 rect_intersect(rect3 a, rect3 b);
 
-//
-//
-//
+////////////////
 
 internal inline f32 square(f32 x);
 internal inline f32 lerp(f32 a, f32 t, f32 b);

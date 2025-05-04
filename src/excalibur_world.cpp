@@ -5,9 +5,7 @@
 inline world_position_t
 null_position(void) {
     world_position_t result = {};
-    
     result.chunk_x = WORLD_CHUNK_UNINITIALIZED;
-    
     return(result);
 }
 
@@ -90,12 +88,12 @@ get_world_chunk(world_t *world, s32 chunk_x, s32 chunk_y, s32 chunk_z,
 }
 
 internal void
-initialize_world(world_t *world, f32 tile_side_in_meters) {
+initialize_world(world_t *world, f32 tile_side_in_meters, f32 tile_depth_in_meters) {
     world->tile_side_in_meters = tile_side_in_meters;
-    world->tile_depth_in_meters = tile_side_in_meters;
+    world->tile_depth_in_meters = tile_depth_in_meters;
     world->chunk_dim_in_meters = make_vec3(((f32)TILES_PER_CHUNK)*tile_side_in_meters,
                                            ((f32)TILES_PER_CHUNK)*tile_side_in_meters,
-                                           world->tile_depth_in_meters);
+                                           tile_depth_in_meters);
     world->first_free = 0;
     for (u32 chunk_index = 0;
          chunk_index < ARRAY_COUNT(world->chunk_hash);
@@ -134,8 +132,9 @@ inline world_position_t
 chunk_position_from_tile_position(world_t *world, s32 tile_x, s32 tile_y, s32 tile_z,
                                   vec3 additional_offset = make_vec3(0.0f)) {
     world_position_t base_pos = {};
-    
-    vec3 offset = world->tile_side_in_meters*make_vec3((f32)tile_x, (f32)tile_y, (f32)tile_z);
+
+    vec3 tile_dim = make_vec3(world->tile_side_in_meters, world->tile_side_in_meters, world->tile_depth_in_meters);
+    vec3 offset = vec_hadamard(tile_dim, make_vec3((f32)tile_x, (f32)tile_y, (f32)tile_z));
     world_position_t result = map_into_chunk_space(world, base_pos, additional_offset + offset);
     
     ASSERT(is_canonical(world, result.offset_));

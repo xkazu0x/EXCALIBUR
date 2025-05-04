@@ -417,8 +417,7 @@ move_entity(game_state_t *state, sim_region_t *region, sim_entity_t *entity, f32
                      test_entity_index < region->entity_count;
                      ++test_entity_index) {
                     sim_entity_t *test_entity = region->entities + test_entity_index;
-                    if (can_collide(state, entity, test_entity)) { //&&
-                        //(test_entity->pos.z == entity->pos.z)) {
+                    if (can_collide(state, entity, test_entity)) {
                         vec3 minkowski_diameter = test_entity->dim + entity->dim;
                             
                         vec3 min_corner = -0.5f*minkowski_diameter;
@@ -426,40 +425,42 @@ move_entity(game_state_t *state, sim_region_t *region, sim_entity_t *entity, f32
                 
                         vec3 rel = entity->pos - test_entity->pos;
 
-                        f32 t_min_test = t_min;
-                        vec3 test_wall_normal = {};
-                        b32 hit_this = false;
+                        if ((rel.z >= min_corner.z) && (rel.z < max_corner.z)) {
+                            f32 t_min_test = t_min;
+                            vec3 test_wall_normal = {};
+                            b32 hit_this = false;
                         
-                        if (test_wall(min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
-                                      &t_min_test, min_corner.y, max_corner.y)) {
-                            test_wall_normal = make_vec3(-1.0f, 0.0f, 0.0f);
-                            b32 hit_this = true;
-                        }
+                            if (test_wall(min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
+                                          &t_min_test, min_corner.y, max_corner.y)) {
+                                test_wall_normal = make_vec3(-1.0f, 0.0f, 0.0f);
+                                hit_this = true;
+                            }
                 
-                        if (test_wall(max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
-                                      &t_min_test, min_corner.y, max_corner.y)) {
-                            test_wall_normal = make_vec3(1.0f, 0.0f, 0.0f);
-                            b32 hit_this = true;
-                        }
+                            if (test_wall(max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
+                                          &t_min_test, min_corner.y, max_corner.y)) {
+                                test_wall_normal = make_vec3(1.0f, 0.0f, 0.0f);
+                                hit_this = true;
+                            }
                 
-                        if (test_wall(min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
-                                      &t_min_test, min_corner.x, max_corner.x)) {
-                            test_wall_normal = make_vec3(0.0f, -1.0f, 0.0f);
-                            b32 hit_this = true;
-                        }
+                            if (test_wall(min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
+                                          &t_min_test, min_corner.x, max_corner.x)) {
+                                test_wall_normal = make_vec3(0.0f, -1.0f, 0.0f);
+                                hit_this = true;
+                            }
                 
-                        if (test_wall(max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
-                                      &t_min_test, min_corner.x, max_corner.x)) {
-                            test_wall_normal = make_vec3(0.0f, 1.0f, 0.0f);
-                            b32 hit_this = true;
-                        }
+                            if (test_wall(max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
+                                          &t_min_test, min_corner.x, max_corner.x)) {
+                                test_wall_normal = make_vec3(0.0f, 1.0f, 0.0f);
+                                hit_this = true;
+                            }
 
-                        if (hit_this) {
-                            //vec3 test_pos = entity->pos + t_min_test*player_delta;
-                            if (speculative_collide(entity, test_entity)) {
-                                t_min = t_min_test;
-                                wall_normal = test_wall_normal;
-                                hit_entity = test_entity;
+                            if (hit_this) {
+                                //vec3 test_pos = entity->pos + t_min_test*player_delta;
+                                if (speculative_collide(entity, test_entity)) {
+                                    t_min = t_min_test;
+                                    wall_normal = test_wall_normal;
+                                    hit_entity = test_entity;
+                                }
                             }
                         }
                     }

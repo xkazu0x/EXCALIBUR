@@ -533,18 +533,16 @@ is_in_rect(rect3 rect, vec3 test) {
 
 internal inline b32
 rect_intersect(rect3 a, rect3 b) {
-    b32 result = !((b.max.x < a.min.x) ||
-                   (b.min.x > a.max.x) ||
-                   (b.max.y < a.min.y) ||
-                   (b.min.y > a.max.y) ||
-                   (b.max.z < a.min.z) ||
-                   (b.min.z > a.max.z));
+    b32 result = !((b.max.x <= a.min.x) ||
+                   (b.min.x >= a.max.x) ||
+                   (b.max.y <= a.min.y) ||
+                   (b.min.y >= a.max.y) ||
+                   (b.max.z <= a.min.z) ||
+                   (b.min.z >= a.max.z));
     return(result);
 }
 
-//
-//
-//
+////////////////
 
 internal inline f32
 square(f32 x) {

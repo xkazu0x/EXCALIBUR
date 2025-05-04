@@ -227,14 +227,22 @@ add_low_entity(game_state_t *state, entity_type_t type, world_position_t pos) {
     
     return(result);
 }
+internal add_low_entity_result
+add_grounded_entity(game_state_t *state, entity_type_t type, world_position_t pos, vec3 dim) {
+    world_position_t offset_pos = map_into_chunk_space(state->world, pos, make_vec3(0.0f, 0.0f, 0.5f*dim.z));
+    add_low_entity_result entity = add_low_entity(state, type, offset_pos);
+    entity.low->sim.dim = dim;
+    return(entity);
+}
 
 internal add_low_entity_result
 add_wall(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
     world_position_t pos = chunk_position_from_tile_position(state->world, tile_x, tile_y, tile_z);
-    add_low_entity_result entity = add_low_entity(state, ENTITY_TYPE_WALL, pos);
+    vec3 dim = make_vec3(state->world->tile_side_in_meters,
+                         state->world->tile_side_in_meters,
+                         state->world->tile_depth_in_meters);
     
-    entity.low->sim.dim.y = state->world->tile_side_in_meters;
-    entity.low->sim.dim.x = entity.low->sim.dim.y;
+    add_low_entity_result entity = add_grounded_entity(state, ENTITY_TYPE_WALL, pos, dim);
     add_entity_flags(&entity.low->sim, ENTITY_FLAG_COLLIDES);
     
     return(entity);
@@ -242,13 +250,12 @@ add_wall(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
 
 internal add_low_entity_result
 add_stair(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
-    world_position_t pos = chunk_position_from_tile_position(state->world, tile_x, tile_y, tile_z,
-                                                             make_vec3(0.0f, 0.0f, 0.5f*state->world->tile_depth_in_meters));
-    add_low_entity_result entity = add_low_entity(state, ENTITY_TYPE_STAIRWELL, pos);
-
-    entity.low->sim.dim.x = state->world->tile_side_in_meters;
-    entity.low->sim.dim.y = 2.0f*state->world->tile_side_in_meters;
-    entity.low->sim.dim.z = state->world->tile_depth_in_meters;
+    world_position_t pos = chunk_position_from_tile_position(state->world, tile_x, tile_y, tile_z);
+    vec3 dim = make_vec3(state->world->tile_side_in_meters,
+                         2.0f*state->world->tile_side_in_meters,
+                         state->world->tile_depth_in_meters);
+    
+    add_low_entity_result entity = add_grounded_entity(state, ENTITY_TYPE_STAIRWELL, pos, dim);
     add_entity_flags(&entity.low->sim, ENTITY_FLAG_COLLIDES);
     
     return(entity);
@@ -270,9 +277,10 @@ init_hit_points(low_entity_t *low_entity, u32 hit_point_count) {
 internal add_low_entity_result
 add_sword(game_state_t *state) {
     add_low_entity_result entity = add_low_entity(state, ENTITY_TYPE_SWORD, null_position());
-    
+
+    entity.low->sim.dim.x = state->world->tile_side_in_meters;
     entity.low->sim.dim.y = state->world->tile_side_in_meters;
-    entity.low->sim.dim.x = entity.low->sim.dim.y;
+    entity.low->sim.dim.z = 0.1f;
     
     add_entity_flags(&entity.low->sim, ENTITY_FLAG_MOVEABLE);
     
@@ -282,15 +290,10 @@ add_sword(game_state_t *state) {
 internal add_low_entity_result
 add_player(game_state_t *state) {
     world_position_t pos = state->camera_pos;
-    add_low_entity_result entity = add_low_entity(state, ENTITY_TYPE_PLAYER, pos);
+    vec3 dim = make_vec3(1.0f, 0.5f, 0.5f);
     
-    // TODO(xkazu0x): colliding is not happening in perfect tile size,
-    // theres is something sketchy on how we are representing the
-    // colliding dimensions
-    entity.low->sim.dim.x = 0.8f*state->world->tile_side_in_meters;
-    entity.low->sim.dim.y = 0.5f*state->world->tile_side_in_meters;
+    add_low_entity_result entity = add_grounded_entity(state, ENTITY_TYPE_PLAYER, pos, dim);
     add_entity_flags(&entity.low->sim, ENTITY_FLAG_COLLIDES | ENTITY_FLAG_MOVEABLE);
-    
     init_hit_points(entity.low, 3);
 
     add_low_entity_result sword = add_sword(state);
@@ -306,10 +309,9 @@ add_player(game_state_t *state) {
 internal add_low_entity_result
 add_familiar(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
     world_position_t pos = chunk_position_from_tile_position(state->world, tile_x, tile_y, tile_z);
-    add_low_entity_result entity = add_low_entity(state, ENTITY_TYPE_FAMILIAR, pos);
+    vec3 dim = make_vec3(0.5f*state->world->tile_side_in_meters);
     
-    entity.low->sim.dim.y = 0.5f*state->world->tile_side_in_meters;
-    entity.low->sim.dim.x = entity.low->sim.dim.y;
+    add_low_entity_result entity = add_grounded_entity(state, ENTITY_TYPE_FAMILIAR, pos, dim);
     add_entity_flags(&entity.low->sim, ENTITY_FLAG_COLLIDES | ENTITY_FLAG_MOVEABLE);
 
     return(entity);
@@ -318,12 +320,12 @@ add_familiar(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
 internal add_low_entity_result
 add_monster(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
     world_position_t pos = chunk_position_from_tile_position(state->world, tile_x, tile_y, tile_z);
-    add_low_entity_result entity = add_low_entity(state, ENTITY_TYPE_MONSTER, pos);
+    vec3 dim = make_vec3(0.8f*state->world->tile_side_in_meters,
+                         0.5f*state->world->tile_side_in_meters,
+                         state->world->tile_side_in_meters);
     
-    entity.low->sim.dim.y = state->world->tile_side_in_meters;
-    entity.low->sim.dim.x = entity.low->sim.dim.y;
+    add_low_entity_result entity = add_grounded_entity(state, ENTITY_TYPE_MONSTER, pos, dim);
     add_entity_flags(&entity.low->sim, ENTITY_FLAG_COLLIDES | ENTITY_FLAG_MOVEABLE);
-    
     init_hit_points(entity.low, 5);
     
     return(entity);
@@ -362,7 +364,7 @@ draw_hit_points(entity_visible_piece_group_t *piece_group, sim_entity_t *entity)
         f32 spacing_x = 1.5f*health_dim.x;
         f32 offset_x = (entity->dim.x + (spacing_x/2))/2;
         
-        vec2 hit_pos = make_vec2((-0.5f*(entity->hit_point_max - 1)*spacing_x) + offset_x, -1.0f);
+        vec2 hit_pos = make_vec2((-0.5f*(entity->hit_point_max - 1)*spacing_x) + offset_x, 1.0f);
         vec2 hit_dpos = make_vec2(spacing_x, 0.0f);
                         
         for (u32 health_index = 0;
@@ -482,7 +484,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                                                  (u8 *)memory->permanent_storage + sizeof(game_state_t));
         state->world = push_struct(&state->world_arena, world_t);
         world_t *world = state->world;
-        initialize_world(world, 1.4f);
+        initialize_world(world, 1.4f, 3.0f);
 
         state->meters_to_pixels = (f32)tile_size_in_pixels / (f32)world->tile_side_in_meters;
         
@@ -729,12 +731,12 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     }
 
                     vec3 offset = make_vec3((state->world->tile_side_in_meters - entity->dim.x)/2,
-                                            (state->world->tile_side_in_meters - entity->dim.y)/2,
+                                            -(state->world->tile_side_in_meters - entity->dim.y)/2,
                                             0.0f);
                     push_rect(&piece_group, offset, entity->dim.xy, make_vec4(1.0f, 1.0f, 0.0f, 1.0f));
                     
                     bitmap_t *sprite = &state->player_sprites[entity->direction];
-                    push_bitmap(&piece_group, &state->shadow_sprite, make_vec3(0.0f, -0.3f, 0.0f), shadow_alpha, 0.0f);
+                    push_bitmap(&piece_group, &state->shadow_sprite, make_vec3(0.0f, 0.3f, 0.0f), shadow_alpha, 0.0f);
                     push_bitmap(&piece_group, sprite, make_vec3(0.0f, 0.0f, -0.7f));
                     draw_hit_points(&piece_group, entity);
                 } break;
@@ -832,7 +834,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             for (u32 piece_index = 0; piece_index < piece_group.piece_count; piece_index++) {
                 entity_visible_piece_t *piece = piece_group.pieces + piece_index;
                 vec2 center = make_vec2(entity_ground_point_x + piece->offset.x,
-                                        entity_ground_point_y - piece->offset.y + piece->offset.z + piece->entity_zc*entity_z);
+                                        entity_ground_point_y + piece->offset.y + piece->offset.z + piece->entity_zc*entity_z);
                 if (piece->bitmap) {
                     draw_bitmap(framebuffer, piece->bitmap, center.x, center.y, piece->color.a);
                 } else {
