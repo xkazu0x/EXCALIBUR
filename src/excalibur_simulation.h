@@ -10,6 +10,8 @@ struct move_spec_t {
 enum entity_type_t {
     ENTITY_TYPE_NULL,
     
+    ENTITY_TYPE_SPACE,
+    
     ENTITY_TYPE_PLAYER,
     ENTITY_TYPE_WALL,
     ENTITY_TYPE_FAMILIAR,
@@ -34,7 +36,8 @@ enum sim_entity_flags_t {
     ENTITY_FLAG_COLLIDES    = (1 << 0),
     ENTITY_FLAG_NON_SPATIAL = (1 << 1),
     ENTITY_FLAG_MOVEABLE    = (1 << 2),
-    ENTITY_FLAG_Z_SUPPORTED = (1 << 4),
+    ENTITY_FLAG_Z_SUPPORTED = (1 << 3),
+    ENTITY_FLAG_TRAVERSABLE = (1 << 4),
     
     ENTITY_FLAG_SIMMING     = (1 << 30),
 };

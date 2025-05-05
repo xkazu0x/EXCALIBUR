@@ -238,6 +238,18 @@ add_grounded_entity(game_state_t *state, entity_type_t type, world_position_t po
 }
 
 internal add_low_entity_result
+add_standard_room(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
+    world_position_t pos = chunk_position_from_tile_position(state->world, tile_x, tile_y, tile_z);
+    
+    add_low_entity_result entity = add_grounded_entity(state, ENTITY_TYPE_SPACE, pos,
+                                                       state->standard_room_collision);
+    add_entity_flags(&entity.low->sim, ENTITY_FLAG_TRAVERSABLE);
+    
+    return(entity);
+}
+
+
+internal add_low_entity_result
 add_wall(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
     world_position_t pos = chunk_position_from_tile_position(state->world, tile_x, tile_y, tile_z);
     
@@ -355,14 +367,26 @@ push_rect(entity_visible_piece_group_t *group, vec3 offset, vec2 size, vec4 colo
 }
 
 internal void
+push_rect_outline(entity_visible_piece_group_t *group, vec3 offset, vec2 size, vec4 color,
+                  f32 entity_zc = 1.0f) {
+    f32 thickness = 0.2f;
+    
+    // NOTE(xkazu0x): top and bottom
+    push_piece(group, 0, offset - make_vec3(0.0f, 0.5f*size.y, 0.0f), make_vec2(size.x, thickness), color, entity_zc);
+    push_piece(group, 0, offset + make_vec3(0.0f, 0.5f*size.y, 0.0f), make_vec2(size.x, thickness), color, entity_zc);
+    
+    // NOTE(xkazu0x): left and right
+    push_piece(group, 0, offset - make_vec3(0.5f*size.x, 0.0f, 0.0f), make_vec2(thickness, size.y), color, entity_zc);
+    push_piece(group, 0, offset + make_vec3(0.5f*size.x, 0.0f, 0.0f), make_vec2(thickness, size.y), color, entity_zc);
+}
+
+internal void
 draw_hit_points(entity_visible_piece_group_t *piece_group, sim_entity_t *entity) {
     if (entity->hit_point_max >= 1) {
         vec2 health_dim = make_vec2(0.125f*1.4f);
-        
         f32 spacing_x = 1.5f*health_dim.x;
-        f32 offset_x = (entity->collision->total_volume.dim.x + (spacing_x/2))/2;
         
-        vec2 hit_pos = make_vec2((-0.5f*(entity->hit_point_max - 1)*spacing_x) + offset_x, 1.0f);
+        vec2 hit_pos = make_vec2((-0.5f*(entity->hit_point_max - 1)*spacing_x), 1.0f);
         vec2 hit_dpos = make_vec2(spacing_x, 0.0f);
                         
         for (u32 health_index = 0;
@@ -497,28 +521,40 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         initialize_world(world, 1.4f, 3.0f);
         state->meters_to_pixels = (f32)tile_size_in_pixels / (f32)world->tile_side_in_meters;
 
-        state->null_collision = make_null_collision(state);
-        state->wall_collision = make_simple_grounded_collision(state,
-                                                               state->world->tile_side_in_meters,
-                                                               state->world->tile_side_in_meters,
-                                                               state->world->tile_depth_in_meters);
-        state->stair_collision = make_simple_grounded_collision(state,
-                                                                state->world->tile_side_in_meters,
-                                                                2.0f*state->world->tile_side_in_meters,
-                                                                1.1f*state->world->tile_depth_in_meters);
-        state->sword_collision = make_simple_grounded_collision(state,
-                                                                state->world->tile_side_in_meters,
-                                                                state->world->tile_side_in_meters,
-                                                                0.1f);
-        state->player_collision = make_simple_grounded_collision(state, 1.0f, 0.5f, 1.0f);
-        state->monster_collision = make_simple_grounded_collision(state,
-                                                                  0.8f*state->world->tile_side_in_meters,
-                                                                  0.5f*state->world->tile_side_in_meters,
-                                                                  state->world->tile_side_in_meters);
-        state->familiar_collision = make_simple_grounded_collision(state,
-                                                                   0.5f*state->world->tile_side_in_meters,
-                                                                   0.5f*state->world->tile_side_in_meters,
-                                                                   0.5f*state->world->tile_side_in_meters);
+        state->null_collision =
+            make_null_collision(state);
+        state->wall_collision =
+            make_simple_grounded_collision(state,
+                                           state->world->tile_side_in_meters,
+                                           state->world->tile_side_in_meters,
+                                           state->world->tile_depth_in_meters);
+        state->standard_room_collision =
+            make_simple_grounded_collision(state,
+                                           tile_count_x*state->world->tile_side_in_meters,
+                                           tile_count_y*state->world->tile_side_in_meters,
+                                           0.9f*state->world->tile_depth_in_meters);
+        state->stair_collision =
+            make_simple_grounded_collision(state,
+                                           state->world->tile_side_in_meters,
+                                           2.0f*state->world->tile_side_in_meters,
+                                           1.1f*state->world->tile_depth_in_meters);
+        state->sword_collision =
+            make_simple_grounded_collision(state,
+                                           state->world->tile_side_in_meters,
+                                           state->world->tile_side_in_meters,
+                                           0.1f);
+        state->player_collision =
+            make_simple_grounded_collision(state, 1.0f, 0.5f, 1.0f);
+        state->monster_collision =
+            make_simple_grounded_collision(state,
+                                           0.8f*state->world->tile_side_in_meters,
+                                           0.5f*state->world->tile_side_in_meters,
+                                           state->world->tile_side_in_meters);
+        state->familiar_collision =
+            make_simple_grounded_collision(state,
+                                           0.5f*state->world->tile_side_in_meters,
+                                           0.5f*state->world->tile_side_in_meters,
+                                           0.5f*state->world->tile_side_in_meters);
         
         state->player_sprites[0] = debug_load_bitmap(memory->debug_os_read_file, thread, "res/skull_back.bmp");
         state->player_sprites[1] = debug_load_bitmap(memory->debug_os_read_file, thread, "res/skull_right.bmp");
@@ -550,7 +586,9 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         b32 door_up = false;
         b32 door_down = false;
         
-        for (u32 screen_index = 0; screen_index < 10; screen_index++) {
+        for (u32 screen_index = 0;
+             screen_index < 10;
+             ++screen_index) {
             // TODO(xkazu0x): random number generator
             ASSERT(random_number_index < ARRAY_COUNT(random_number_table));
             
@@ -574,6 +612,11 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             } else {
                 door_top = true;
             }
+
+            add_standard_room(state,
+                              screen_x*tile_count_x + tile_count_x/2,
+                              screen_y*tile_count_y + tile_count_y/2,
+                              abs_tile_z);
             
             for (u32 tile_y = 0; tile_y < tile_count_y; ++tile_y) {
                 for (u32 tile_x = 0; tile_x < tile_count_x; ++tile_x) {
@@ -749,6 +792,26 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             vec3 dd_pos = make_vec3(0.0f);
             
             switch (entity->type) {
+                case ENTITY_TYPE_SPACE: {
+                    for (u32 volume_index = 0;
+                         volume_index < entity->collision->volume_count;
+                         ++volume_index) {
+                        sim_entity_collision_volume_t *volume = entity->collision->volumes + volume_index;
+                        push_rect_outline(&piece_group, make_vec3(volume->offset.x, volume->offset.y, 0.0f), volume->dim.xy, make_vec4(0.2f, 0.3f, 0.3f, 1.0f));
+                    }
+                } break;
+                    
+                case ENTITY_TYPE_WALL: {
+                    push_rect(&piece_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.5f, 0.2f, 1.0f));
+                    //push_bitmap(&piece_group, &state->wall_sprite, make_vec3(0.0f));
+                } break;
+                    
+                case ENTITY_TYPE_STAIRWELL: {
+                    push_rect(&piece_group, make_vec3(0.0f), entity->walkable_dim, make_vec4(1.0f, 0.0f, 1.0f, 1.0f));
+                    push_rect(&piece_group, make_vec3(0.0f, 0.0f, entity->walkable_height), entity->walkable_dim, make_vec4(0.0f, 1.0f, 1.0f, 1.0f));
+                    //push_bitmap(&piece_group, &state->sprite_stairwell, make_vec3(0.0f));
+                } break;
+
                 case ENTITY_TYPE_PLAYER: {
                     for (u32 controlled_index = 0;
                          controlled_index < ARRAY_COUNT(state->controlled_players);
@@ -775,31 +838,15 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                         }
                     }
 
-#if 0
-                    vec3 offset = make_vec3((state->world->tile_side_in_meters - entity->dim.x)/2,
-                                            -(state->world->tile_side_in_meters - entity->dim.y)/2,
-                                            0.0f);
-#endif
+                    push_rect(&piece_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 1.0f, 0.0f, 1.0f));
+                                        
+                    //bitmap_t *sprite = &state->player_sprites[entity->direction];
+                    //push_bitmap(&piece_group, &state->shadow_sprite, make_vec3(0.0f, 0.3f, 0.0f), shadow_alpha, 0.0f);
+                    //push_bitmap(&piece_group, sprite, make_vec3(0.0f, 0.0f, -0.7f));
                     
-                    bitmap_t *sprite = &state->player_sprites[entity->direction];
-                    push_bitmap(&piece_group, &state->shadow_sprite, make_vec3(0.0f, 0.3f, 0.0f), shadow_alpha, 0.0f);
-                    push_bitmap(&piece_group, sprite, make_vec3(0.0f, 0.0f, -0.7f));
                     draw_hit_points(&piece_group, entity);
+                } break;
                     
-                    //push_rect(&piece_group, offset, entity->dim.xy, make_vec4(1.0f, 1.0f, 0.0f, 1.0f));
-                } break;
-                case ENTITY_TYPE_WALL: {
-                    push_bitmap(&piece_group, &state->wall_sprite, make_vec3(0.0f));
-                } break;
-                case ENTITY_TYPE_STAIRWELL: {
-                    vec3 offset = make_vec3((state->world->tile_side_in_meters - entity->walkable_dim.x)/2,
-                                            -(state->world->tile_side_in_meters - entity->walkable_dim.y)/2,
-                                            0.0f);
-                    
-                    push_rect(&piece_group, offset, entity->walkable_dim, make_vec4(1.0f, 0.0f, 1.0f, 1.0f));
-                    push_rect(&piece_group, make_vec3(offset.x, offset.y, offset.z + 0.5f*entity->walkable_height), entity->walkable_dim, make_vec4(0.0f, 1.0f, 1.0f, 1.0f));
-                    //push_bitmap(&piece_group, &state->sprite_stairwell, make_vec3(0.0f));
-                } break;
                 case ENTITY_TYPE_SWORD: {
                     move_spec.unit_max_accel_vector = false;
                     move_spec.speed = 0.0f;
@@ -819,6 +866,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
 
                     push_bitmap(&piece_group, &state->sword_sprite, make_vec3(0.0f));
                 } break;
+                    
                 case ENTITY_TYPE_FAMILIAR: {
                     sim_entity_t *closest_player = 0;
                     f32 closest_player_distance_sqr = square(10.0f); // NOTE(xkazu0x): ten meter maximun search!
@@ -858,16 +906,22 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                         entity->t_bob -= (2.0f*pi32);
                     }
 
-                    f32 bob_sin = sin_f32(5.0f*entity->t_bob);
-                
-                    push_bitmap(&piece_group, &state->shadow_sprite, make_vec3(0.0f), (0.5f*shadow_alpha) + 0.2f*bob_sin, 0.0f);
-                    push_bitmap(&piece_group, &state->bat_sprite, make_vec3(0.0f, 0.0f, 0.2f*bob_sin - 0.6f));
+                    push_rect(&piece_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(0.0f, 1.0f, 0.0f, 1.0f));
+
+                    //f32 bob_sin = sin_f32(5.0f*entity->t_bob);
+                    //push_bitmap(&piece_group, &state->shadow_sprite, make_vec3(0.0f), (0.5f*shadow_alpha) + 0.2f*bob_sin, 0.0f);
+                    //push_bitmap(&piece_group, &state->bat_sprite, make_vec3(0.0f, 0.0f, 0.2f*bob_sin - 0.6f));
                 } break;
+                    
                 case ENTITY_TYPE_MONSTER: {
-                    push_bitmap(&piece_group, &state->shadow_sprite, make_vec3(0.0f), shadow_alpha, 0.0f);
-                    push_bitmap(&piece_group, &state->player_sprites[2], make_vec3(0.0f, 0.0f, -0.4f));
+                    push_rect(&piece_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.0f, 0.0f, 1.0f));
+                    
+                    //push_bitmap(&piece_group, &state->shadow_sprite, make_vec3(0.0f), shadow_alpha, 0.0f);
+                    //push_bitmap(&piece_group, &state->player_sprites[2], make_vec3(0.0f, 0.0f, -0.4f));
+                    
                     draw_hit_points(&piece_group, entity);
                 } break;
+                    
                 default: {
                     INVALID_CODE_PATH();
                 }
@@ -893,9 +947,9 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 if (piece->bitmap) {
                     draw_bitmap(framebuffer, piece->bitmap, center.x, center.y, piece->color.a);
                 } else {
-                    vec2 size = meters_to_pixels*piece->size;
+                    vec2 half_size = 0.5f*meters_to_pixels*piece->size;
                     vec3 color = make_vec3(piece->color.r, piece->color.g, piece->color.b);
-                    draw_rect(framebuffer, center, center + size, color);
+                    draw_rect(framebuffer, center - half_size, center + half_size, color);
                 }
             }
         }

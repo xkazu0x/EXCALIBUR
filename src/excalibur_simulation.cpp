@@ -267,23 +267,25 @@ can_collide(game_state_t *state, sim_entity_t *a, sim_entity_t *b) {
         a = b;
         b = temp;
     }
-    
-    if (!is_entity_flag_set(a, ENTITY_FLAG_NON_SPATIAL) &&
-        !is_entity_flag_set(b, ENTITY_FLAG_NON_SPATIAL)) {
-        // TODO(xkazu0x): property-based logic goes here
-        result = true;
-    }
+    if (is_entity_flag_set(a, ENTITY_FLAG_COLLIDES) &&
+        is_entity_flag_set(b, ENTITY_FLAG_COLLIDES)) {
+        if (!is_entity_flag_set(a, ENTITY_FLAG_NON_SPATIAL) &&
+            !is_entity_flag_set(b, ENTITY_FLAG_NON_SPATIAL)) {
+            // TODO(xkazu0x): property-based logic goes here
+            result = true;
+        }
 
-    // TODO(xkazu0x): BETTER HASH FUCTION
-    u32 hash_bucket = a->storage_index & (ARRAY_COUNT(state->collision_rule_hash) - 1);
-    for (pairwise_collision_rule_t *rule = state->collision_rule_hash[hash_bucket];
-         rule;
-         rule = rule->next_in_hash)
-    {
-        if ((rule->storage_index_a == a->storage_index) &&
-            (rule->storage_index_b == b->storage_index)) {
-            result = rule->can_collide;
-            break;
+        // TODO(xkazu0x): BETTER HASH FUCTION
+        u32 hash_bucket = a->storage_index & (ARRAY_COUNT(state->collision_rule_hash) - 1);
+        for (pairwise_collision_rule_t *rule = state->collision_rule_hash[hash_bucket];
+             rule;
+             rule = rule->next_in_hash)
+        {
+            if ((rule->storage_index_a == a->storage_index) &&
+                (rule->storage_index_b == b->storage_index)) {
+                result = rule->can_collide;
+                break;
+            }
         }
     }
     
