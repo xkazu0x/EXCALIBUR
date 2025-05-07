@@ -1,6 +1,31 @@
 #ifndef EXCALIBUR_GAME_H
 #define EXCALIBUR_GAME_H
 
+/*
+  TODO(xkazu0x):
+  ARCHITECTURE EXPLORATION
+  - Debug code
+    - logging
+    - diagramming
+    - a little GUI
+    
+  - Asset streaming
+  
+  - Audio
+    - sound effect triggers
+    - ambient sounds
+    - music
+
+  - AI
+    - Rudimentary monster behavior example
+    - Pathfinding
+    - AI "storage"
+  
+  - Animation
+    - Skeletal animation
+    - Particle system
+*/
+
 // NOTE(xkazu0x):
 // EXCALIBUR_INTERNAL:
 // > 0 - build for public release

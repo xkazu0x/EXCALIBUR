@@ -238,12 +238,23 @@ end_sim(sim_region_t *region, game_state_t *state) {
     }
 }
 
+struct test_wall_t {
+    f32 x;
+    f32 rel_x;
+    f32 rel_y;
+    f32 delta_x;
+    f32 delta_y;
+    f32 min_y;
+    f32 max_y;
+    vec3 normal;
+};
+
 internal b32
 test_wall(f32 wall_x, f32 rel_x, f32 rel_y, f32 player_delta_x, f32 player_delta_y,
           f32 *t_min, f32 min_y, f32 max_y) {
     b32 hit = false;
     
-    f32 t_epsilon = 0.01f;
+    f32 t_epsilon = 0.001f;
     if (player_delta_x != 0.0f) {
         f32 t_result = (wall_x - rel_x) / player_delta_x;
         f32 y = rel_y + t_result*player_delta_y;
@@ -355,7 +366,31 @@ speculative_collide(sim_entity_t *mover, sim_entity_t *region) {
     }
     return(result);
 }
+
+internal b32
+entities_overlap(sim_entity_t *entity, sim_entity_t *test_entity, vec3 epsilon = make_vec3(0.0f)) {
+    b32 result = false;
     
+    for (u32 volume_index = 0;
+         !result && (volume_index < entity->collision->volume_count);
+         ++volume_index) {
+        sim_entity_collision_volume_t *volume = entity->collision->volumes + volume_index;
+                    
+        for (u32 test_volume_index = 0;
+             !result && (test_volume_index < test_entity->collision->volume_count);
+             ++test_volume_index) {
+            sim_entity_collision_volume_t *test_volume = test_entity->collision->volumes + test_volume_index;
+                        
+            rect3 entity_rect = make_rect3_center_dim(entity->pos + volume->offset, volume->dim + epsilon);
+            rect3 test_entity_rect = make_rect3_center_dim(test_entity->pos + test_volume->offset, test_volume->dim);
+                        
+            result = rect_intersect(entity_rect, test_entity_rect);
+        }
+    }
+
+    return(result);
+}
+
 internal void
 move_entity(game_state_t *state, sim_region_t *region, sim_entity_t *entity, f32 delta,
             move_spec_t *move_spec, vec3 dd_pos) {
@@ -398,7 +433,8 @@ move_entity(game_state_t *state, sim_region_t *region, sim_entity_t *entity, f32
          iteration < 4;
          ++iteration) {
         f32 t_min = 1.0f;
-
+        f32 t_max = 0.0f;
+        
         // TODO(xkazu0x): what do we want to do for epsilons here?
         // think this through for the final collision code
         f32 player_delta_length = vec_length(player_delta);
@@ -407,74 +443,125 @@ move_entity(game_state_t *state, sim_region_t *region, sim_entity_t *entity, f32
                 t_min = (distance_remaining/player_delta_length);
             }
         
-            vec3 wall_normal = {};
-            sim_entity_t *hit_entity = 0;
+            vec3 wall_normal_min = make_vec3(0.0f);
+            vec3 wall_normal_max = make_vec3(0.0f);
+            
+            sim_entity_t *hit_entity_min = 0;
+            sim_entity_t *hit_entity_max = 0;
 
             vec3 desired_pos = entity->pos + player_delta;
 
             // NOTE(xkazu0x): this is just an optimization to avoid enterring the
             // loop in the case where the test entity is non-spatial
-            if (!is_entity_flag_set(entity, ENTITY_FLAG_NON_SPATIAL)) {
+            if (!is_entity_flag_set(entity, ENTITY_FLAG_NON_SPATIAL))
+            {
                 // TODO(xkazu0x): spatial partition here!
                 for (u32 test_entity_index = 0;
                      test_entity_index < region->entity_count;
-                     ++test_entity_index) {
+                     ++test_entity_index)
+                {
                     sim_entity_t *test_entity = region->entities + test_entity_index;
-                    if (can_collide(state, entity, test_entity)) {
+                    vec3 overlap_epsilon = make_vec3(0.001f);
+                    
+                    if ((is_entity_flag_set(test_entity, ENTITY_FLAG_TRAVERSABLE) &&
+                         entities_overlap(entity, test_entity, overlap_epsilon)) ||
+                        can_collide(state, entity, test_entity))
+                    {
                         for (u32 volume_index = 0;
                              volume_index < entity->collision->volume_count;
-                             ++volume_index) {
+                             ++volume_index)
+                        {
                             sim_entity_collision_volume_t *volume =
                                 entity->collision->volumes + volume_index;
+                            
                             for (u32 test_volume_index = 0;
                                  test_volume_index < test_entity->collision->volume_count;
-                                 ++test_volume_index) {
+                                 ++test_volume_index)
+                            {
                                 sim_entity_collision_volume_t *test_volume =
                                     test_entity->collision->volumes + test_volume_index;
                                 
                                 vec3 minkowski_diameter = test_volume->dim + volume->dim;
-                            
                                 vec3 min_corner = -0.5f*minkowski_diameter;
                                 vec3 max_corner =  0.5f*minkowski_diameter;
-                
-                                vec3 rel = ((entity->pos + volume->offset) -
-                                            (test_entity->pos + test_volume->offset));
+                                
+                                vec3 rel = ((entity->pos + volume->offset) - (test_entity->pos + test_volume->offset));
+                                
+                                if ((rel.z >= min_corner.z) && (rel.z < max_corner.z))
+                                {
+                                    test_wall_t walls[] = {
+                                        {min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y, min_corner.y, max_corner.y, make_vec3(-1.0f,  0.0f, 0.0f)},
+                                        {max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y, min_corner.y, max_corner.y, make_vec3( 1.0f,  0.0f, 0.0f)},
+                                        {min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x, min_corner.x, max_corner.x, make_vec3( 0.0f, -1.0f, 0.0f)},
+                                        {max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x, min_corner.x, max_corner.x, make_vec3( 0.0f,  1.0f, 0.0f)},
+                                    };
+                                    
+                                    if (is_entity_flag_set(test_entity, ENTITY_FLAG_TRAVERSABLE)) {
+                                        f32 t_max_test = t_max;
+                                        vec3 test_wall_normal = make_vec3(0.0f);
+                                        b32 hit_this = false;
+                                            
+                                        for (u32 wall_index = 0;
+                                             wall_index < ARRAY_COUNT(walls);
+                                             ++wall_index)
+                                        {
+                                            test_wall_t *wall = walls + wall_index;
+                                            
+                                            f32 t_epsilon = 0.001f;
+                                            if (wall->delta_x != 0.0f)
+                                            {
+                                                f32 t_result = (wall->x - wall->rel_x) / wall->delta_x;
+                                                f32 y = wall->rel_y + t_result*wall->delta_y;
+                                                
+                                                if ((t_result >= 0.0f) && (t_max_test < t_result))
+                                                {
+                                                    if (y >= wall->min_y && (y <= wall->max_y))
+                                                    {
+                                                        t_max_test = MAX(0.0f, t_result - t_epsilon);
+                                                        test_wall_normal = wall->normal;
+                                                        hit_this = true;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                            
+                                        if (hit_this) {
+                                            t_max = t_max_test;
+                                            wall_normal_max = test_wall_normal;
+                                            hit_entity_max = test_entity;
+                                        }
+                                    } else {
+                                        f32 t_min_test = t_min;
+                                        b32 hit_this = false;
 
-                                if ((rel.z >= min_corner.z) && (rel.z < max_corner.z)) {
-                                    f32 t_min_test = t_min;
-                                    vec3 test_wall_normal = {};
-                                    b32 hit_this = false;
-                        
-                                    if (test_wall(min_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
-                                                  &t_min_test, min_corner.y, max_corner.y)) {
-                                        test_wall_normal = make_vec3(-1.0f, 0.0f, 0.0f);
-                                        hit_this = true;
-                                    }
-                
-                                    if (test_wall(max_corner.x, rel.x, rel.y, player_delta.x, player_delta.y,
-                                                  &t_min_test, min_corner.y, max_corner.y)) {
-                                        test_wall_normal = make_vec3(1.0f, 0.0f, 0.0f);
-                                        hit_this = true;
-                                    }
-                
-                                    if (test_wall(min_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
-                                                  &t_min_test, min_corner.x, max_corner.x)) {
-                                        test_wall_normal = make_vec3(0.0f, -1.0f, 0.0f);
-                                        hit_this = true;
-                                    }
-                
-                                    if (test_wall(max_corner.y, rel.y, rel.x, player_delta.y, player_delta.x,
-                                                  &t_min_test, min_corner.x, max_corner.x)) {
-                                        test_wall_normal = make_vec3(0.0f, 1.0f, 0.0f);
-                                        hit_this = true;
-                                    }
-
-                                    if (hit_this) {
-                                        //vec3 test_pos = entity->pos + t_min_test*player_delta;
-                                        if (speculative_collide(entity, test_entity)) {
-                                            t_min = t_min_test;
-                                            wall_normal = test_wall_normal;
-                                            hit_entity = test_entity;
+                                        vec3 test_wall_normal = make_vec3(0.0f);
+                                        
+                                        for (u32 wall_index = 0;
+                                             wall_index < ARRAY_COUNT(walls);
+                                             ++wall_index) {
+                                            test_wall_t *wall = walls + wall_index;
+                                            
+                                            f32 t_epsilon = 0.001f;
+                                            if (wall->delta_x != 0.0f) {
+                                                f32 t_result = (wall->x - wall->rel_x) / wall->delta_x;
+                                                f32 y = wall->rel_y + t_result*wall->delta_y;
+                                                if ((t_result >= 0.0f) && (t_min_test > t_result)) {
+                                                    if (y >= wall->min_y && (y <= wall->max_y)) {
+                                                        t_min_test = MAX(0.0f, t_result - t_epsilon);
+                                                        test_wall_normal = wall->normal;
+                                                        hit_this = true;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        
+                                        if (hit_this) {
+                                            //vec3 test_pos = entity->pos + t_min_test*player_delta;
+                                            if (speculative_collide(entity, test_entity)) {
+                                                t_min = t_min_test;
+                                                wall_normal_min = test_wall_normal;
+                                                hit_entity_min = test_entity;
+                                            }
                                         }
                                     }
                                 }
@@ -484,8 +571,22 @@ move_entity(game_state_t *state, sim_region_t *region, sim_entity_t *entity, f32
                 }
             }
             
-            entity->pos += t_min*player_delta;
-            distance_remaining -= t_min*player_delta_length;
+            vec3 wall_normal;
+            sim_entity_t *hit_entity;
+            f32 t_stop;
+            
+            if (t_min < t_max) {
+                t_stop = t_min;
+                hit_entity = hit_entity_min;
+                wall_normal = wall_normal_min;
+            } else {
+                t_stop = t_max;
+                hit_entity = hit_entity_max;
+                wall_normal = wall_normal_max;
+            }
+            
+            entity->pos += t_stop*player_delta;
+            distance_remaining -= t_stop*player_delta_length;
 
             if (hit_entity) {
                 player_delta = desired_pos - entity->pos;
@@ -505,23 +606,18 @@ move_entity(game_state_t *state, sim_region_t *region, sim_entity_t *entity, f32
 
     f32 ground = 0.0f;
 
-    // TODO(xkazu0x): handle multi-volumes here?
     // NOTE(xkazu0x): handle events based on area overlapping 
     // TODO(xkazu0x): handle overlapping precisely by moving it into the collision loop?
     {
-        rect3 entity_rect = make_rect3_center_dim(entity->pos + entity->collision->total_volume.offset,
-                                                  entity->collision->total_volume.dim);
         // TODO(xkazu0x): spatial partition here!
         for (u32 test_entity_index = 0;
              test_entity_index < region->entity_count;
              ++test_entity_index) {
             sim_entity_t *test_entity = region->entities + test_entity_index;
-            if (can_overlap(state, entity, test_entity)) {
-                rect3 test_entity_rect = make_rect3_center_dim(test_entity->pos + test_entity->collision->total_volume.offset,
-                                                               test_entity->collision->total_volume.dim);
-                if (rect_intersect(entity_rect, test_entity_rect)) {
-                    handle_overlap(state, entity, test_entity, delta, &ground);
-                }
+            
+            if (can_overlap(state, entity, test_entity) &&
+                entities_overlap(entity, test_entity)) {
+                handle_overlap(state, entity, test_entity, delta, &ground);
             }
         }
     }

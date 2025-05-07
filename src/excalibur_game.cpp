@@ -641,7 +641,9 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     }
                     
                     if (should_be_door) {
-                        add_wall(state, abs_tile_x, abs_tile_y, abs_tile_z);
+                        if (screen_index == 0) {
+                            add_wall(state, abs_tile_x, abs_tile_y, abs_tile_z);
+                        }
                     } else if (created_z_door) {
                         if ((tile_x == 10) && (tile_y == 5)) {
                             add_stair(state, abs_tile_x, abs_tile_y, door_down ? abs_tile_z - 1 : abs_tile_z);
@@ -863,8 +865,9 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                         clear_collision_rules_for(state, entity->storage_index);
                         make_entity_non_spatial(entity);
                     }
-
-                    push_bitmap(&piece_group, &state->sword_sprite, make_vec3(0.0f));
+                    
+                    push_rect(&piece_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(0.0f, 1.0f, 0.0f, 1.0f));
+                    //push_bitmap(&piece_group, &state->sword_sprite, make_vec3(0.0f));
                 } break;
                     
                 case ENTITY_TYPE_FAMILIAR: {
