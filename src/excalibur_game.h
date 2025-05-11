@@ -24,6 +24,9 @@
   - Animation
     - Skeletal animation
     - Particle system
+
+  RENDERING
+  - draw centered bitmap??
 */
 
 // NOTE(xkazu0x):
@@ -70,10 +73,12 @@ zero_size(memi size, void *ptr) {
 
 #define zero_struct(instance) zero_size(sizeof(instance), &(instance))
 
+#define BITMAP_BYTES_PER_PIXEL 4
 struct bitmap_t {
     s32 width;
     s32 height;
-    u32 *pixels;
+    s32 pitch;
+    void *memory;
 };
 
 struct low_entity_t {
@@ -109,6 +114,7 @@ struct pairwise_collision_rule_t {
 
     pairwise_collision_rule_t *next_in_hash;
 };
+
 struct game_state_t;
 internal void add_collision_rule(game_state_t *state, u32 storage_index_a, u32 storage_index_b, b32 should_collide);
 internal void clear_collision_rules_for(game_state_t *state, u32 storage_index);
@@ -127,12 +133,17 @@ struct game_state_t {
     low_entity_t low_entities[100000];
 
     f32 meters_to_pixels;
-    bitmap_t player_sprites[4];
+
     bitmap_t wall_sprite;
     bitmap_t stairwell_sprite;
-    bitmap_t bat_sprite;
+    bitmap_t grass_sprites[2];
+    bitmap_t stone_sprites[2];
     bitmap_t shadow_sprite;
+    bitmap_t player_sprites[4];
+    bitmap_t bat_sprite;
     bitmap_t sword_sprite;
+
+    bitmap_t ground_buffer;
     
     // TODO(xkazu0x): must be power of two
     pairwise_collision_rule_t *collision_rule_hash[256];

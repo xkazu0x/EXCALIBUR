@@ -1,6 +1,8 @@
 #ifndef EXCALIBUR_RANDOM_H
 #define EXCALIBUR_RANDOM_H
 
+#define max_random_number 0x5f5be14
+
 global u32 random_number_table[] = {
     0x5b7ac06, 0x585fedb, 0x016d305, 0x127821a, 0x4ec33a6, 0x54c4944, 0x508dce9, 0x2144ad0,
     0x475c297, 0x5ea44ad, 0x2d786a6, 0x2566e89, 0x1bc72f7, 0x51a027c, 0x0f50faa, 0x06a039c,
@@ -515,5 +517,56 @@ global u32 random_number_table[] = {
     0x0ce99a2, 0x15173ab, 0x43a15fa, 0x32738d8, 0x19c14f7, 0x58b9b8d, 0x473ce73, 0x527c686,
     0x5c15c61, 0x3fef373, 0x033b595, 0x2803e45, 0x371de24, 0x49f6d49, 0x2b287f3, 0x5bebec1,
 };
+
+struct random_series_t {
+    u32 index;
+};
+
+internal inline random_series_t
+random_seed(u32 value) {
+    random_series_t series;
+    series.index = (value % ARRAY_COUNT(random_number_table));
+    return(series);
+}
+
+internal inline u32
+next_random_u32(random_series_t *series) {
+    u32 result = random_number_table[series->index++];
+    if (series->index >= ARRAY_COUNT(random_number_table)) {
+        series->index = 0;
+    }
+    return(result);
+}
+
+internal inline u32
+random_choice(random_series_t *series, u32 choice_count) {
+    u32 result = next_random_u32(series) % choice_count;
+    return(result);
+}
+
+internal inline f32
+random_unilateral(random_series_t *series) {
+    f32 divisor = 1.0f/(f32)max_random_number;
+    f32 result = divisor*(f32)next_random_u32(series);
+    return(result);
+}
+
+internal inline f32
+random_bilateral(random_series_t *series) {
+    f32 result = 2.0f*(f32)random_unilateral(series) - 1.0f;
+    return(result);
+}
+
+internal inline f32
+random_between(random_series_t *series, f32 min, f32 max) {
+    f32 result = lerp(min, random_unilateral(series), max);
+    return(result);
+}
+
+internal inline s32
+random_between(random_series_t *series, s32 min, s32 max) {
+    s32 result = min + (s32)(next_random_u32(series) % ((max + 1) - min));
+    return(result);
+}
 
 #endif // EXCALIBUR_RANDOM_H

@@ -90,7 +90,7 @@ add_sim_entity_raw(game_state_t *state, sim_region_t *region,
             entity->storage_index = storage_index;
             entity->updatable = false;
         } else {
-            INVALID_CODE_PATH();
+            INVALID_CODE_PATH;
         }
     }
 

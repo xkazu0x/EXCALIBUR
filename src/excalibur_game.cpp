@@ -44,7 +44,7 @@ get_gamepad(os_input_t *input, u32 index) {
 }
 
 internal void
-draw_rect(os_framebuffer_t *framebuffer, vec2 min, vec2 max, vec3 color) {
+draw_rect(bitmap_t *framebuffer, vec2 min, vec2 max, vec3 color) {
     s32 min_x = round_f32_to_s32(min.x);
     s32 min_y = round_f32_to_s32(min.y);
     
@@ -61,8 +61,8 @@ draw_rect(os_framebuffer_t *framebuffer, vec2 min, vec2 max, vec3 color) {
                      (round_f32_to_u32(color.g * 255.0f) << 8) |
                      (round_f32_to_u32(color.b * 255.0f) << 0));
     
-    u8 *row = ((u8 *)framebuffer->pixels +
-                 (min_x * framebuffer->bytes_per_pixel) +
+    u8 *row = ((u8 *)framebuffer->memory +
+                 (min_x * BYTES_PER_PIXEL) +
                  (min_y * framebuffer->pitch));
     for (s32 y = min_y; y < max_y; ++y) {
         u32 *pixel = (u32 *)row;
@@ -74,7 +74,7 @@ draw_rect(os_framebuffer_t *framebuffer, vec2 min, vec2 max, vec3 color) {
 }
 
 internal void
-draw_bitmap(os_framebuffer_t *framebuffer, bitmap_t *bitmap,
+draw_bitmap(bitmap_t *framebuffer, bitmap_t *bitmap,
             f32 offset_x, f32 offset_y, f32 c_alpha = 1.0f) {
     s32 min_x = round_f32_to_s32(offset_x);
     s32 min_y = round_f32_to_s32(offset_y);
@@ -96,39 +96,47 @@ draw_bitmap(os_framebuffer_t *framebuffer, bitmap_t *bitmap,
     if (max_x > framebuffer->width) max_x = framebuffer->width;
     if (max_y > framebuffer->height) max_y = framebuffer->height;
 
+    //bitmap->pitch*(bitmap->height - 1)
     // TODO(xkazu0x): source_row needs to be changed based on cliping
-    u32 *source_row = bitmap->pixels + bitmap->width*(bitmap->height - 1);
-    source_row += -source_offset_y*bitmap->width + source_offset_x;
-    u8 *dest_row = ((u8 *)framebuffer->pixels +
-                    min_x*framebuffer->bytes_per_pixel +
+    u8 *source_row = (u8 *)bitmap->memory + source_offset_y*bitmap->pitch + BYTES_PER_PIXEL*source_offset_x;
+    u8 *dest_row = ((u8 *)framebuffer->memory +
+                    min_x*BYTES_PER_PIXEL +
                     min_y*framebuffer->pitch);
     
     for (s32 y = min_y; y < max_y; ++y) {
-        u32 *dest = (u32 *)dest_row;
-        u32 *source = source_row;
+        u32 *dest   = (u32 *)dest_row;
+        u32 *source = (u32 *)source_row;
+        
         for (s32 x = min_x; x < max_x; ++x) {
-            f32 alpha = (f32)((*source >> 24) & 0xFF)/255.0f;
-            f32 src_red = (f32)((*source >> 16) & 0xFF);
-            f32 src_green = (f32)((*source >> 8) & 0xFF);
-            f32 src_blue = (f32)((*source >> 0) & 0xFF);
+            f32 src_a = (f32)((*source >> 24) & 0xFF);
+            f32 src_r = c_alpha*(f32)((*source >> 16) & 0xFF);
+            f32 src_g = c_alpha*(f32)((*source >> 8) & 0xFF);
+            f32 src_b = c_alpha*(f32)((*source >> 0) & 0xFF);
+            f32 real_src_a = (src_a/255.0f)*c_alpha;
+            
+            f32 dest_a = (f32)((*dest >> 24) & 0xFF);
+            f32 dest_r = (f32)((*dest >> 16) & 0xFF);
+            f32 dest_g = (f32)((*dest >> 8) & 0xFF);
+            f32 dest_b = (f32)((*dest >> 0) & 0xFF);
+            f32 real_dest_a = (dest_a/255.0f);
 
-            f32 dest_red = (f32)((*dest >> 16) & 0xFF);
-            f32 dest_green = (f32)((*dest >> 8) & 0xFF);
-            f32 dest_blue = (f32)((*dest >> 0) & 0xFF);
+            f32 inv_real_src_a = (1.0f - real_src_a);
+            f32 a = 255.0f*(real_src_a + real_dest_a - real_src_a*real_dest_a);
+            f32 r = inv_real_src_a*dest_r + src_r;
+            f32 g = inv_real_src_a*dest_g + src_g;
+            f32 b = inv_real_src_a*dest_b + src_b;
 
-            f32 red = (1.0f-alpha)*dest_red + alpha*src_red;
-            f32 green = (1.0f-alpha)*dest_green + alpha*src_green;
-            f32 blue = (1.0f-alpha)*dest_blue + alpha*src_blue;
-
-            *dest = (((u32)(red + 0.5f) << 16) |
-                     ((u32)(green + 0.5f) << 8) |
-                     ((u32)(blue + 0.5f) << 0));
+            *dest = (((u32)(a + 0.5f) << 24) |
+                     ((u32)(r + 0.5f) << 16) |
+                     ((u32)(g + 0.5f) << 8) |
+                     ((u32)(b + 0.5f) << 0));
             
             ++dest;
             ++source;
         }
+        
         dest_row += framebuffer->pitch;
-        source_row -= bitmap->width;
+        source_row += bitmap->pitch;
     }
 }
 
@@ -165,7 +173,7 @@ debug_load_bitmap(debug_os_read_file_t *debug_os_read_file, os_thread_t *thread,
     if (file.size != 0) {
         bitmap_header_t *header = (bitmap_header_t *)file.data;
         u32 *pixels = (u32 *)((u8 *)file.data + header->bitmap_offset);
-        result.pixels = pixels;
+        result.memory = pixels;
         result.width = header->width;
         result.height = header->height;
 
@@ -178,28 +186,46 @@ debug_load_bitmap(debug_os_read_file_t *debug_os_read_file, os_thread_t *thread,
         u32 blue_mask = header->blue_mask;
         u32 alpha_mask = ~(red_mask | green_mask | blue_mask);
         
-        bit_scan_result_t red_shift = find_least_significant_set_bit(red_mask);
-        bit_scan_result_t green_shift = find_least_significant_set_bit(green_mask);
-        bit_scan_result_t blue_shift = find_least_significant_set_bit(blue_mask);
-        bit_scan_result_t alpha_shift = find_least_significant_set_bit(alpha_mask);
+        bit_scan_result_t red_scan = find_least_significant_set_bit(red_mask);
+        bit_scan_result_t green_scan = find_least_significant_set_bit(green_mask);
+        bit_scan_result_t blue_scan = find_least_significant_set_bit(blue_mask);
+        bit_scan_result_t alpha_scan = find_least_significant_set_bit(alpha_mask);
 
-        ASSERT(red_shift.found);
-        ASSERT(green_shift.found);
-        ASSERT(blue_shift.found);
-        ASSERT(alpha_shift.found);
+        ASSERT(red_scan.found);
+        ASSERT(green_scan.found);
+        ASSERT(blue_scan.found);
+        ASSERT(alpha_scan.found);
+        
+        s32 red_shift_down   = (s32)red_scan.index;
+        s32 green_shift_down = (s32)green_scan.index;
+        s32 blue_shift_down  = (s32)blue_scan.index;
+        s32 alpha_shift_down = (s32)alpha_scan.index;
         
         u32 *source_dest = pixels;
-        for (s32 y = 0; y < header->height; y++) {
-            for (s32 x = 0; x < header->width; x++) {
-                u32 c = *source_dest;
-                *source_dest = ((((c >> alpha_shift.index) & 0xFF) << 24) |
-                                (((c >> red_shift.index) & 0xFF) << 16) |
-                                (((c >> green_shift.index) & 0xFF) << 8) |
-                                (((c >> blue_shift.index) & 0xFF) << 0));
-                ++source_dest;
+        for (s32 y = 0; y < header->height; ++y) {
+            for (s32 x = 0; x < header->width; ++x) {
+                u32 color = *source_dest;
+
+                f32 r = (f32)((color & red_mask)   >> red_shift_down);
+                f32 g = (f32)((color & green_mask) >> green_shift_down);
+                f32 b = (f32)((color & blue_mask)  >> blue_shift_down);
+                f32 a = (f32)((color & alpha_mask) >> alpha_shift_down);
+                
+                f32 an = (a/255.0f);
+                r = r*an;
+                g = g*an;
+                b = b*an;
+                
+                *source_dest = (((u32)(a + 0.5f) << 24) |
+                                ((u32)(r + 0.5f) << 16) |
+                                ((u32)(g + 0.5f) << 8) |
+                                ((u32)(b + 0.5f) << 0));
             }
         }
     }
+
+    result.pitch = -result.width*BYTES_PER_PIXEL;
+    result.memory = (u8 *)result.memory - result.pitch*(result.height - 1);
     
     return(result);
 }
@@ -503,6 +529,47 @@ make_null_collision(game_state_t *state) {
     return(collision);
 }
 
+internal void
+draw_test_ground(bitmap_t *buffer, game_state_t *state) {
+    random_series_t series = random_seed(1234);
+    
+    vec2 buffer_center = 0.5f*make_vec2((f32)buffer->width, (f32)buffer->height);
+    
+    for (u32 ground_index = 0;
+         ground_index < 500;
+         ++ground_index) {
+        bitmap_t *sprite;
+        if (random_choice(&series, 2)) {
+            sprite = state->grass_sprites + random_choice(&series, ARRAY_COUNT(state->grass_sprites));
+        } else {
+            sprite = state->stone_sprites + random_choice(&series, ARRAY_COUNT(state->stone_sprites));
+        }
+
+        f32 radius = 5.0f;
+        vec2 sprite_center = 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height);
+        vec2 offset = make_vec2(random_bilateral(&series), random_bilateral(&series));
+
+        vec2 pos = buffer_center + state->meters_to_pixels*radius*offset - sprite_center;
+        
+        draw_bitmap(buffer, sprite, pos.x, pos.y);
+    }
+}
+
+internal bitmap_t
+make_empty_bitmap(memory_arena_t *arena, u32 width, u32 height) {
+    bitmap_t result = {};
+    
+    result.width = width;
+    result.height = height;
+    result.pitch = result.width*BYTES_PER_PIXEL;
+    
+    s32 total_bitmap_size = width*height*BYTES_PER_PIXEL;
+    result.memory = memory_arena_push(arena, total_bitmap_size);
+    zero_size(total_bitmap_size, result.memory);
+    
+    return(result);
+}
+
 extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     ASSERT(sizeof(game_state_t) <= memory->permanent_storage_size);
     game_state_t *state = (game_state_t *)memory->permanent_storage;
@@ -556,18 +623,24 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                                            0.5f*state->world->tile_side_in_meters,
                                            0.5f*state->world->tile_side_in_meters);
         
+        state->wall_sprite       = debug_load_bitmap(memory->debug_os_read_file, thread, "res/wall.bmp");
+        state->stairwell_sprite  = debug_load_bitmap(memory->debug_os_read_file, thread, "res/stair.bmp");
+        state->grass_sprites[0]  = debug_load_bitmap(memory->debug_os_read_file, thread, "res/grass00.bmp");
+        state->grass_sprites[1]  = debug_load_bitmap(memory->debug_os_read_file, thread, "res/grass01.bmp");
+        state->stone_sprites[0]  = debug_load_bitmap(memory->debug_os_read_file, thread, "res/stone00.bmp");
+        state->stone_sprites[1]  = debug_load_bitmap(memory->debug_os_read_file, thread, "res/stone01.bmp");
+        state->shadow_sprite     = debug_load_bitmap(memory->debug_os_read_file, thread, "res/shadow.bmp");
         state->player_sprites[0] = debug_load_bitmap(memory->debug_os_read_file, thread, "res/skull_back.bmp");
         state->player_sprites[1] = debug_load_bitmap(memory->debug_os_read_file, thread, "res/skull_right.bmp");
         state->player_sprites[2] = debug_load_bitmap(memory->debug_os_read_file, thread, "res/skull_front.bmp");
         state->player_sprites[3] = debug_load_bitmap(memory->debug_os_read_file, thread, "res/skull_left.bmp");
-        state->wall_sprite       = debug_load_bitmap(memory->debug_os_read_file, thread, "res/wall.bmp");
-        state->stairwell_sprite  = debug_load_bitmap(memory->debug_os_read_file, thread, "res/stair_up.bmp");
         state->bat_sprite        = debug_load_bitmap(memory->debug_os_read_file, thread, "res/bat.bmp");
-        state->shadow_sprite     = debug_load_bitmap(memory->debug_os_read_file, thread, "res/shadow.bmp");
         state->sword_sprite      = debug_load_bitmap(memory->debug_os_read_file, thread, "res/shadow.bmp");
 
         add_low_entity(state, ENTITY_TYPE_NULL, null_position());
-        
+
+        random_series_t series = random_seed(1234);
+       
         u32 screen_base_x = 0;
         u32 screen_base_y = 0;
         u32 screen_base_z = 0;
@@ -575,8 +648,6 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         u32 screen_x = screen_base_x;
         u32 screen_y = screen_base_y;
         u32 abs_tile_z = screen_base_z;
-        
-        u32 random_number_index = 0;
         
         // TODO(xkazu0x): replace all this with real world generation
         b32 door_left = false;
@@ -588,26 +659,19 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         
         for (u32 screen_index = 0;
              screen_index < 10;
-             ++screen_index) {
-            // TODO(xkazu0x): random number generator
-            ASSERT(random_number_index < ARRAY_COUNT(random_number_table));
-            
-            u32 random_choice;
-            if (door_up || door_down) {
-                random_choice = random_number_table[random_number_index++] % 2;
-            } else {
-                random_choice = random_number_table[random_number_index++] % 3;
-            }
+             ++screen_index)
+        {
+            u32 door_direction = random_choice(&series, (door_up || door_down) ? 2 : 3);
             
             b32 created_z_door = false;
-            if (random_choice == 2) {
+            if (door_direction == 2) {
                 created_z_door = true;
                 if (abs_tile_z == screen_base_z) {
                     door_up = true;
                 } else {
                     door_down = true;
                 }
-            } else if (random_choice == 1) {
+            } else if (door_direction == 1) {
                 door_right = true;
             } else {
                 door_top = true;
@@ -641,9 +705,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     }
                     
                     if (should_be_door) {
-                        if (screen_index == 0) {
-                            add_wall(state, abs_tile_x, abs_tile_y, abs_tile_z);
-                        }
+                        add_wall(state, abs_tile_x, abs_tile_y, abs_tile_z);
                     } else if (created_z_door) {
                         if ((tile_x == 10) && (tile_y == 5)) {
                             add_stair(state, abs_tile_x, abs_tile_y, door_down ? abs_tile_z - 1 : abs_tile_z);
@@ -666,13 +728,13 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             door_right = false;
             door_top = false;
 
-            if (random_choice == 2) {
+            if (door_direction == 2) {
                 if (abs_tile_z == screen_base_z) {
                     abs_tile_z = screen_base_z + 1;
                 } else {
                     abs_tile_z = screen_base_z;
                 }
-            } else if (random_choice == 1) {
+            } else if (door_direction == 1) {
                 screen_x += 1;
             } else {
                 screen_y += 1;
@@ -689,21 +751,25 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         
         add_monster(state, camera_tile_x + 2, camera_tile_y + 2, camera_tile_z);
         for (u32 familiar_index = 0;
-             familiar_index < 1;
+             familiar_index < 10;
              ++familiar_index) {
-            s32 familiar_offset_x = (random_number_table[random_number_index++] % 10) - 5;
-            s32 familiar_offset_y = (random_number_table[random_number_index++] % 10) - 3;
+            s32 familiar_offset_x = random_between(&series, -5, 5);
+            s32 familiar_offset_y = random_between(&series, -3, 3);
             if ((familiar_offset_x != 0) ||
                 (familiar_offset_y != 0)) {
                 add_familiar(state, camera_tile_x + familiar_offset_x, camera_tile_y + familiar_offset_y, camera_tile_z);
             }
         }
-        
+
+        state->ground_buffer = make_empty_bitmap(&state->world_arena, framebuffer->width, framebuffer->height);
+        draw_test_ground(&state->ground_buffer, state);
+    
         memory->initialized = true;
     }
 
     world_t *world = state->world;
     f32 meters_to_pixels = state->meters_to_pixels;
+    f32 pixels_to_meters = world->tile_side_in_meters/tile_size_in_pixels;
 
     /////////////////////////////////
     // NOTE(xkazu0x): gamepad control
@@ -756,6 +822,13 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
 
     ///////////////////////////////////
     // NOTE(xkazu0x): update and render
+    bitmap_t _draw_buffer = {};
+    bitmap_t *draw_buffer = &_draw_buffer;
+    draw_buffer->width  = framebuffer->width;
+    draw_buffer->height = framebuffer->height;
+    draw_buffer->pitch  = framebuffer->pitch;
+    draw_buffer->memory = framebuffer->memory;
+
     for (u32 y = 0; y < 12; ++y) {
         for (u32 x = 0; x < 20; ++x) {
             vec3 color = make_rgb(57.0f, 44.0f, 49.0f);
@@ -767,12 +840,14 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             vec2 min = make_vec2(x*tile_size_in_pixels, y*tile_size_in_pixels);
             vec2 max = make_vec2(min.x + tile_size_in_pixels, min.y + tile_size_in_pixels);
             
-            draw_rect(framebuffer, min, max, color);
+            draw_rect(draw_buffer, min, max, color);
         }
     }
     
-    f32 screen_center_x = 0.5f*((f32)framebuffer->width);
-    f32 screen_center_y = 0.5f*((f32)framebuffer->height);
+    draw_bitmap(draw_buffer, &state->ground_buffer, 0.0f, 0.0f);
+    
+    f32 screen_center_x = 0.5f*((f32)draw_buffer->width);
+    f32 screen_center_y = 0.5f*((f32)draw_buffer->height);
 
     // TODO(xkazu0x): move this out into excalibur_entity.cpp
     entity_visible_piece_group_t piece_group;
@@ -795,23 +870,35 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             
             switch (entity->type) {
                 case ENTITY_TYPE_SPACE: {
+#if 0
                     for (u32 volume_index = 0;
                          volume_index < entity->collision->volume_count;
                          ++volume_index) {
                         sim_entity_collision_volume_t *volume = entity->collision->volumes + volume_index;
                         push_rect_outline(&piece_group, make_vec3(volume->offset.x, volume->offset.y, 0.0f), volume->dim.xy, make_vec4(0.2f, 0.3f, 0.3f, 1.0f));
                     }
+#endif
                 } break;
                     
                 case ENTITY_TYPE_WALL: {
                     push_rect(&piece_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.5f, 0.2f, 1.0f));
-                    //push_bitmap(&piece_group, &state->wall_sprite, make_vec3(0.0f));
+                    
+                    bitmap_t *sprite = &state->wall_sprite;
+                    vec2 offset = make_vec2(-0.5f*sprite->width*pixels_to_meters,
+                                            0.5f*sprite->height*pixels_to_meters);
+                    push_bitmap(&piece_group, sprite, make_vec3(offset, 0.0f));
                 } break;
                     
                 case ENTITY_TYPE_STAIRWELL: {
                     push_rect(&piece_group, make_vec3(0.0f), entity->walkable_dim, make_vec4(1.0f, 0.0f, 1.0f, 1.0f));
                     push_rect(&piece_group, make_vec3(0.0f, 0.0f, entity->walkable_height), entity->walkable_dim, make_vec4(0.0f, 1.0f, 1.0f, 1.0f));
-                    //push_bitmap(&piece_group, &state->sprite_stairwell, make_vec3(0.0f));
+                    
+                    bitmap_t *sprite = &state->stairwell_sprite;
+                    vec2 offset = make_vec2(-0.5f*sprite->width*pixels_to_meters,
+                                            0.5f*sprite->height*pixels_to_meters);
+
+                    push_bitmap(&piece_group, sprite, make_vec3(offset, 0.0f));
+                    push_bitmap(&piece_group, sprite, make_vec3(offset, entity->walkable_height));
                 } break;
 
                 case ENTITY_TYPE_PLAYER: {
@@ -840,11 +927,15 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                         }
                     }
 
+                    
                     push_rect(&piece_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 1.0f, 0.0f, 1.0f));
-                                        
-                    //bitmap_t *sprite = &state->player_sprites[entity->direction];
-                    //push_bitmap(&piece_group, &state->shadow_sprite, make_vec3(0.0f, 0.3f, 0.0f), shadow_alpha, 0.0f);
-                    //push_bitmap(&piece_group, sprite, make_vec3(0.0f, 0.0f, -0.7f));
+                    
+                    bitmap_t *sprite = &state->player_sprites[entity->direction];
+                    vec2 offset = make_vec2(-0.5f*sprite->width*pixels_to_meters,
+                                            0.5f*sprite->height*pixels_to_meters);
+                    
+                    push_bitmap(&piece_group, &state->shadow_sprite, make_vec3(offset, 0.0f), shadow_alpha, 0.0f);
+                    push_bitmap(&piece_group, sprite, make_vec3(offset, 0.0f));
                     
                     draw_hit_points(&piece_group, entity);
                 } break;
@@ -910,23 +1001,32 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     }
 
                     push_rect(&piece_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(0.0f, 1.0f, 0.0f, 1.0f));
+                    
+                    f32 bob_sin = sin_f32(5.0f*entity->t_bob);
+                    
+                    bitmap_t *sprite = &state->bat_sprite;
+                    vec2 offset = make_vec2(-0.5f*sprite->width*pixels_to_meters,
+                                            0.5f*sprite->height*pixels_to_meters);
 
-                    //f32 bob_sin = sin_f32(5.0f*entity->t_bob);
-                    //push_bitmap(&piece_group, &state->shadow_sprite, make_vec3(0.0f), (0.5f*shadow_alpha) + 0.2f*bob_sin, 0.0f);
-                    //push_bitmap(&piece_group, &state->bat_sprite, make_vec3(0.0f, 0.0f, 0.2f*bob_sin - 0.6f));
+                    push_bitmap(&piece_group, &state->shadow_sprite, make_vec3(offset, 0.0f), (0.5f*shadow_alpha) + 0.2f*bob_sin, 0.0f);
+                    push_bitmap(&piece_group, sprite, make_vec3(offset, 0.2f*bob_sin - 0.6f));
                 } break;
                     
                 case ENTITY_TYPE_MONSTER: {
                     push_rect(&piece_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.0f, 0.0f, 1.0f));
                     
-                    //push_bitmap(&piece_group, &state->shadow_sprite, make_vec3(0.0f), shadow_alpha, 0.0f);
-                    //push_bitmap(&piece_group, &state->player_sprites[2], make_vec3(0.0f, 0.0f, -0.4f));
+                    bitmap_t *sprite = &state->player_sprites[2];
+                    vec2 offset = make_vec2(-0.5f*sprite->width*pixels_to_meters,
+                                            0.5f*sprite->height*pixels_to_meters);
+                    
+                    push_bitmap(&piece_group, &state->shadow_sprite, make_vec3(offset, 0.0f), shadow_alpha, 0.0f);
+                    push_bitmap(&piece_group, sprite, make_vec3(offset, 0.0f));
                     
                     draw_hit_points(&piece_group, entity);
                 } break;
                     
                 default: {
-                    INVALID_CODE_PATH();
+                    INVALID_CODE_PATH;
                 }
             }
 
@@ -948,11 +1048,11 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 vec2 center = make_vec2(entity_ground_point_x + piece->offset.x,
                                         entity_ground_point_y + piece->offset.y + piece->entity_zc*entity_z);
                 if (piece->bitmap) {
-                    draw_bitmap(framebuffer, piece->bitmap, center.x, center.y, piece->color.a);
+                    draw_bitmap(draw_buffer, piece->bitmap, center.x, center.y, piece->color.a);
                 } else {
                     vec2 half_size = 0.5f*meters_to_pixels*piece->size;
                     vec3 color = make_vec3(piece->color.r, piece->color.g, piece->color.b);
-                    draw_rect(framebuffer, center - half_size, center + half_size, color);
+                    draw_rect(draw_buffer, center - half_size, center + half_size, color);
                 }
             }
         }
@@ -960,9 +1060,9 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     
     ////////////////////////////////
     // NOTE(xkazu0x): simulation end
-    world_position_t world_origin = {};
-    vec3 delta_origin = subtract(sim_region->world, &world_origin, &sim_region->origin);
-    draw_rect(framebuffer, delta_origin.xy, make_vec2(tile_size_in_pixels), make_vec3(1.0f));
+    //world_position_t world_origin = {};
+    //vec3 delta_origin = subtract(sim_region->world, &world_origin, &sim_region->origin);
+    //draw_rect(draw_buffer, delta_origin.xy, make_vec2(tile_size_in_pixels), make_vec3(1.0f));
     
     end_sim(sim_region, state);
 }

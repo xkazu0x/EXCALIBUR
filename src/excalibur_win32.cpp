@@ -210,24 +210,23 @@ win32_get_delta_seconds(LARGE_INTEGER start, LARGE_INTEGER end) {
 
 internal void
 win32_resize_framebuffer(os_framebuffer_t *framebuffer, s32 width, s32 height) {
-    if (framebuffer->pixels) {
-        VirtualFree(framebuffer->pixels, 0, MEM_RELEASE);
+    if (framebuffer->memory) {
+        VirtualFree(framebuffer->memory, 0, MEM_RELEASE);
     }
 
     framebuffer->width = width;
     framebuffer->height = height;
-    framebuffer->bytes_per_pixel = 4;
-    framebuffer->pitch = framebuffer->width * framebuffer->bytes_per_pixel;
+    framebuffer->pitch = framebuffer->width * BYTES_PER_PIXEL;
     
     global_win32.bitmap_info.bmiHeader.biSize = sizeof(global_win32.bitmap_info.bmiHeader);
     global_win32.bitmap_info.bmiHeader.biWidth = framebuffer->width;
     global_win32.bitmap_info.bmiHeader.biHeight = -framebuffer->height;
     global_win32.bitmap_info.bmiHeader.biPlanes = 1;
-    global_win32.bitmap_info.bmiHeader.biBitCount = 8*framebuffer->bytes_per_pixel;
+    global_win32.bitmap_info.bmiHeader.biBitCount = 8*BYTES_PER_PIXEL;
     global_win32.bitmap_info.bmiHeader.biCompression = BI_RGB;
 
-    s32 framebuffer_memory_size = (framebuffer->width*framebuffer->height)*framebuffer->bytes_per_pixel;
-    framebuffer->pixels = VirtualAlloc(0, framebuffer_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    s32 framebuffer_memory_size = (framebuffer->width*framebuffer->height)*BYTES_PER_PIXEL;
+    framebuffer->memory = VirtualAlloc(0, framebuffer_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 }
 
 internal win32_window_size_t
@@ -278,7 +277,7 @@ win32_display_framebuffer(os_framebuffer_t framebuffer, HWND window_handle, s32 
     StretchDIBits(window_device,
                   display_x, display_y, display_width, display_height,
                   0, 0, framebuffer.width, framebuffer.height,
-                  framebuffer.pixels,
+                  framebuffer.memory,
                   &global_win32.bitmap_info,
                   DIB_RGB_COLORS, SRCCOPY);
     ReleaseDC(window_handle, window_device);

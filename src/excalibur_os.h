@@ -169,12 +169,12 @@ typedef struct os_input_t {
     mouse_t mouse;
 } os_input_t;
 
+#define BYTES_PER_PIXEL 4
 typedef struct os_framebuffer_t {
     s32 width;
     s32 height;
-    s32 bytes_per_pixel;
     s32 pitch;
-    void *pixels;
+    void *memory;
 } os_framebuffer_t;
 
 typedef struct os_memory_t {
