@@ -530,13 +530,15 @@ make_null_collision(game_state_t *state) {
 }
 
 internal void
-draw_test_ground(bitmap_t *buffer, game_state_t *state) {
-    random_series_t series = random_seed(1234);
-    
-    vec2 buffer_center = 0.5f*make_vec2((f32)buffer->width, (f32)buffer->height);
+draw_ground_chunk(game_state_t *state, world_position_t *pos, bitmap_t *buffer) {
+    // TODO(xkazu0x): look into wang hashing here or some other spatial seed generation "thing"!
+    random_series_t series = random_seed(464*pos->chunk_x + 132*pos->chunk_y + 235*pos->chunk_z);
+
+    f32 width = (f32)buffer->width;
+    f32 height = (f32)buffer->height;
     
     for (u32 ground_index = 0;
-         ground_index < 500;
+         ground_index < 1000;
          ++ground_index) {
         bitmap_t *sprite;
         if (random_choice(&series, 2)) {
@@ -544,12 +546,10 @@ draw_test_ground(bitmap_t *buffer, game_state_t *state) {
         } else {
             sprite = state->stone_sprites + random_choice(&series, ARRAY_COUNT(state->stone_sprites));
         }
-
-        f32 radius = 5.0f;
+        
         vec2 sprite_center = 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height);
-        vec2 offset = make_vec2(random_bilateral(&series), random_bilateral(&series));
-
-        vec2 pos = buffer_center + state->meters_to_pixels*radius*offset - sprite_center;
+        vec2 offset = make_vec2(width*random_unilateral(&series), height*random_unilateral(&series));
+        vec2 pos = offset - sprite_center;
         
         draw_bitmap(buffer, sprite, pos.x, pos.y);
     }
@@ -639,7 +639,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
 
         add_low_entity(state, ENTITY_TYPE_NULL, null_position());
 
-        random_series_t series = random_seed(1234);
+        random_series_t series = random_seed(0);
        
         u32 screen_base_x = 0;
         u32 screen_base_y = 0;
@@ -761,8 +761,18 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             }
         }
 
-        state->ground_buffer = make_empty_bitmap(&state->world_arena, framebuffer->width, framebuffer->height);
-        draw_test_ground(&state->ground_buffer, state);
+        f32 screen_width = (f32)framebuffer->width;
+        f32 screen_height = (f32)framebuffer->height;
+        f32 maximum_scale_z = 0.5f;
+        
+        f32 ground_overscan = 1.2f;
+        u32 ground_buffer_width = round_f32_to_u32(ground_overscan*screen_width);
+        u32 ground_buffer_height = round_f32_to_u32(ground_overscan*screen_height);
+        
+        state->ground_buffer = make_empty_bitmap(&state->world_arena, ground_buffer_width, ground_buffer_height);
+        state->ground_buffer_pos = state->camera_pos;
+        
+        draw_ground_chunk(state, &state->ground_buffer_pos, &state->ground_buffer);
     
         memory->initialized = true;
     }
@@ -844,10 +854,16 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
         }
     }
     
-    draw_bitmap(draw_buffer, &state->ground_buffer, 0.0f, 0.0f);
-    
     f32 screen_center_x = 0.5f*((f32)draw_buffer->width);
     f32 screen_center_y = 0.5f*((f32)draw_buffer->height);
+
+    vec2 ground = make_vec2(screen_center_x - 0.5f*state->ground_buffer.width,
+                            screen_center_y - 0.5f*state->ground_buffer.height);
+    
+    vec3 delta = subtract(state->world, &state->ground_buffer_pos, &state->camera_pos);
+    delta.y = -delta.y;
+    ground += state->meters_to_pixels*delta.xy;
+    draw_bitmap(draw_buffer, &state->ground_buffer, ground.x, ground.y);
 
     // TODO(xkazu0x): move this out into excalibur_entity.cpp
     entity_visible_piece_group_t piece_group;
@@ -870,7 +886,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             
             switch (entity->type) {
                 case ENTITY_TYPE_SPACE: {
-#if 0
+#if 1
                     for (u32 volume_index = 0;
                          volume_index < entity->collision->volume_count;
                          ++volume_index) {

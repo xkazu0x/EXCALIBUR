@@ -142,8 +142,6 @@ struct game_state_t {
     bitmap_t player_sprites[4];
     bitmap_t bat_sprite;
     bitmap_t sword_sprite;
-
-    bitmap_t ground_buffer;
     
     // TODO(xkazu0x): must be power of two
     pairwise_collision_rule_t *collision_rule_hash[256];
@@ -158,6 +156,8 @@ struct game_state_t {
     sim_entity_collision_volume_group_t *monster_collision;
     sim_entity_collision_volume_group_t *familiar_collision;
 
+    world_position_t ground_buffer_pos;
+    bitmap_t ground_buffer;
 };
 
 // TODO(xkazu0x): this is dumb, this should just be part of
