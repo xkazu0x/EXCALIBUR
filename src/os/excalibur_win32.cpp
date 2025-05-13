@@ -297,7 +297,7 @@ win32_window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
 }
 
 int WINAPI
-WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int show_command)  {
+WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
     log_info("operating system: %s", string_from_operating_system(operating_system_from_context()));
     log_info("architecture: %s", string_from_architecture(architecture_from_context()));
     log_info("compiler: %s", string_from_compiler(compiler_from_context()));
@@ -307,12 +307,12 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     win32_get_exe_filename(&win32);
     
     char source_game_code_dll_fullpath[WIN32_FILENAME_MAX];
-    win32_build_exe_path_filename(&win32, "excalibur.dll",
+    win32_build_exe_path_filename(&win32, "excalibur_game.dll",
                                   sizeof(source_game_code_dll_fullpath),
                                   source_game_code_dll_fullpath);
     
     char temp_game_code_dll_fullpath[WIN32_FILENAME_MAX];
-    win32_build_exe_path_filename(&win32, "excalibur_temp.dll",
+    win32_build_exe_path_filename(&win32, "excalibur_game_temp.dll",
                                   sizeof(temp_game_code_dll_fullpath),
                                   temp_game_code_dll_fullpath);
 

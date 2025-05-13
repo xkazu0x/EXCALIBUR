@@ -2,6 +2,25 @@
 #define EXCALIBUR_CORE_H
 
 ////////////////////////////////
+// NOTE(xkazu0x): Linkage keyword macros
+
+#if LANG_CPP
+# define C_LINKAGE_BEGIN extern "C"{
+# define C_LINKAGE_END }
+# define C_LINKAGE extern "C"
+#else
+# define C_LINKAGE_BEGIN
+# define C_LINKAGE_END
+# define C_LINKAGE
+#endif
+
+#if OS_WINDOWS
+# define shared_function C_LINKAGE __declspec(dllexport)
+#else
+# define shared_function C_LINKAGE
+#endif
+
+////////////////////////////////
 // NOTE(xkazu0x): Helper macros
 
 #if COMPILER_MSVC

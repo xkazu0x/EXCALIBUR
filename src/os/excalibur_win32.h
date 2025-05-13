@@ -5,9 +5,9 @@
 #include <windows.h>
 #include <timeapi.h>
 #include <xinput.h>
-//#pragma comment(lib, "user32")
-//#pragma comment(lib, "gdi32")
-//#pragma comment(lib, "winmm")
+#pragma comment(lib, "user32")
+#pragma comment(lib, "gdi32")
+#pragma comment(lib, "winmm")
 
 struct Win32_Window_Size {
     s32 x;

@@ -556,7 +556,8 @@ make_empty_bitmap(memory_arena_t *arena, u32 width, u32 height) {
     return(result);
 }
 
-extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
+//extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
+shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
     Assert(sizeof(game_state_t) <= memory->permanent_storage_size);
     game_state_t *state = (game_state_t *)memory->permanent_storage;
     
@@ -1070,3 +1071,11 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     
     end_sim(sim_region, state);
 }
+
+#if OS_WINDOWS
+#include <windows.h>
+int WINAPI
+WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
+    return(0);
+}
+#endif
