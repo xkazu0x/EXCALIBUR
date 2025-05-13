@@ -5,24 +5,27 @@
 #include <windows.h>
 #include <timeapi.h>
 #include <xinput.h>
+//#pragma comment(lib, "user32")
+//#pragma comment(lib, "gdi32")
+//#pragma comment(lib, "winmm")
 
-struct win32_window_size_t {
+struct Win32_Window_Size {
     s32 x;
     s32 y;
 };
 
-struct win32_game_t {
+struct Win32_Game {
     b32 loaded;
     HMODULE library;
     FILETIME last_write_time;
 
     // NOTE(xkazu0x): the callback can be 0
     // you must check before calling
-    game_update_and_render_t *update_and_render;
+    Game_Update_And_Render *update_and_render;
 };
 
 #define WIN32_FILENAME_MAX MAX_PATH
-struct win32_state_t {
+struct Win32_State {
     BITMAPINFO bitmap_info;
     WINDOWPLACEMENT window_placement;
     s64 time_frequency;
@@ -39,7 +42,7 @@ struct win32_state_t {
 #define XINPUT_GET_STATE(x) DWORD WINAPI x(DWORD, XINPUT_STATE *)
 #define XINPUT_SET_STATE(x) DWORD WINAPI x(DWORD, XINPUT_VIBRATION *)
 
-typedef XINPUT_GET_STATE(xinput_get_state_t);
-typedef XINPUT_SET_STATE(xinput_set_state_t);
+typedef XINPUT_GET_STATE(XInput_Get_State);
+typedef XINPUT_SET_STATE(XInput_Set_State);
 
 #endif // EXCALIBUR_WIN32_H

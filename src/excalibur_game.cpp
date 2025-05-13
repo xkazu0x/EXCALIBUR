@@ -1,23 +1,9 @@
-#include "excalibur_base.h"
-#include "excalibur_intrinsics.h"
-#include "excalibur_math.h"
-#include "excalibur_log.h"
-
-#include "excalibur_base.cpp"
-#include "excalibur_intrinsics.cpp"
-#include "excalibur_math.cpp"
-#include "excalibur_log.cpp"
-
-#include "excalibur_os.h"
-
-////////////////////////////////////
-// NOTE(xkazu0x): exclusive includes
-
+#include "base/excalibur_base.h"
+#include "os/excalibur_os.h"
 #include "excalibur_random.h"
 #include "excalibur_world.h"
 #include "excalibur_simulation.h"
 #include "excalibur_entity.h"
-
 #include "excalibur_game.h"
 
 internal low_entity_t *
@@ -29,22 +15,23 @@ get_low_entity(game_state_t *state, u32 index) {
     return(result);
 }
 
+#include "base/excalibur_base.cpp"
 #include "excalibur_world.cpp"
 #include "excalibur_simulation.cpp"
 #include "excalibur_entity.cpp"
 
-internal gamepad_t *
-get_gamepad(os_input_t *input, u32 index) {
-    ASSERT(index < GAMEPAD_MAX);
-    gamepad_t *result = 0;
-    if (index < GAMEPAD_MAX) {
+internal Gamepad *
+get_gamepad(OS_Input *input, u32 index) {
+    Assert(index < Gamepad_Count);
+    Gamepad *result = 0;
+    if (index < Gamepad_Count) {
         result = &input->gamepads[index];
     }
     return(result);
 }
 
 internal void
-draw_rect(bitmap_t *framebuffer, vec2 min, vec2 max, vec3 color) {
+draw_rect(bitmap_t *framebuffer, Vec2 min, Vec2 max, Vec3 color) {
     s32 min_x = round_f32_to_s32(min.x);
     s32 min_y = round_f32_to_s32(min.y);
     
@@ -96,7 +83,6 @@ draw_bitmap(bitmap_t *framebuffer, bitmap_t *bitmap,
     if (max_x > framebuffer->width) max_x = framebuffer->width;
     if (max_y > framebuffer->height) max_y = framebuffer->height;
 
-    //bitmap->pitch*(bitmap->height - 1)
     // TODO(xkazu0x): source_row needs to be changed based on cliping
     u8 *source_row = (u8 *)bitmap->memory + source_offset_y*bitmap->pitch + BYTES_PER_PIXEL*source_offset_x;
     u8 *dest_row = ((u8 *)framebuffer->memory +
@@ -166,10 +152,10 @@ struct bitmap_header_t {
 #pragma pack(pop)
 
 internal bitmap_t
-debug_load_bitmap(debug_os_read_file_t *debug_os_read_file, os_thread_t *thread, char *filename) {
+debug_load_bitmap(Debug_OS_Read_File *debug_os_read_file, OS_Thread *thread, char *filename) {
     bitmap_t result = {};
     
-    debug_file_t file = debug_os_read_file(thread, filename);
+    Debug_OS_File file = debug_os_read_file(thread, filename);
     if (file.size != 0) {
         bitmap_header_t *header = (bitmap_header_t *)file.data;
         u32 *pixels = (u32 *)((u8 *)file.data + header->bitmap_offset);
@@ -177,7 +163,7 @@ debug_load_bitmap(debug_os_read_file_t *debug_os_read_file, os_thread_t *thread,
         result.width = header->width;
         result.height = header->height;
 
-        ASSERT(header->compression == 3);
+        Assert(header->compression == 3);
         
         // NOTE(xkazu0x): byte order in memory is determined bu the header itself,
         // so we have to read out the masks and convert the pixels ourselves.
@@ -191,10 +177,10 @@ debug_load_bitmap(debug_os_read_file_t *debug_os_read_file, os_thread_t *thread,
         bit_scan_result_t blue_scan = find_least_significant_set_bit(blue_mask);
         bit_scan_result_t alpha_scan = find_least_significant_set_bit(alpha_mask);
 
-        ASSERT(red_scan.found);
-        ASSERT(green_scan.found);
-        ASSERT(blue_scan.found);
-        ASSERT(alpha_scan.found);
+        Assert(red_scan.found);
+        Assert(green_scan.found);
+        Assert(blue_scan.found);
+        Assert(alpha_scan.found);
         
         s32 red_shift_down   = (s32)red_scan.index;
         s32 green_shift_down = (s32)green_scan.index;
@@ -237,7 +223,7 @@ struct add_low_entity_result {
 
 internal add_low_entity_result
 add_low_entity(game_state_t *state, entity_type_t type, world_position_t pos) {
-    ASSERT(state->low_entity_count < ARRAY_COUNT(state->low_entities));
+    Assert(state->low_entity_count < ArrayCount(state->low_entities));
     u32 entity_index = state->low_entity_count++;
     
     low_entity_t *low_entity = state->low_entities + entity_index;
@@ -302,7 +288,7 @@ add_stair(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
 
 internal void
 init_hit_points(low_entity_t *low_entity, u32 hit_point_count) {
-    ASSERT(hit_point_count < ARRAY_COUNT(low_entity->sim.hit_points));
+    Assert(hit_point_count < ArrayCount(low_entity->sim.hit_points));
     low_entity->sim.hit_point_max = hit_point_count;
     for (u32 hit_point_index = 0;
          hit_point_index < hit_point_count;
@@ -367,8 +353,8 @@ add_familiar(game_state_t *state, u32 tile_x, u32 tile_y, u32 tile_z) {
 
 internal void
 push_piece(entity_visible_piece_group_t *group, bitmap_t *bitmap,
-           vec3 offset, vec2 size, vec4 color, f32 entity_zc = 1.0f) {
-    ASSERT(group->piece_count < ARRAY_COUNT(group->pieces));
+           Vec3 offset, Vec2 size, Vec4 color, f32 entity_zc = 1.0f) {
+    Assert(group->piece_count < ArrayCount(group->pieces));
     
     entity_visible_piece_t *piece = group->pieces + group->piece_count++;
     piece->bitmap = bitmap;
@@ -381,19 +367,19 @@ push_piece(entity_visible_piece_group_t *group, bitmap_t *bitmap,
 }
 
 internal void
-push_bitmap(entity_visible_piece_group_t *group, bitmap_t *bitmap, vec3 offset,
+push_bitmap(entity_visible_piece_group_t *group, bitmap_t *bitmap, Vec3 offset,
             f32 alpha = 1.0f, f32 entity_zc = 1.0f) {
     push_piece(group, bitmap, offset, make_vec2(0.0f), make_vec4(make_vec3(1.0f), alpha), entity_zc);
 }
 
 internal void
-push_rect(entity_visible_piece_group_t *group, vec3 offset, vec2 size, vec4 color,
+push_rect(entity_visible_piece_group_t *group, Vec3 offset, Vec2 size, Vec4 color,
           f32 entity_zc = 1.0f) {
     push_piece(group, 0, offset, size, color, entity_zc);
 }
 
 internal void
-push_rect_outline(entity_visible_piece_group_t *group, vec3 offset, vec2 size, vec4 color,
+push_rect_outline(entity_visible_piece_group_t *group, Vec3 offset, Vec2 size, Vec4 color,
                   f32 entity_zc = 1.0f) {
     f32 thickness = 0.2f;
     
@@ -409,17 +395,17 @@ push_rect_outline(entity_visible_piece_group_t *group, vec3 offset, vec2 size, v
 internal void
 draw_hit_points(entity_visible_piece_group_t *piece_group, sim_entity_t *entity) {
     if (entity->hit_point_max >= 1) {
-        vec2 health_dim = make_vec2(0.125f*1.4f);
+        Vec2 health_dim = make_vec2(0.125f*1.4f);
         f32 spacing_x = 1.5f*health_dim.x;
         
-        vec2 hit_pos = make_vec2((-0.5f*(entity->hit_point_max - 1)*spacing_x), 1.0f);
-        vec2 hit_dpos = make_vec2(spacing_x, 0.0f);
+        Vec2 hit_pos = make_vec2((-0.5f*(entity->hit_point_max - 1)*spacing_x), 1.0f);
+        Vec2 hit_dpos = make_vec2(spacing_x, 0.0f);
                         
         for (u32 health_index = 0;
              health_index < entity->hit_point_max;
              ++health_index) {
             hit_point_t *hit_point = entity->hit_points + health_index;
-            vec4 color = make_rgba(222.0f, 214.0f, 222.0f, 255.0f);
+            Vec4 color = make_rgba(222.0f, 214.0f, 222.0f, 255.0f);
             
             if (hit_point->filled_amount == 0) {
                 color = make_rgba(164.0f, 157.0f, 164.0f, 255.0f);
@@ -444,7 +430,7 @@ clear_collision_rules_for(game_state_t *state, u32 storage_index) {
     // the new things on the free list, and remove the reverse of
     // those pairs.
     for (u32 hash_bucket = 0;
-         hash_bucket < ARRAY_COUNT(state->collision_rule_hash);
+         hash_bucket < ArrayCount(state->collision_rule_hash);
          ++hash_bucket) {
         for (pairwise_collision_rule_t **rule = &state->collision_rule_hash[hash_bucket];
              *rule;
@@ -474,7 +460,7 @@ add_collision_rule(game_state_t *state, u32 storage_index_a, u32 storage_index_b
 
     // TODO(xkazu0x): BETTER HASH FUCTION
     pairwise_collision_rule_t *found = 0;
-    u32 hash_bucket = storage_index_a & (ARRAY_COUNT(state->collision_rule_hash) - 1);
+    u32 hash_bucket = storage_index_a & (ArrayCount(state->collision_rule_hash) - 1);
     for (pairwise_collision_rule_t *rule = state->collision_rule_hash[hash_bucket];
          rule;
          rule = rule->next_in_hash)
@@ -542,14 +528,14 @@ draw_ground_chunk(game_state_t *state, world_position_t *pos, bitmap_t *buffer) 
          ++ground_index) {
         bitmap_t *sprite;
         if (random_choice(&series, 2)) {
-            sprite = state->grass_sprites + random_choice(&series, ARRAY_COUNT(state->grass_sprites));
+            sprite = state->grass_sprites + random_choice(&series, ArrayCount(state->grass_sprites));
         } else {
-            sprite = state->stone_sprites + random_choice(&series, ARRAY_COUNT(state->stone_sprites));
+            sprite = state->stone_sprites + random_choice(&series, ArrayCount(state->stone_sprites));
         }
         
-        vec2 sprite_center = 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height);
-        vec2 offset = make_vec2(width*random_unilateral(&series), height*random_unilateral(&series));
-        vec2 pos = offset - sprite_center;
+        Vec2 sprite_center = 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height);
+        Vec2 offset = make_vec2(width*random_unilateral(&series), height*random_unilateral(&series));
+        Vec2 pos = offset - sprite_center;
         
         draw_bitmap(buffer, sprite, pos.x, pos.y);
     }
@@ -571,7 +557,7 @@ make_empty_bitmap(memory_arena_t *arena, u32 width, u32 height) {
 }
 
 extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
-    ASSERT(sizeof(game_state_t) <= memory->permanent_storage_size);
+    Assert(sizeof(game_state_t) <= memory->permanent_storage_size);
     game_state_t *state = (game_state_t *)memory->permanent_storage;
     
     u32 tile_count_x = 17;
@@ -783,12 +769,14 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
 
     /////////////////////////////////
     // NOTE(xkazu0x): gamepad control
-    for (u32 gamepad_index = 0; gamepad_index < ARRAY_COUNT(input->gamepads); gamepad_index++) {
-        gamepad_t *gamepad = get_gamepad(input, gamepad_index);
+    for (u32 gamepad_index = 0;
+         gamepad_index < ArrayCount(input->gamepads);
+         ++gamepad_index) {
+        Gamepad *gamepad = get_gamepad(input, gamepad_index);
         controlled_player_t *controlled_player = state->controlled_players + gamepad_index;
         if (controlled_player->entity_index == 0) {
             if ((gamepad->start.pressed) ||
-                ((gamepad_index == 1) && (input->keyboard[KEY_SPACE].pressed))) {
+                ((gamepad_index == 1) && (input->keyboard[Key_Space].pressed))) {
                 *controlled_player = {};
                 controlled_player->entity_index = add_player(state).low_index;
             }
@@ -802,16 +790,16 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
             // NOTE(xkazu0x): combine keyboard and gamepad inputs
             // only for the first player
             if (gamepad_index == 1) {
-                if (input->keyboard[KEY_W].down) controlled_player->dd_pos.y = 1.0f;
-                if (input->keyboard[KEY_S].down) controlled_player->dd_pos.y = -1.0f;
-                if (input->keyboard[KEY_A].down) controlled_player->dd_pos.x = -1.0f;
-                if (input->keyboard[KEY_D].down) controlled_player->dd_pos.x = 1.0f;
-                if (input->keyboard[KEY_SPACE].pressed) controlled_player->d_z = 3.0f;
+                if (input->keyboard[Key_W].down) controlled_player->dd_pos.y = 1.0f;
+                if (input->keyboard[Key_S].down) controlled_player->dd_pos.y = -1.0f;
+                if (input->keyboard[Key_A].down) controlled_player->dd_pos.x = -1.0f;
+                if (input->keyboard[Key_D].down) controlled_player->dd_pos.x = 1.0f;
+                if (input->keyboard[Key_Space].pressed) controlled_player->d_z = 3.0f;
                 
-                if (input->keyboard[KEY_UP].pressed) controlled_player->d_sword = make_vec2(0.0f, 1.0f);
-                if (input->keyboard[KEY_DOWN].pressed) controlled_player->d_sword = make_vec2(0.0f, -1.0f);
-                if (input->keyboard[KEY_LEFT].pressed) controlled_player->d_sword = make_vec2(-1.0f, 0.0f);
-                if (input->keyboard[KEY_RIGHT].pressed) controlled_player->d_sword = make_vec2(1.0f, 0.0f);
+                if (input->keyboard[Key_Up].pressed) controlled_player->d_sword = make_vec2(0.0f, 1.0f);
+                if (input->keyboard[Key_Down].pressed) controlled_player->d_sword = make_vec2(0.0f, -1.0f);
+                if (input->keyboard[Key_Left].pressed) controlled_player->d_sword = make_vec2(-1.0f, 0.0f);
+                if (input->keyboard[Key_Right].pressed) controlled_player->d_sword = make_vec2(1.0f, 0.0f);
             }
         }
     }
@@ -821,14 +809,14 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     u32 tile_span_x = 17*3;
     u32 tile_span_y = 9*3;
     u32 tile_span_z = 1.0f;
-    rect3 camera_bounds = make_rect3_center_dim(make_vec3(0.0f),
+    Rect3 camera_bounds = make_rect3_center_dim(make_vec3(0.0f),
                                                 world->tile_side_in_meters*
                                                 make_vec3((f32)tile_span_x,
                                                           (f32)tile_span_y,
                                                           (f32)tile_span_z));
     
     memory_arena_t sim_arena = create_memory_arena(memory->transient_storage_size, memory->transient_storage);
-    sim_region_t *sim_region = begin_sim(&sim_arena, state, world, state->camera_pos, camera_bounds, clock->delta_seconds);
+    sim_region_t *sim_region = begin_sim(&sim_arena, state, world, state->camera_pos, camera_bounds, clock->dt);
 
     ///////////////////////////////////
     // NOTE(xkazu0x): update and render
@@ -841,14 +829,14 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
 
     for (u32 y = 0; y < 12; ++y) {
         for (u32 x = 0; x < 20; ++x) {
-            vec3 color = make_rgb(57.0f, 44.0f, 49.0f);
+            Vec3 color = make_rgb(57.0f, 44.0f, 49.0f);
             
             if ((x + y) % 2 == 0) {
                 color = make_rgb(74.0f, 60.0f, 74.0f);
             }
             
-            vec2 min = make_vec2(x*tile_size_in_pixels, y*tile_size_in_pixels);
-            vec2 max = make_vec2(min.x + tile_size_in_pixels, min.y + tile_size_in_pixels);
+            Vec2 min = make_vec2(x*tile_size_in_pixels, y*tile_size_in_pixels);
+            Vec2 max = make_vec2(min.x + tile_size_in_pixels, min.y + tile_size_in_pixels);
             
             draw_rect(draw_buffer, min, max, color);
         }
@@ -857,10 +845,10 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     f32 screen_center_x = 0.5f*((f32)draw_buffer->width);
     f32 screen_center_y = 0.5f*((f32)draw_buffer->height);
 
-    vec2 ground = make_vec2(screen_center_x - 0.5f*state->ground_buffer.width,
+    Vec2 ground = make_vec2(screen_center_x - 0.5f*state->ground_buffer.width,
                             screen_center_y - 0.5f*state->ground_buffer.height);
     
-    vec3 delta = subtract(state->world, &state->ground_buffer_pos, &state->camera_pos);
+    Vec3 delta = subtract(state->world, &state->ground_buffer_pos, &state->camera_pos);
     delta.y = -delta.y;
     ground += state->meters_to_pixels*delta.xy;
     draw_bitmap(draw_buffer, &state->ground_buffer, ground.x, ground.y);
@@ -876,13 +864,13 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     {
         if (entity->updatable) {
             piece_group.piece_count = 0;
-            f32 delta = clock->delta_seconds;
+            f32 delta = clock->dt;
 
             f32 shadow_alpha = 1.0f - 0.5f*entity->pos.z;
             if (shadow_alpha < 0.0f) shadow_alpha = 0.0f;
 
             move_spec_t move_spec = default_move_spec();
-            vec3 dd_pos = make_vec3(0.0f);
+            Vec3 dd_pos = make_vec3(0.0f);
             
             switch (entity->type) {
                 case ENTITY_TYPE_SPACE: {
@@ -900,7 +888,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     push_rect(&piece_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.5f, 0.2f, 1.0f));
                     
                     bitmap_t *sprite = &state->wall_sprite;
-                    vec2 offset = make_vec2(-0.5f*sprite->width*pixels_to_meters,
+                    Vec2 offset = make_vec2(-0.5f*sprite->width*pixels_to_meters,
                                             0.5f*sprite->height*pixels_to_meters);
                     push_bitmap(&piece_group, sprite, make_vec3(offset, 0.0f));
                 } break;
@@ -910,7 +898,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     push_rect(&piece_group, make_vec3(0.0f, 0.0f, entity->walkable_height), entity->walkable_dim, make_vec4(0.0f, 1.0f, 1.0f, 1.0f));
                     
                     bitmap_t *sprite = &state->stairwell_sprite;
-                    vec2 offset = make_vec2(-0.5f*sprite->width*pixels_to_meters,
+                    Vec2 offset = make_vec2(-0.5f*sprite->width*pixels_to_meters,
                                             0.5f*sprite->height*pixels_to_meters);
 
                     push_bitmap(&piece_group, sprite, make_vec3(offset, 0.0f));
@@ -919,7 +907,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
 
                 case ENTITY_TYPE_PLAYER: {
                     for (u32 controlled_index = 0;
-                         controlled_index < ARRAY_COUNT(state->controlled_players);
+                         controlled_index < ArrayCount(state->controlled_players);
                          ++controlled_index) {
                         controlled_player_t *controlled_player = state->controlled_players + controlled_index;
                         if (entity->storage_index == controlled_player->entity_index) {
@@ -947,7 +935,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     push_rect(&piece_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 1.0f, 0.0f, 1.0f));
                     
                     bitmap_t *sprite = &state->player_sprites[entity->direction];
-                    vec2 offset = make_vec2(-0.5f*sprite->width*pixels_to_meters,
+                    Vec2 offset = make_vec2(-0.5f*sprite->width*pixels_to_meters,
                                             0.5f*sprite->height*pixels_to_meters);
                     
                     push_bitmap(&piece_group, &state->shadow_sprite, make_vec3(offset, 0.0f), shadow_alpha, 0.0f);
@@ -1021,7 +1009,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     f32 bob_sin = sin_f32(5.0f*entity->t_bob);
                     
                     bitmap_t *sprite = &state->bat_sprite;
-                    vec2 offset = make_vec2(-0.5f*sprite->width*pixels_to_meters,
+                    Vec2 offset = make_vec2(-0.5f*sprite->width*pixels_to_meters,
                                             0.5f*sprite->height*pixels_to_meters);
 
                     push_bitmap(&piece_group, &state->shadow_sprite, make_vec3(offset, 0.0f), (0.5f*shadow_alpha) + 0.2f*bob_sin, 0.0f);
@@ -1032,7 +1020,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     push_rect(&piece_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.0f, 0.0f, 1.0f));
                     
                     bitmap_t *sprite = &state->player_sprites[2];
-                    vec2 offset = make_vec2(-0.5f*sprite->width*pixels_to_meters,
+                    Vec2 offset = make_vec2(-0.5f*sprite->width*pixels_to_meters,
                                             0.5f*sprite->height*pixels_to_meters);
                     
                     push_bitmap(&piece_group, &state->shadow_sprite, make_vec3(offset, 0.0f), shadow_alpha, 0.0f);
@@ -1042,32 +1030,32 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 } break;
                     
                 default: {
-                    INVALID_CODE_PATH;
+                    InvalidPath;
                 }
             }
 
             if (!is_entity_flag_set(entity, ENTITY_FLAG_NON_SPATIAL) &&
                 is_entity_flag_set(entity, ENTITY_FLAG_MOVEABLE)) {
-                move_entity(state, sim_region, entity, clock->delta_seconds, &move_spec, dd_pos);
+                move_entity(state, sim_region, entity, clock->dt, &move_spec, dd_pos);
             }
             
             for (u32 piece_index = 0; piece_index < piece_group.piece_count; piece_index++) {
                 entity_visible_piece_t *piece = piece_group.pieces + piece_index;
                                 
-                vec3 entity_base_pos = get_entity_ground_point(entity);
+                Vec3 entity_base_pos = get_entity_ground_point(entity);
                 f32 fudge_z = (1.0f + 0.1f*entity_base_pos.z + piece->offset.z);
             
                 f32 entity_ground_point_x = screen_center_x + meters_to_pixels*fudge_z*entity_base_pos.x;
                 f32 entity_ground_point_y = screen_center_y - meters_to_pixels*fudge_z*entity_base_pos.y;
                 f32 entity_z = -meters_to_pixels*entity_base_pos.z;
                 
-                vec2 center = make_vec2(entity_ground_point_x + piece->offset.x,
+                Vec2 center = make_vec2(entity_ground_point_x + piece->offset.x,
                                         entity_ground_point_y + piece->offset.y + piece->entity_zc*entity_z);
                 if (piece->bitmap) {
                     draw_bitmap(draw_buffer, piece->bitmap, center.x, center.y, piece->color.a);
                 } else {
-                    vec2 half_size = 0.5f*meters_to_pixels*piece->size;
-                    vec3 color = make_vec3(piece->color.r, piece->color.g, piece->color.b);
+                    Vec2 half_size = 0.5f*meters_to_pixels*piece->size;
+                    Vec3 color = make_vec3(piece->color.r, piece->color.g, piece->color.b);
                     draw_rect(draw_buffer, center - half_size, center + half_size, color);
                 }
             }
@@ -1077,7 +1065,7 @@ extern "C" GAME_UPDATE_AND_RENDER(game_update_and_render) {
     ////////////////////////////////
     // NOTE(xkazu0x): simulation end
     //world_position_t world_origin = {};
-    //vec3 delta_origin = subtract(sim_region->world, &world_origin, &sim_region->origin);
+    //Vec3 delta_origin = subtract(sim_region->world, &world_origin, &sim_region->origin);
     //draw_rect(draw_buffer, delta_origin.xy, make_vec2(tile_size_in_pixels), make_vec3(1.0f));
     
     end_sim(sim_region, state);

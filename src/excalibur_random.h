@@ -1,7 +1,7 @@
 #ifndef EXCALIBUR_RANDOM_H
 #define EXCALIBUR_RANDOM_H
 
-#define max_random_number 0x5f5be14
+#define MAX_RANDOM_NUMBER 0x5f5be14
 
 global u32 random_number_table[] = {
     0x5b7ac06, 0x585fedb, 0x016d305, 0x127821a, 0x4ec33a6, 0x54c4944, 0x508dce9, 0x2144ad0,
@@ -525,14 +525,14 @@ struct random_series_t {
 internal inline random_series_t
 random_seed(u32 value) {
     random_series_t series;
-    series.index = (value % ARRAY_COUNT(random_number_table));
+    series.index = (value % ArrayCount(random_number_table));
     return(series);
 }
 
 internal inline u32
 next_random_u32(random_series_t *series) {
     u32 result = random_number_table[series->index++];
-    if (series->index >= ARRAY_COUNT(random_number_table)) {
+    if (series->index >= ArrayCount(random_number_table)) {
         series->index = 0;
     }
     return(result);
@@ -546,7 +546,7 @@ random_choice(random_series_t *series, u32 choice_count) {
 
 internal inline f32
 random_unilateral(random_series_t *series) {
-    f32 divisor = 1.0f/(f32)max_random_number;
+    f32 divisor = 1.0f/(f32)MAX_RANDOM_NUMBER;
     f32 result = divisor*(f32)next_random_u32(series);
     return(result);
 }

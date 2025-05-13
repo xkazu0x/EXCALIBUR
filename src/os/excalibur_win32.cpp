@@ -1,22 +1,12 @@
-#include "excalibur_base.h"
-#include "excalibur_intrinsics.h"
-#include "excalibur_math.h"
-#include "excalibur_log.h"
+#include "base/excalibur_base.h"
+#include "os/excalibur_os.h"
+#include "os/excalibur_os_helper.h"
+#include "os/excalibur_win32.h"
 
-#include "excalibur_base.cpp"
-#include "excalibur_intrinsics.cpp"
-#include "excalibur_math.cpp"
-#include "excalibur_log.cpp"
+#include "base/excalibur_base.cpp"
+#include "os/excalibur_os_helper.cpp"
 
-#include "excalibur_os.h"
-
-////////////////////////////////////////////////
-// NOTE(xkazu0x): exclusive includes
-
-#include "excalibur_os_helper.h"
-#include "excalibur_os_helper.cpp"
-
-#include "excalibur_win32.h"
+#include <malloc.h>
 
 /*
   TODO(xkazu0x):
@@ -26,10 +16,10 @@
   > ChangeDisplaySettings option
 */
 
-global win32_state_t global_win32;
+global Win32_State win32;
 
-global xinput_get_state_t *xinput_get_state;
-global xinput_set_state_t *xinput_set_state;
+global XInput_Get_State *xinput_get_state;
+global XInput_Set_State *xinput_set_state;
 
 XINPUT_GET_STATE(_xinput_get_state) {
     return(ERROR_DEVICE_NOT_CONNECTED);
@@ -43,7 +33,7 @@ XINPUT_SET_STATE(_xinput_set_state) {
 // TODO(xkazu0x): temp functions
 internal inline u32
 safe_truncate_u64(u64 value) {
-    ASSERT(value <= u32_max);
+    Assert(value <= u32_max);
     u32 result = (u32)value;
     return(result);
 }
@@ -78,7 +68,7 @@ DEBUG_OS_FREE_FILE(debug_os_free_file) {
 }
 
 DEBUG_OS_READ_FILE(debug_os_read_file) {
-    debug_file_t result = {};
+    Debug_OS_File result = {};
     
     HANDLE file_handle = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
     if (file_handle != INVALID_HANDLE_VALUE) {
@@ -140,12 +130,12 @@ win32_get_last_write_time(char *filename) {
     return(last_write_time);
 }
 
-internal win32_game_t
+internal Win32_Game
 win32_load_game(char *source_dll_name, char *temp_dll_name) {
-    win32_game_t result = {};
-    result.last_write_time = win32_get_last_write_time(source_dll_name);
-
     CopyFile(source_dll_name, temp_dll_name, FALSE);
+    
+    Win32_Game result = {};
+    result.last_write_time = win32_get_last_write_time(source_dll_name);
     result.library = LoadLibraryA(temp_dll_name);
     if (result.library) {
         WIN32_GET_PROC_ADDR(result.update_and_render, result.library, "game_update_and_render");
@@ -155,6 +145,7 @@ win32_load_game(char *source_dll_name, char *temp_dll_name) {
         }
     } else {
         log_error("failed to load game dll");
+        //win32_load_game(source_dll_name, temp_dll_name);
     }
     
     if (!result.loaded) {
@@ -166,7 +157,7 @@ win32_load_game(char *source_dll_name, char *temp_dll_name) {
 }
 
 internal void
-win32_unload_game(win32_game_t *game) {
+win32_unload_game(Win32_Game *game) {
     if (game->library) {
         FreeLibrary(game->library);
         game->library = 0;
@@ -177,7 +168,7 @@ win32_unload_game(win32_game_t *game) {
 }
 
 internal void
-win32_build_exe_path_filename(win32_state_t *win32, char *filename,
+win32_build_exe_path_filename(Win32_State *win32, char *filename,
                               u32 dest_count, char *dest) {
     cat_strings(win32->one_past_last_exe_filename_slash - win32->exe_filename, win32->exe_filename,
                 string_length(filename), filename,
@@ -185,7 +176,7 @@ win32_build_exe_path_filename(win32_state_t *win32, char *filename,
 }
 
 internal void
-win32_get_exe_filename(win32_state_t *win32) {
+win32_get_exe_filename(Win32_State *win32) {
     DWORD size_of_filename = GetModuleFileName(0, win32->exe_filename, sizeof(win32->exe_filename));
     win32->one_past_last_exe_filename_slash = win32->exe_filename;
     for (char *scan = win32->exe_filename; *scan; ++scan) {
@@ -204,12 +195,12 @@ win32_get_time(void) {
 
 inline f32
 win32_get_delta_seconds(LARGE_INTEGER start, LARGE_INTEGER end) {
-    f32 result = ((f32)(end.QuadPart - start.QuadPart)) / ((f32)(global_win32.time_frequency));
+    f32 result = ((f32)(end.QuadPart - start.QuadPart)) / ((f32)(win32.time_frequency));
     return(result);
 }
 
 internal void
-win32_resize_framebuffer(os_framebuffer_t *framebuffer, s32 width, s32 height) {
+win32_resize_framebuffer(OS_Framebuffer *framebuffer, s32 width, s32 height) {
     if (framebuffer->memory) {
         VirtualFree(framebuffer->memory, 0, MEM_RELEASE);
     }
@@ -218,23 +209,23 @@ win32_resize_framebuffer(os_framebuffer_t *framebuffer, s32 width, s32 height) {
     framebuffer->height = height;
     framebuffer->pitch = framebuffer->width * BYTES_PER_PIXEL;
     
-    global_win32.bitmap_info.bmiHeader.biSize = sizeof(global_win32.bitmap_info.bmiHeader);
-    global_win32.bitmap_info.bmiHeader.biWidth = framebuffer->width;
-    global_win32.bitmap_info.bmiHeader.biHeight = -framebuffer->height;
-    global_win32.bitmap_info.bmiHeader.biPlanes = 1;
-    global_win32.bitmap_info.bmiHeader.biBitCount = 8*BYTES_PER_PIXEL;
-    global_win32.bitmap_info.bmiHeader.biCompression = BI_RGB;
+    win32.bitmap_info.bmiHeader.biSize = sizeof(win32.bitmap_info.bmiHeader);
+    win32.bitmap_info.bmiHeader.biWidth = framebuffer->width;
+    win32.bitmap_info.bmiHeader.biHeight = -framebuffer->height;
+    win32.bitmap_info.bmiHeader.biPlanes = 1;
+    win32.bitmap_info.bmiHeader.biBitCount = 8*BYTES_PER_PIXEL;
+    win32.bitmap_info.bmiHeader.biCompression = BI_RGB;
 
     s32 framebuffer_memory_size = (framebuffer->width*framebuffer->height)*BYTES_PER_PIXEL;
     framebuffer->memory = VirtualAlloc(0, framebuffer_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 }
 
-internal win32_window_size_t
+internal Win32_Window_Size
 win32_get_window_size(HWND window) {
     RECT client_rectangle;
     GetClientRect(window, &client_rectangle);
     
-    win32_window_size_t result = {};
+    Win32_Window_Size result = {};
     result.x = client_rectangle.right - client_rectangle.left;
     result.y = client_rectangle.bottom - client_rectangle.top;
     
@@ -266,7 +257,7 @@ win32_window_toggle_fullscreen(HWND window, WINDOWPLACEMENT *placement) {
 }
 
 internal void
-win32_display_framebuffer(os_framebuffer_t framebuffer, HWND window_handle, s32 window_width, s32 window_height) {
+win32_display_framebuffer(OS_Framebuffer framebuffer, HWND window_handle, s32 window_width, s32 window_height) {
     s32 display_width = ((f32)framebuffer.width/(f32)framebuffer.height)*window_height;
     s32 display_height = window_height;
 
@@ -278,7 +269,7 @@ win32_display_framebuffer(os_framebuffer_t framebuffer, HWND window_handle, s32 
                   display_x, display_y, display_width, display_height,
                   0, 0, framebuffer.width, framebuffer.height,
                   framebuffer.memory,
-                  &global_win32.bitmap_info,
+                  &win32.bitmap_info,
                   DIB_RGB_COLORS, SRCCOPY);
     ReleaseDC(window_handle, window_device);
 }
@@ -309,22 +300,23 @@ int WINAPI
 WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int show_command)  {
     log_info("operating system: %s", string_from_operating_system(operating_system_from_context()));
     log_info("architecture: %s", string_from_architecture(architecture_from_context()));
+    log_info("compiler: %s", string_from_compiler(compiler_from_context()));
 
     ///////////////////////////
     // NOTE(xkazu0x): game load
-    win32_get_exe_filename(&global_win32);
+    win32_get_exe_filename(&win32);
     
     char source_game_code_dll_fullpath[WIN32_FILENAME_MAX];
-    win32_build_exe_path_filename(&global_win32, "excalibur.dll",
+    win32_build_exe_path_filename(&win32, "excalibur.dll",
                                   sizeof(source_game_code_dll_fullpath),
                                   source_game_code_dll_fullpath);
     
     char temp_game_code_dll_fullpath[WIN32_FILENAME_MAX];
-    win32_build_exe_path_filename(&global_win32, "excalibur_temp.dll",
+    win32_build_exe_path_filename(&win32, "excalibur_temp.dll",
                                   sizeof(temp_game_code_dll_fullpath),
                                   temp_game_code_dll_fullpath);
 
-    win32_game_t game = win32_load_game(source_game_code_dll_fullpath, temp_game_code_dll_fullpath);
+    Win32_Game game = win32_load_game(source_game_code_dll_fullpath, temp_game_code_dll_fullpath);
     if (!game.loaded) return(1);
     
     //////////////////////////////
@@ -343,7 +335,7 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     // NOTE(xkazu0x): framebuffer init
     s32 scale = 4;
     
-    os_framebuffer_t framebuffer = {};
+    OS_Framebuffer framebuffer = {};
     win32_resize_framebuffer(&framebuffer, 320, 180);
     log_info("framebuffer size: %dx%d", framebuffer.width, framebuffer.height);
     
@@ -403,7 +395,7 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
 
     ////////////////////////////
     // NOTE(xkazu0x): input init
-    os_input_t input = {};
+    OS_Input input = {};
     
     RAWINPUTDEVICE raw_input_device = {};
     raw_input_device.usUsagePage = 0x01;
@@ -444,23 +436,23 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
 
     /////////////////////////////
     // NOTE(xkazu0x): memory init
-    os_memory_t memory = {};
+    OS_Memory memory = {};
     
 #if EXCALIBUR_INTERNAL
-    LPVOID base_address = (LPVOID)TERABYTES(2);
+    LPVOID base_address = (LPVOID)TB(2);
 #else
     LPVOID base_address = 0;
 #endif
-    memory.permanent_storage_size = MEGABYTES(64);
-    memory.transient_storage_size = GIGABYTES(1);
+    memory.permanent_storage_size = MB(64);
+    memory.transient_storage_size = GB(1);
     memory.debug_os_free_file = debug_os_free_file;
     memory.debug_os_read_file = debug_os_read_file;
     memory.debug_os_write_file = debug_os_write_file;
     
-    global_win32.game_memory_size = memory.permanent_storage_size + memory.transient_storage_size;
-    global_win32.game_memory_block = VirtualAlloc(base_address, global_win32.game_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    win32.game_memory_size = memory.permanent_storage_size + memory.transient_storage_size;
+    win32.game_memory_block = VirtualAlloc(base_address, win32.game_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     
-    memory.permanent_storage = global_win32.game_memory_block;
+    memory.permanent_storage = win32.game_memory_block;
     memory.transient_storage = ((u8 *)memory.permanent_storage + memory.permanent_storage_size);
     if (!memory.permanent_storage) {
         log_fatal("failed to allocate game memory");
@@ -472,7 +464,7 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
     
     ////////////////////////////
     // NOTE(xkazu0x): clock init
-    os_clock_t clock = {};
+    OS_Clock clock = {};
     
     f32 game_update_hz = (f32)monitor_frame_rate;
     //f32 game_update_hz = 60.0f;
@@ -480,7 +472,7 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
 
     LARGE_INTEGER large_integer;
     QueryPerformanceFrequency(&large_integer);
-    global_win32.time_frequency = large_integer.QuadPart;
+    win32.time_frequency = large_integer.QuadPart;
 
     // NOTE(xkazu0x): set the windows scheduler granularity to 1ms
     // so that our Sleep() can be more granular
@@ -504,7 +496,7 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
         }
                 
         // NOTE(xkazu0x): input reset
-        for (u32 i = 0; i < KEY_MAX; i++) {
+        for (u32 i = 0; i < Key_Count; ++i) {
             input.keyboard[i].pressed = false;
             input.keyboard[i].released = false;
         }
@@ -543,7 +535,7 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
                 case WM_INPUT: {
                     UINT size;
                     GetRawInputData((HRAWINPUT)message.lParam, RID_INPUT, 0, &size, sizeof(RAWINPUTHEADER));
-                    char *buffer = (char *)_alloca(size);
+                    char *buffer = (char *)_malloca(size);
                     if (GetRawInputData((HRAWINPUT)message.lParam, RID_INPUT, buffer, &size, sizeof(RAWINPUTHEADER)) == size) {
                         RAWINPUT *raw_input = (RAWINPUT *)buffer;
                         if (raw_input->header.dwType == RIM_TYPEMOUSE && raw_input->data.mouse.usFlags == MOUSE_MOVE_RELATIVE){
@@ -610,8 +602,8 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
         
         // NOTE(xkazu0x): gamepad update
         u32 max_gamepad_count = XUSER_MAX_COUNT;
-        if (max_gamepad_count > ARRAY_COUNT(input.gamepads)) {
-            max_gamepad_count = ARRAY_COUNT(input.gamepads);
+        if (max_gamepad_count > ArrayCount(input.gamepads)) {
+            max_gamepad_count = ArrayCount(input.gamepads);
         }
         
         for (u32 gamepad_index = 0;
@@ -646,14 +638,14 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
         }
 
         // NOTE(xkazu0x): key presses
-        if (input.keyboard[KEY_ESCAPE].pressed) quit = true;
-        if (input.keyboard[KEY_F1].pressed) pause = !pause;
-        if (input.keyboard[KEY_F11].pressed) win32_window_toggle_fullscreen(window_handle, &global_win32.window_placement);
+        if (input.keyboard[Key_Escape].pressed) quit = true;
+        if (input.keyboard[Key_F1].pressed) pause = !pause;
+        if (input.keyboard[Key_F11].pressed) win32_window_toggle_fullscreen(window_handle, &win32.window_placement);
 
         // NOTE(xkazu0x): update and render
         if (!pause) {
-            os_thread_t thread = {};
-            clock.delta_seconds = target_seconds_per_frame;
+            OS_Thread thread = {};
+            clock.dt = target_seconds_per_frame;
             if (game.update_and_render) {
                 game.update_and_render(&framebuffer, &input, &memory, &clock, &thread);
             }
@@ -667,7 +659,7 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
         LARGE_INTEGER raw_end_counter = win32_get_time();
         f32 raw_seconds_per_frame = win32_get_delta_seconds(last_counter, raw_end_counter);
         f32 raw_ms_per_frame = 1000.0f*raw_seconds_per_frame;
-        f32 raw_frames_per_second = (f32)global_win32.time_frequency/(f32)(raw_end_counter.QuadPart - last_counter.QuadPart);
+        f32 raw_frames_per_second = (f32)win32.time_frequency/(f32)(raw_end_counter.QuadPart - last_counter.QuadPart);
 
         // TODO(xkazu0x): PROBRABLY BUGGY
         f32 seconds_elapsed_for_frame = raw_seconds_per_frame;
@@ -699,13 +691,13 @@ WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR command_line, int
         
         LARGE_INTEGER end_counter = win32_get_time();
         f32 ms_per_frame = 1000.0f*win32_get_delta_seconds(last_counter, end_counter);
-        f32 frames_per_second = (f32)global_win32.time_frequency/(f32)(end_counter.QuadPart - last_counter.QuadPart);
+        f32 frames_per_second = (f32)win32.time_frequency/(f32)(end_counter.QuadPart - last_counter.QuadPart);
 
         last_counter = end_counter;
         last_cycle_count = end_cycle_count;
 
         // NOTE(xkazu0x): display framebuffer
-        win32_window_size_t window_size = win32_get_window_size(window_handle);
+        Win32_Window_Size window_size = win32_get_window_size(window_handle);
         window_width = window_size.x;
         window_height = window_size.y;
         win32_display_framebuffer(framebuffer, window_handle, window_width, window_height);

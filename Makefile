@@ -1,7 +1,7 @@
 CC := g++
 CFLAGS := -O0 -g -Wall -Wextra -Wno-padded -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -Wno-write-strings
 DEFINES := -DEXCALIBUR_INTERNAL=1 -DEXCALIBUR_DEBUG=1
-INCLUDES := -I.
+INCLUDES := -I. -Isrc
 LIBS := -luser32 -lgdi32 -lwinmm
 
 SRC_DIR := src
@@ -19,7 +19,7 @@ $(BUILD_DIR):
 $(BUILD_DIR)/$(DLL): $(SRC_DIR)/excalibur_game.cpp
 	$(CC) $(CFLAGS) -shared -o $@ $^ $(DEFINES)
 
-$(BUILD_DIR)/$(EXEC): $(SRC_DIR)/excalibur_win32.cpp
+$(BUILD_DIR)/$(EXEC): $(SRC_DIR)/os/excalibur_win32.cpp
 	$(CC) $(CFLAGS) -mconsole -o $@ $^ $(DEFINES) $(INCLUDES) $(LIBS)
 
 .PHONY: run

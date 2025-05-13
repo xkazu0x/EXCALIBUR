@@ -43,8 +43,8 @@ enum sim_entity_flags_t {
 };
 
 struct sim_entity_collision_volume_t {
-    vec3 offset;
-    vec3 dim;
+    Vec3 offset;
+    Vec3 dim;
 };
 
 struct sim_entity_collision_volume_group_t {
@@ -67,8 +67,8 @@ struct sim_entity_t {
     entity_type_t type;
     u32 flags;
 
-    vec3 pos;
-    vec3 d_pos;
+    Vec3 pos;
+    Vec3 d_pos;
     
     sim_entity_collision_volume_group_t *collision;
     
@@ -85,7 +85,7 @@ struct sim_entity_t {
     entity_reference_t sword;
 
     // NOTE(xkazu0x): only for stairwells
-    vec2 walkable_dim;
+    Vec2 walkable_dim;
     f32 walkable_height;
 };
 
@@ -103,8 +103,8 @@ struct sim_region_t {
     f32 max_entity_velocity;
     
     world_position_t origin;
-    rect3 bounds;
-    rect3 updatable_bounds;
+    Rect3 bounds;
+    Rect3 updatable_bounds;
     
     u32 max_entity_count;
     u32 entity_count;

@@ -2,8 +2,8 @@
 #include <stdarg.h>
 
 internal void
-_log(log_level_t level, char *message, ...) {
-    const char *levels[LOG_LEVEL_MAX] {
+_log(Log_Level level, char *message, ...) {
+    const char *levels[LogLevel_Count] {
         "[FATAL]: ",
         "[ERROR]: ",
         "[WARN]: ",

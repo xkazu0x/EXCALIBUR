@@ -1,23 +1,104 @@
-internal inline vec2
+////////////////////////////////
+// NOTE(xkazu0x): intrinsics
+
+internal inline s32
+round_f32_to_s32(f32 x) {
+    s32 result = (s32)roundf(x);
+    return(result);
+}
+
+internal inline u32
+round_f32_to_u32(f32 x) {
+    u32 result = (u32)roundf(x);
+    return(result);
+}
+
+internal inline s32
+truncate_f32_to_s32(f32 x) {
+    s32 result = (s32)x;
+    return(result);
+}
+
+internal inline u32
+truncate_f32_to_u32(f32 x) {
+    u32 result = (u32)x;
+    return(result);
+}
+
+internal inline s32
+sign_of(s32 x) {
+    s32 result = (x >= 0) ? 1 : -1;
+    return(result);
+}
+
+internal inline u32
+rotate_left(u32 value, s32 amount) {
+#if COMPILER_CL
+    u32 result = _rotl(value, amount);
+#else
+    // TODO(xkazu0x): port this to other compiler platform
+    amount &= 31;
+    u32 result = ((value << amount) | (value >> (32 - amount)));
+#endif
+    return(result);
+}
+
+internal inline u32
+rotate_right(u32 value, s32 amount) {
+#if COMPILER_CL
+    u32 result = _rotr(value, amount);
+#else
+    // TODO(xkazu0x): port this to other compiler platform
+    amount &= 31;
+    u32 result = ((value >> amount) | (value << (32 - amount)));
+#endif
+    return(result);
+}
+
+#if COMPILER_CL
+#include <intrin.h>
+#endif
+
+internal inline bit_scan_result_t
+find_least_significant_set_bit(u32 value) {
+    bit_scan_result_t result = {};
+#if COMPILER_CL
+    result.found = _BitScanForward((unsigned long *)&result.index, value);
+#else
+    for (u32 test = 0; test < 32; test++) {
+        if (value & (1 << test)) {
+            result.index = test;
+            result.found = true;
+            break;
+        }
+    }
+#endif
+    return(result);
+}
+
+////////////////////////////////
+// NOTE(xkazu0x): Vector functions
+
+internal inline Vec2
 make_vec2(f32 f) {
-    vec2 result;
+    Vec2 result;
     result.x = f;
     result.y = f;
     return(result);
 }
 
-internal inline vec3
+internal inline Vec3
 make_vec3(f32 f) {
-    vec3 result;
+    Vec3 result;
     result.x = f;
     result.y = f;
     result.z = f;
     return(result);
 }
 
-internal inline vec4
+internal inline Vec4
 make_vec4(f32 f) {
-    vec4 result;
+    Vec4 result;
     result.x = f;
     result.y = f;
     result.z = f;
@@ -25,26 +106,26 @@ make_vec4(f32 f) {
     return(result);
 }
 
-internal inline vec2
+internal inline Vec2
 make_vec2(f32 x, f32 y) {
-    vec2 result;
+    Vec2 result;
     result.x = x;
     result.y = y;
     return(result);
 }
 
-internal inline vec3
+internal inline Vec3
 make_vec3(f32 x, f32 y, f32 z) {
-    vec3 result;
+    Vec3 result;
     result.x = x;
     result.y = y;
     result.z = z;
     return(result);
 }
 
-internal inline vec4
+internal inline Vec4
 make_vec4(f32 x, f32 y, f32 z, f32 w) {
-    vec4 result;
+    Vec4 result;
     result.x = x;
     result.y = y;
     result.z = z;
@@ -52,18 +133,18 @@ make_vec4(f32 x, f32 y, f32 z, f32 w) {
     return(result);
 }
 
-internal inline vec3
-make_vec3(vec2 xy, f32 z) {
-    vec3 result;
+internal inline Vec3
+make_vec3(Vec2 xy, f32 z) {
+    Vec3 result;
     result.x = xy.x;
     result.y = xy.y;
     result.z = z;
     return(result);
 }
 
-internal inline vec4
-make_vec4(vec2 xy, f32 z, f32 w) {
-    vec4 result;
+internal inline Vec4
+make_vec4(Vec2 xy, f32 z, f32 w) {
+    Vec4 result;
     result.x = xy.x;
     result.y = xy.y;
     result.z = z;
@@ -71,9 +152,9 @@ make_vec4(vec2 xy, f32 z, f32 w) {
     return(result);
 }
 
-internal inline vec4
-make_vec4(vec3 xyz, f32 w) {
-    vec4 result;
+internal inline Vec4
+make_vec4(Vec3 xyz, f32 w) {
+    Vec4 result;
     result.x = xyz.x;
     result.y = xyz.y;
     result.z = xyz.z;
@@ -81,26 +162,26 @@ make_vec4(vec3 xyz, f32 w) {
     return(result);
 }
 
-internal inline vec2
-operator+(vec2 a, vec2 b) {
-    vec2 result;
+internal inline Vec2
+operator+(Vec2 a, Vec2 b) {
+    Vec2 result;
     result.x = a.x + b.x;
     result.y = a.y + b.y;
     return(result);
 }
 
-internal inline vec3
-operator+(vec3 a, vec3 b) {
-    vec3 result;
+internal inline Vec3
+operator+(Vec3 a, Vec3 b) {
+    Vec3 result;
     result.x = a.x + b.x;
     result.y = a.y + b.y;
     result.z = a.z + b.z;
     return(result);
 }
 
-internal inline vec4
-operator+(vec4 a, vec4 b) {
-    vec4 result;
+internal inline Vec4
+operator+(Vec4 a, Vec4 b) {
+    Vec4 result;
     result.x = a.x + b.x;
     result.y = a.y + b.y;
     result.z = a.z + b.z;
@@ -108,44 +189,44 @@ operator+(vec4 a, vec4 b) {
     return(result);
 }
 
-internal inline vec2 &
-operator+=(vec2 &a, vec2 b) {
+internal inline Vec2 &
+operator+=(Vec2 &a, Vec2 b) {
     a = a + b;
     return(a);
 }
 
-internal inline vec3 &
-operator+=(vec3 &a, vec3 b) {
+internal inline Vec3 &
+operator+=(Vec3 &a, Vec3 b) {
     a = a + b;
     return(a);
 }
 
-internal inline vec4 &
-operator+=(vec4 &a, vec4 b) {
+internal inline Vec4 &
+operator+=(Vec4 &a, Vec4 b) {
     a = a + b;
     return(a);
 }
 
-internal inline vec2
-operator-(vec2 v) {
-    vec2 result;
+internal inline Vec2
+operator-(Vec2 v) {
+    Vec2 result;
     result.x = -v.x;
     result.y = -v.y;
     return(result);
 }
 
-internal inline vec3
-operator-(vec3 v) {
-    vec3 result;
+internal inline Vec3
+operator-(Vec3 v) {
+    Vec3 result;
     result.x = -v.x;
     result.y = -v.y;
     result.z = -v.z;
     return(result);
 }
 
-internal inline vec4
-operator-(vec4 v) {
-    vec4 result;
+internal inline Vec4
+operator-(Vec4 v) {
+    Vec4 result;
     result.x = -v.x;
     result.y = -v.y;
     result.z = -v.z;
@@ -153,26 +234,26 @@ operator-(vec4 v) {
     return(result);
 }
 
-internal inline vec2
-operator-(vec2 a, vec2 b) {
-    vec2 result;
+internal inline Vec2
+operator-(Vec2 a, Vec2 b) {
+    Vec2 result;
     result.x = a.x - b.x;
     result.y = a.y - b.y;
     return(result);
 }
 
-internal inline vec3
-operator-(vec3 a, vec3 b) {
-    vec3 result;
+internal inline Vec3
+operator-(Vec3 a, Vec3 b) {
+    Vec3 result;
     result.x = a.x - b.x;
     result.y = a.y - b.y;
     result.z = a.z - b.z;
     return(result);
 }
 
-internal inline vec4
-operator-(vec4 a, vec4 b) {
-    vec4 result;
+internal inline Vec4
+operator-(Vec4 a, Vec4 b) {
+    Vec4 result;
     result.x = a.x - b.x;
     result.y = a.y - b.y;
     result.z = a.z - b.z;
@@ -180,44 +261,44 @@ operator-(vec4 a, vec4 b) {
     return(result);
 }
 
-internal inline vec2 &
-operator-=(vec2 &a, vec2 b) {
+internal inline Vec2 &
+operator-=(Vec2 &a, Vec2 b) {
     a = a - b;
     return(a);
 }
 
-internal inline vec3 &
-operator-=(vec3 &a, vec3 b) {
+internal inline Vec3 &
+operator-=(Vec3 &a, Vec3 b) {
     a = a - b;
     return(a);
 }
 
-internal inline vec4 &
-operator-=(vec4 &a, vec4 b) {
+internal inline Vec4 &
+operator-=(Vec4 &a, Vec4 b) {
     a = a - b;
     return(a);
 }
 
-internal inline vec2
-operator*(f32 s, vec2 v) {
-    vec2 result;
+internal inline Vec2
+operator*(f32 s, Vec2 v) {
+    Vec2 result;
     result.x = s*v.x;
     result.y = s*v.y;
     return(result);
 }
 
-internal inline vec3
-operator*(f32 s, vec3 v) {
-    vec3 result;
+internal inline Vec3
+operator*(f32 s, Vec3 v) {
+    Vec3 result;
     result.x = s*v.x;
     result.y = s*v.y;
     result.z = s*v.z;
     return(result);
 }
 
-internal inline vec4
-operator*(f32 s, vec4 v) {
-    vec4 result;
+internal inline Vec4
+operator*(f32 s, Vec4 v) {
+    Vec4 result;
     result.x = s*v.x;
     result.y = s*v.y;
     result.z = s*v.z;
@@ -225,26 +306,26 @@ operator*(f32 s, vec4 v) {
     return(result);
 }
 
-internal inline vec2
-operator*(vec2 v, f32 s) {
-    vec2 result;
+internal inline Vec2
+operator*(Vec2 v, f32 s) {
+    Vec2 result;
     result.x = v.x*s;
     result.y = v.y*s;
     return(result);
 }
 
-internal inline vec3
-operator*(vec3 v, f32 s) {
-    vec3 result;
+internal inline Vec3
+operator*(Vec3 v, f32 s) {
+    Vec3 result;
     result.x = v.x*s;
     result.y = v.y*s;
     result.z = v.z*s;
     return(result);
 }
 
-internal inline vec4
-operator*(vec4 v, f32 s) {
-    vec4 result;
+internal inline Vec4
+operator*(Vec4 v, f32 s) {
+    Vec4 result;
     result.x = v.x*s;
     result.y = v.y*s;
     result.z = v.z*s;
@@ -252,33 +333,60 @@ operator*(vec4 v, f32 s) {
     return(result);
 }
 
-internal inline vec2 &
-operator*=(vec2 &v, f32 s) {
+internal inline Vec2 &
+operator*=(Vec2 &v, f32 s) {
     v = v*s;
     return(v);
 }
 
-internal inline vec3 &
-operator*=(vec3 &v, f32 s) {
+internal inline Vec3 &
+operator*=(Vec3 &v, f32 s) {
     v = v*s;
     return(v);
 }
 
-internal inline vec4 &
-operator*=(vec4 &v, f32 s) {
+internal inline Vec4 &
+operator*=(Vec4 &v, f32 s) {
     v = v*s;
     return(v);
+}
+
+internal inline Vec2
+operator/(Vec2 a, Vec2 b) {
+    Vec2 result;
+    result.x = a.x/b.x;
+    result.y = a.y/b.y;
+    return(result);
+}
+
+internal inline Vec3
+operator/(Vec3 a, Vec3 b) {
+    Vec3 result;
+    result.x = a.x/b.x;
+    result.y = a.y/b.y;
+    result.z = a.z/b.z;
+    return(result);
+}
+
+internal inline Vec4
+operator/(Vec4 a, Vec4 b) {
+    Vec4 result;
+    result.x = a.x/b.x;
+    result.y = a.y/b.y;
+    result.z = a.z/b.z;
+    result.w = a.w/b.w;
+    return(result);
 }
 
 internal inline b32
-operator==(vec2 a, vec2 b) {
+operator==(Vec2 a, Vec2 b) {
     b32 result = ((a.x == b.x) &&
                   (a.y == b.y));
     return(result);
 }
 
 internal inline b32
-operator==(vec3 a, vec3 b) {
+operator==(Vec3 a, Vec3 b) {
     b32 result = ((a.x == b.x) &&
                   (a.y == b.y) &&
                   (a.z == b.z));
@@ -286,7 +394,7 @@ operator==(vec3 a, vec3 b) {
 }
 
 internal inline b32
-operator==(vec4 a, vec4 b) {
+operator==(Vec4 a, Vec4 b) {
     b32 result = ((a.x == b.x) &&
                   (a.y == b.y) &&
                   (a.z == b.z) &&
@@ -295,14 +403,14 @@ operator==(vec4 a, vec4 b) {
 }
 
 internal inline b32
-operator!=(vec2 a, vec2 b) {
+operator!=(Vec2 a, Vec2 b) {
     b32 result = ((a.x != b.x) &&
                   (a.y != b.y));
     return(result);
 }
 
 internal inline b32
-operator!=(vec3 a, vec3 b) {
+operator!=(Vec3 a, Vec3 b) {
     b32 result = ((a.x != b.x) &&
                   (a.y != b.y) &&
                   (a.z != b.z));
@@ -310,7 +418,7 @@ operator!=(vec3 a, vec3 b) {
 }
 
 internal inline b32
-operator!=(vec4 a, vec4 b) {
+operator!=(Vec4 a, Vec4 b) {
     b32 result = ((a.x != b.x) &&
                   (a.y != b.y) &&
                   (a.z != b.z) &&
@@ -318,26 +426,26 @@ operator!=(vec4 a, vec4 b) {
     return(result);
 }
 
-internal inline vec2
-vec_hadamard(vec2 a, vec2 b) {
-    vec2 result;
+internal inline Vec2
+hadamard(Vec2 a, Vec2 b) {
+    Vec2 result;
     result.x = a.x*b.x;
     result.y = a.y*b.y;
     return(result);
 }
 
-internal inline vec3
-vec_hadamard(vec3 a, vec3 b) {
-    vec3 result;
+internal inline Vec3
+hadamard(Vec3 a, Vec3 b) {
+    Vec3 result;
     result.x = a.x*b.x;
     result.y = a.y*b.y;
     result.z = a.z*b.z;
     return(result);
 }
 
-internal inline vec4
-vec_hadamard(vec4 a, vec4 b) {
-    vec4 result;
+internal inline Vec4
+hadamard(Vec4 a, Vec4 b) {
+    Vec4 result;
     result.x = a.x*b.x;
     result.y = a.y*b.y;
     result.z = a.z*b.z;
@@ -346,173 +454,176 @@ vec_hadamard(vec4 a, vec4 b) {
 }
 
 internal inline f32
-vec_dot(vec2 a, vec2 b) {
+dot(Vec2 a, Vec2 b) {
     f32 result = a.x*b.x + a.y*b.y;
     return(result);
 }
 
 internal inline f32
-vec_dot(vec3 a, vec3 b) {
+dot(Vec3 a, Vec3 b) {
     f32 result = a.x*b.x + a.y*b.y + a.z*b.z;
     return(result);
 }
 
 internal inline f32
-vec_dot(vec4 a, vec4 b) {
+dot(Vec4 a, Vec4 b) {
     f32 result = a.x*b.x + a.y*b.y + a.z*b.z + a.w*b.w;
     return(result);
 }
 
 internal inline f32
-vec_length_square(vec2 v) {
-    f32 result = vec_dot(v, v);
+length_squared(Vec2 v) {
+    f32 result = dot(v, v);
     return(result);
 }
 
 internal inline f32
-vec_length_square(vec3 v) {
-    f32 result = vec_dot(v, v);
+length_squared(Vec3 v) {
+    f32 result = dot(v, v);
     return(result);
 }
 
 internal inline f32
-vec_length_square(vec4 v) {
-    f32 result = vec_dot(v, v);
+length_squared(Vec4 v) {
+    f32 result = dot(v, v);
     return(result);
 }
 
 internal inline f32
-vec_length(vec2 v) {
-    f32 result = square_root(vec_length_square(v));
+length(Vec2 v) {
+    f32 result = sqrt_f32(length_squared(v));
     return(result);
 }
 
 internal inline f32
-vec_length(vec3 v) {
-    f32 result = square_root(vec_length_square(v));
+length(Vec3 v) {
+    f32 result = sqrt_f32(length_squared(v));
     return(result);
 }
 
 internal inline f32
-vec_length(vec4 v) {
-    f32 result = square_root(vec_length_square(v));
+length(Vec4 v) {
+    f32 result = sqrt_f32(length_squared(v));
     return(result);
 }
 
-internal inline rect2
-make_rect2_min_max(vec2 min, vec2 max) {
-    rect2 result;
+////////////////////////////////
+// NOTE(xkazu0x): Rectangle functions
+
+internal inline Rect2
+make_rect2_min_max(Vec2 min, Vec2 max) {
+    Rect2 result;
     result.min = min;
     result.min = max;
     return(result);
 }
 
-internal inline rect3
-make_rect3_min_max(vec3 min, vec3 max) {
-    rect3 result;
+internal inline Rect3
+make_rect3_min_max(Vec3 min, Vec3 max) {
+    Rect3 result;
     result.min = min;
     result.min = max;
     return(result);
 }
 
-internal inline rect2
-make_rect2_min_dim(vec2 min, vec2 dim) {
-    rect2 result;
+internal inline Rect2
+make_rect2_min_dim(Vec2 min, Vec2 dim) {
+    Rect2 result;
     result.min = min;
     result.min = min + dim;
     return(result);
 }
 
-internal inline rect3
-make_rect3_min_dim(vec3 min, vec3 dim) {
-    rect3 result;
+internal inline Rect3
+make_rect3_min_dim(Vec3 min, Vec3 dim) {
+    Rect3 result;
     result.min = min;
     result.min = min + dim;
     return(result);
 }
 
-internal inline rect2
-make_rect2_center_half_dim(vec2 center, vec2 half_dim) {
-    rect2 result;
+internal inline Rect2
+make_rect2_center_half_dim(Vec2 center, Vec2 half_dim) {
+    Rect2 result;
     result.min = center - half_dim;
     result.max = center + half_dim;
     return(result);
 }
 
-internal inline rect3
-make_rect3_center_half_dim(vec3 center, vec3 half_dim) {
-    rect3 result;
+internal inline Rect3
+make_rect3_center_half_dim(Vec3 center, Vec3 half_dim) {
+    Rect3 result;
     result.min = center - half_dim;
     result.max = center + half_dim;
     return(result);
 }
 
-internal inline rect2
-make_rect2_center_dim(vec2 center, vec2 dim) {
-    rect2 result = make_rect2_center_half_dim(center, 0.5f*dim);
+internal inline Rect2
+make_rect2_center_dim(Vec2 center, Vec2 dim) {
+    Rect2 result = make_rect2_center_half_dim(center, 0.5f*dim);
     return(result);
 }
 
-internal inline rect3
-make_rect3_center_dim(vec3 center, vec3 dim) {
-    rect3 result = make_rect3_center_half_dim(center, 0.5f*dim);
+internal inline Rect3
+make_rect3_center_dim(Vec3 center, Vec3 dim) {
+    Rect3 result = make_rect3_center_half_dim(center, 0.5f*dim);
     return(result);
 }
 
-internal inline vec2
-get_rect_min(rect2 rect) {
-    vec2 result = rect.min;
+internal inline Vec2
+get_rect_min(Rect2 rect) {
+    Vec2 result = rect.min;
     return(result);
 }
 
-internal inline vec3
-get_rect_min(rect3 rect) {
-    vec3 result = rect.min;
+internal inline Vec3
+get_rect_min(Rect3 rect) {
+    Vec3 result = rect.min;
     return(result);
 }
 
-internal inline vec2
-get_rect_max(rect2 rect) {
-    vec2 result = rect.max;
+internal inline Vec2
+get_rect_max(Rect2 rect) {
+    Vec2 result = rect.max;
     return(result);
 }
 
-internal inline vec3
-get_rect_max(rect3 rect) {
-    vec3 result = rect.max;
+internal inline Vec3
+get_rect_max(Rect3 rect) {
+    Vec3 result = rect.max;
     return(result);
 }
 
-internal inline vec2
-get_rect_center(rect2 rect) {
-    vec2 result = 0.5f*(rect.min + rect.max);
+internal inline Vec2
+get_rect_center(Rect2 rect) {
+    Vec2 result = 0.5f*(rect.min + rect.max);
     return(result);
 }
 
-internal inline vec3
-get_rect_center(rect3 rect) {
-    vec3 result = 0.5f*(rect.min + rect.max);
+internal inline Vec3
+get_rect_center(Rect3 rect) {
+    Vec3 result = 0.5f*(rect.min + rect.max);
     return(result);
 }
 
-internal inline rect2
-rect_add_radius(rect2 rect, vec2 radius) {
-    rect2 result;
+internal inline Rect2
+rect_add_radius(Rect2 rect, Vec2 radius) {
+    Rect2 result;
     result.min = rect.min - radius;
     result.max = rect.max + radius;
     return(result);
 }
 
-internal inline rect3
-rect_add_radius(rect3 rect, vec3 radius) {
-    rect3 result;
+internal inline Rect3
+rect_add_radius(Rect3 rect, Vec3 radius) {
+    Rect3 result;
     result.min = rect.min - radius;
     result.max = rect.max + radius;
     return(result);
 }
 
 internal inline b32
-is_in_rect(rect2 rect, vec2 test) {
+is_in_rect(Rect2 rect, Vec2 test) {
     b32 result = ((test.x >= rect.min.x) &&
                   (test.y >= rect.min.y) &&
                   (test.x < rect.max.x) &&
@@ -521,7 +632,7 @@ is_in_rect(rect2 rect, vec2 test) {
 }
 
 internal inline b32
-is_in_rect(rect3 rect, vec3 test) {
+is_in_rect(Rect3 rect, Vec3 test) {
     b32 result = ((test.x >= rect.min.x) &&
                   (test.y >= rect.min.y) &&
                   (test.z >= rect.min.z) &&
@@ -532,7 +643,7 @@ is_in_rect(rect3 rect, vec3 test) {
 }
 
 internal inline b32
-rect_intersect(rect3 a, rect3 b) {
+rect_intersect(Rect3 a, Rect3 b) {
     b32 result = !((b.max.x <= a.min.x) ||
                    (b.min.x >= a.max.x) ||
                    (b.max.y <= a.min.y) ||
@@ -543,12 +654,6 @@ rect_intersect(rect3 a, rect3 b) {
 }
 
 ////////////////
-
-internal inline f32
-square(f32 x) {
-    f32 result = x*x;
-    return(result);
-}
 
 internal inline f32
 lerp(f32 a, f32 t, f32 b) {
@@ -573,17 +678,17 @@ clamp01(f32 value) {
     return(result);
 }
 
-internal inline vec2
-clamp01(vec2 value) {
-    vec2 result;
+internal inline Vec2
+clamp01(Vec2 value) {
+    Vec2 result;
     result.x = clamp01(value.x);
     result.y = clamp01(value.y);
     return(result);
 }
 
-internal inline vec3
-clamp01(vec3 value) {
-    vec3 result;
+internal inline Vec3
+clamp01(Vec3 value) {
+    Vec3 result;
     result.x = clamp01(value.x);
     result.y = clamp01(value.y);
     result.z = clamp01(value.z);
@@ -611,35 +716,35 @@ safe_ratio1(f32 numerator, f32 divisor) {
     return(result);
 }
 
-internal inline vec2
-get_barycentric(rect2 rect, vec2 point) {
-    vec2 result;
+internal inline Vec2
+get_barycentric(Rect2 rect, Vec2 point) {
+    Vec2 result;
     result.x = safe_ratio0(point.x - rect.min.x, rect.max.x - rect.min.x);
     result.y = safe_ratio0(point.y - rect.min.y, rect.max.y - rect.min.y);
     return(result);
 }
 
-internal inline vec3
-get_barycentric(rect3 rect, vec3 point) {
-    vec3 result;
+internal inline Vec3
+get_barycentric(Rect3 rect, Vec3 point) {
+    Vec3 result;
     result.x = safe_ratio0(point.x - rect.min.x, rect.max.x - rect.min.x);
     result.y = safe_ratio0(point.y - rect.min.y, rect.max.y - rect.min.y);
     result.z = safe_ratio0(point.z - rect.min.z, rect.max.z - rect.min.z);
     return(result);
 }
 
-internal inline vec3
+internal inline Vec3
 make_rgb(f32 r, f32 g, f32 b) {
-    vec3 result;
+    Vec3 result;
     result.r = r/255.0f;
     result.g = g/255.0f;
     result.b = b/255.0f;
     return(result);
 }
 
-internal inline vec4
+internal inline Vec4
 make_rgba(f32 r, f32 g, f32 b, f32 a) {
-    vec4 result;
+    Vec4 result;
     result.r = r/255.0f;
     result.g = g/255.0f;
     result.b = b/255.0f;
