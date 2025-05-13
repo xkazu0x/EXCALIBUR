@@ -16,9 +16,9 @@ set cl_release= call cl /O2 /DEXCALIBUR_INTERNAL=0 /DEXCALIBUR_DEBUG=0 %cl_commo
 set cl_link=    /link
 set cl_out=     /out:
 
-set clang_common=  -I..\src\ -gcodeview -fdiagnostics-absolute-paths -Wall -Wno-missing-braces -Wno-unused-function -Wno-writable-strings
-set clang_debug=   call clang -g -O0 -DBUILD_DEBUG=1 %clang_common%
-set clang_release= call clang -g -O2 -DBUILD_DEBUG=0 %clang_common%
+set clang_common=  -I..\src\ -gcodeview -fdiagnostics-absolute-paths -Wall -Wno-missing-braces -Wno-unused-function -Wno-unused-variable -Wno-writable-strings -Wno-format-security
+set clang_debug=   call clang -g -O0 -DEXCALIBUR_INTERNAL=1 -DEXCALIBUR_DEBUG=1 %clang_common%
+set clang_release= call clang -g -O2 -DEXCALIBUR_INTERNAL=0 -DEXCALIBUR_DEBUG=0 %clang_common%
 set clang_link=    
 set clang_out=     -o
 
