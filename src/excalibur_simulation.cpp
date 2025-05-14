@@ -39,9 +39,9 @@ get_sim_space_pos(sim_region_t *region, low_entity_t *stored) {
 }
 
 internal sim_entity_t *
-add_sim_entity(game_state_t *state, sim_region_t *region, u32 storage_index, low_entity_t *stored, Vec3 *pos);
+add_sim_entity(Game_State *state, sim_region_t *region, u32 storage_index, low_entity_t *stored, Vec3 *pos);
 inline void
-load_entity_reference(game_state_t *state, sim_region_t *region, entity_reference_t *reference) {
+load_entity_reference(Game_State *state, sim_region_t *region, entity_reference_t *reference) {
     if (reference->index) {
         sim_entity_hash_t *entry = get_hash_from_storage_index(region, reference->index);
         if (entry->ptr == 0) {
@@ -64,7 +64,7 @@ store_entity_reference(entity_reference_t *reference) {
 }
 
 internal sim_entity_t *
-add_sim_entity_raw(game_state_t *state, sim_region_t *region,
+add_sim_entity_raw(Game_State *state, sim_region_t *region,
                    u32 storage_index, low_entity_t *stored) {
     Assert(storage_index);
     sim_entity_t *entity = 0;
@@ -105,7 +105,7 @@ entity_overlaps_rect(Vec3 pos, sim_entity_collision_volume_t volume, Rect3 rect)
 }
 
 internal sim_entity_t *
-add_sim_entity(game_state_t *state, sim_region_t *region, u32 storage_index, low_entity_t *stored, Vec3 *pos) {
+add_sim_entity(Game_State *state, sim_region_t *region, u32 storage_index, low_entity_t *stored, Vec3 *pos) {
     sim_entity_t *entity = add_sim_entity_raw(state, region, storage_index, stored);
     
     if (entity) {
@@ -121,11 +121,11 @@ add_sim_entity(game_state_t *state, sim_region_t *region, u32 storage_index, low
 }
 
 internal sim_region_t *
-begin_sim(memory_arena_t *sim_arena, game_state_t *state, world_t *world,
+begin_sim(Arena *sim_arena, Game_State *state, world_t *world,
           world_position_t origin, Rect3 bounds, f32 delta_time) {
     // TODO(xkazu0x): if entities were stored in the world, we wouldn't need the game state here
     
-    sim_region_t *region = memory_arena_push_struct(sim_arena, sim_region_t);
+    sim_region_t *region = push_struct(sim_arena, sim_region_t);
     zero_struct(region->hash);
 
     // TODO(xkazu0x): try to make these get enforced more rigoriously
@@ -142,7 +142,7 @@ begin_sim(memory_arena_t *sim_arena, game_state_t *state, world_t *world,
     // TODO(xkazu0x): need to be more specific about entity counts
     region->max_entity_count = 4096;
     region->entity_count = 0;
-    region->entities = memory_arena_push_array(sim_arena, region->max_entity_count, sim_entity_t);
+    region->entities = push_array(sim_arena, sim_entity_t, region->max_entity_count);
     
     world_position_t min_chunk_pos = map_into_chunk_space(world, region->origin, get_rect_min(region->bounds));
     world_position_t max_chunk_pos = map_into_chunk_space(world, region->origin, get_rect_max(region->bounds));
@@ -186,7 +186,7 @@ begin_sim(memory_arena_t *sim_arena, game_state_t *state, world_t *world,
 }
 
 internal void
-end_sim(sim_region_t *region, game_state_t *state) {
+end_sim(sim_region_t *region, Game_State *state) {
     // TODO(xkazu0x): maybe don't take a game state here, low entities
     // should be stored in the world??
     
@@ -270,7 +270,7 @@ test_wall(f32 wall_x, f32 rel_x, f32 rel_y, f32 player_delta_x, f32 player_delta
 }
 
 internal b32
-can_collide(game_state_t *state, sim_entity_t *a, sim_entity_t *b) {
+can_collide(Game_State *state, sim_entity_t *a, sim_entity_t *b) {
     b32 result = false;
 
     if (a->storage_index > b->storage_index) {
@@ -304,7 +304,7 @@ can_collide(game_state_t *state, sim_entity_t *a, sim_entity_t *b) {
 }
 
 internal b32
-handle_collision(game_state_t *state, sim_entity_t *a, sim_entity_t *b) {
+handle_collision(Game_State *state, sim_entity_t *a, sim_entity_t *b) {
     b32 stops_on_collision = false;
 
     if (a->type == ENTITY_TYPE_SWORD) {
@@ -333,7 +333,7 @@ handle_collision(game_state_t *state, sim_entity_t *a, sim_entity_t *b) {
 }
 
 internal b32
-can_overlap(game_state_t *state, sim_entity_t *mover, sim_entity_t *region) {
+can_overlap(Game_State *state, sim_entity_t *mover, sim_entity_t *region) {
     b32 result = false;
     if (mover != region) {
         if (region->type == ENTITY_TYPE_STAIRWELL) {
@@ -344,7 +344,7 @@ can_overlap(game_state_t *state, sim_entity_t *mover, sim_entity_t *region) {
 }
 
 internal void
-handle_overlap(game_state_t *state, sim_entity_t *mover, sim_entity_t *region,
+handle_overlap(Game_State *state, sim_entity_t *mover, sim_entity_t *region,
                f32 delta_time, f32 *ground) {
     if (region->type == ENTITY_TYPE_STAIRWELL) {
         *ground = get_stair_ground(region, get_entity_ground_point(mover));
@@ -392,7 +392,7 @@ entities_overlap(sim_entity_t *entity, sim_entity_t *test_entity, Vec3 epsilon =
 }
 
 internal void
-move_entity(game_state_t *state, sim_region_t *region, sim_entity_t *entity, f32 delta,
+move_entity(Game_State *state, sim_region_t *region, sim_entity_t *entity, f32 delta,
             move_spec_t *move_spec, Vec3 dd_pos) {
     Assert(!is_entity_flag_set(entity, ENTITY_FLAG_NON_SPATIAL));
     
@@ -593,8 +593,8 @@ move_entity(game_state_t *state, sim_region_t *region, sim_entity_t *entity, f32
 
                 b32 stops_on_collision = handle_collision(state, entity, hit_entity);
                 if (stops_on_collision) {
-                    player_delta = player_delta - 1*dot(player_delta, wall_normal)*wall_normal;
-                    entity->d_pos = entity->d_pos - 1*dot(entity->d_pos, wall_normal)*wall_normal;
+                    player_delta = player_delta - 1*dot_product(player_delta, wall_normal)*wall_normal;
+                    entity->d_pos = entity->d_pos - 1*dot_product(entity->d_pos, wall_normal)*wall_normal;
                 }
             } else {
                 break;

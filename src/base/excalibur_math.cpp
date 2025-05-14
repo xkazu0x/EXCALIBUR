@@ -427,7 +427,7 @@ operator!=(Vec4 a, Vec4 b) {
 }
 
 internal inline Vec2
-hadamard(Vec2 a, Vec2 b) {
+hadamard_product(Vec2 a, Vec2 b) {
     Vec2 result;
     result.x = a.x*b.x;
     result.y = a.y*b.y;
@@ -435,7 +435,7 @@ hadamard(Vec2 a, Vec2 b) {
 }
 
 internal inline Vec3
-hadamard(Vec3 a, Vec3 b) {
+hadamard_product(Vec3 a, Vec3 b) {
     Vec3 result;
     result.x = a.x*b.x;
     result.y = a.y*b.y;
@@ -444,7 +444,7 @@ hadamard(Vec3 a, Vec3 b) {
 }
 
 internal inline Vec4
-hadamard(Vec4 a, Vec4 b) {
+hadamard_product(Vec4 a, Vec4 b) {
     Vec4 result;
     result.x = a.x*b.x;
     result.y = a.y*b.y;
@@ -454,38 +454,38 @@ hadamard(Vec4 a, Vec4 b) {
 }
 
 internal inline f32
-dot(Vec2 a, Vec2 b) {
+dot_product(Vec2 a, Vec2 b) {
     f32 result = a.x*b.x + a.y*b.y;
     return(result);
 }
 
 internal inline f32
-dot(Vec3 a, Vec3 b) {
+dot_product(Vec3 a, Vec3 b) {
     f32 result = a.x*b.x + a.y*b.y + a.z*b.z;
     return(result);
 }
 
 internal inline f32
-dot(Vec4 a, Vec4 b) {
+dot_product(Vec4 a, Vec4 b) {
     f32 result = a.x*b.x + a.y*b.y + a.z*b.z + a.w*b.w;
     return(result);
 }
 
 internal inline f32
 length_squared(Vec2 v) {
-    f32 result = dot(v, v);
+    f32 result = dot_product(v, v);
     return(result);
 }
 
 internal inline f32
 length_squared(Vec3 v) {
-    f32 result = dot(v, v);
+    f32 result = dot_product(v, v);
     return(result);
 }
 
 internal inline f32
 length_squared(Vec4 v) {
-    f32 result = dot(v, v);
+    f32 result = dot_product(v, v);
     return(result);
 }
 

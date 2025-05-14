@@ -158,13 +158,13 @@ internal inline b32 operator!=(Vec2 a, Vec2 b);
 internal inline b32 operator!=(Vec3 a, Vec3 b);
 internal inline b32 operator!=(Vec4 a, Vec4 b);
 
-internal inline Vec2 hadamard(Vec2 a, Vec2 b);
-internal inline Vec3 hadamard(Vec3 a, Vec3 b);
-internal inline Vec4 hadamard(Vec4 a, Vec4 b);
+internal inline Vec2 hadamard_product(Vec2 a, Vec2 b);
+internal inline Vec3 hadamard_product(Vec3 a, Vec3 b);
+internal inline Vec4 hadamard_product(Vec4 a, Vec4 b);
 
-internal inline f32 dot(Vec2 a, Vec2 b);
-internal inline f32 dot(Vec3 a, Vec3 b);
-internal inline f32 dot(Vec4 a, Vec4 b);
+internal inline f32 dot_product(Vec2 a, Vec2 b);
+internal inline f32 dot_product(Vec3 a, Vec3 b);
+internal inline f32 dot_product(Vec4 a, Vec4 b);
 
 internal inline f32 length_squared(Vec2 v);
 internal inline f32 length_squared(Vec3 v);

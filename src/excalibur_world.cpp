@@ -45,7 +45,7 @@ are_in_same_chunk(world_t *world, world_position_t *a, world_position_t *b) {
 
 inline world_chunk_t *
 get_world_chunk(world_t *world, s32 chunk_x, s32 chunk_y, s32 chunk_z,
-                memory_arena_t *arena = 0) {
+                Arena *arena = 0) {
     Assert(chunk_x > -WORLD_CHUNK_SAFE_MARGIN);
     Assert(chunk_y > -WORLD_CHUNK_SAFE_MARGIN);
     Assert(chunk_z > -WORLD_CHUNK_SAFE_MARGIN);
@@ -67,7 +67,7 @@ get_world_chunk(world_t *world, s32 chunk_x, s32 chunk_y, s32 chunk_z,
         }
 
         if (arena && (chunk->chunk_x != WORLD_CHUNK_UNINITIALIZED) && (!chunk->next_in_hash)) {
-            chunk->next_in_hash = memory_arena_push_struct(arena, world_chunk_t);
+            chunk->next_in_hash = push_struct(arena, world_chunk_t);
             chunk = chunk->next_in_hash;
             chunk->chunk_x = WORLD_CHUNK_UNINITIALIZED;
         }
@@ -134,7 +134,7 @@ chunk_position_from_tile_position(world_t *world, s32 tile_x, s32 tile_y, s32 ti
     world_position_t base_pos = {};
 
     Vec3 tile_dim = make_vec3(world->tile_side_in_meters, world->tile_side_in_meters, world->tile_depth_in_meters);
-    Vec3 offset = hadamard(tile_dim, make_vec3((f32)tile_x, (f32)tile_y, (f32)tile_z));
+    Vec3 offset = hadamard_product(tile_dim, make_vec3((f32)tile_x, (f32)tile_y, (f32)tile_z));
     world_position_t result = map_into_chunk_space(world, base_pos, additional_offset + offset);
     
     Assert(is_canonical(world, result.offset_));
@@ -148,7 +148,7 @@ subtract(world_t *world, world_position_t *a, world_position_t *b) {
                                  (f32)a->chunk_y - (f32)b->chunk_y,
                                  (f32)a->chunk_z - (f32)b->chunk_z);
     
-    Vec3 result = hadamard(world->chunk_dim_in_meters, delta_chunk) + (a->offset_ - b->offset_);
+    Vec3 result = hadamard_product(world->chunk_dim_in_meters, delta_chunk) + (a->offset_ - b->offset_);
 
     return(result);
 }
@@ -163,7 +163,7 @@ centered_chunk_point(u32 chunk_x, u32 chunk_y, u32 chunk_z) {
 }
 
 inline void
-change_entity_location_raw(memory_arena_t *arena, world_t *world, u32 low_entity_index,
+change_entity_location_raw(Arena *arena, world_t *world, u32 low_entity_index,
                            world_position_t *old_pos, world_position_t *new_pos) {
     Assert(!old_pos || is_valid(*old_pos));
     Assert(!new_pos || is_valid(*new_pos));
@@ -216,7 +216,7 @@ change_entity_location_raw(memory_arena_t *arena, world_t *world, u32 low_entity
                 if (old_block) {
                     world->first_free = old_block->next;
                 } else {
-                    old_block = memory_arena_push_struct(arena, world_entity_block_t);
+                    old_block = push_struct(arena, world_entity_block_t);
                 }
             
                 *old_block = *block;
@@ -231,7 +231,7 @@ change_entity_location_raw(memory_arena_t *arena, world_t *world, u32 low_entity
 }
 
 internal void
-change_entity_location(memory_arena_t *arena, world_t *world,
+change_entity_location(Arena *arena, world_t *world,
                        u32 low_entity_index, low_entity_t *low_entity,
                        world_position_t new_pos_init)
 {

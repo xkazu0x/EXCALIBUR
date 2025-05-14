@@ -37,31 +37,63 @@
 // > 0 - not slow code allowed
 // > 1 - slow code welcome
 
-struct memory_arena_t {
-    memi size;
+struct Arena {
+    memi reserve_size;
     memi used;
-    u8 *base;
+    u8 *base_memory;
+
+    s32 temp_count;
 };
 
-internal memory_arena_t
-create_memory_arena(memi size, void *base) {
-    memory_arena_t result;
-    result.size = size;
+internal Arena
+make_arena(memi reserve_size, void *base_memory) {
+    Arena result;
+    result.reserve_size = reserve_size;
     result.used = 0;
-    result.base = (u8 *)base;
+    result.base_memory = (u8 *)base_memory;
+    result.temp_count = 0;
     return(result);
 }
 
 internal void *
-memory_arena_push(memory_arena_t *arena, memi size) {
-    Assert((arena->used + size) <= arena->size);
-    void *result = arena->base + arena->used;
+arena_push(Arena *arena, memi size) {
+    Assert((arena->used + size) <= arena->reserve_size);
+    void *result = arena->base_memory + arena->used;
     arena->used += size;
     return(result);
 }
+#define push_struct(arena, type) (type *)arena_push(arena, sizeof(type))
+#define push_array(arena, type, count) (type *)arena_push(arena, sizeof(type)*(count))
 
-#define memory_arena_push_struct(arena, type) (type *)memory_arena_push(arena, sizeof(type))
-#define memory_arena_push_array(arena, count, type) (type *)memory_arena_push(arena, (count)*sizeof(type))
+struct Temporary_Memory {
+    Arena *arena;
+    memi used;
+};
+
+internal Temporary_Memory
+begin_temporary_memory(Arena *arena) {
+    Temporary_Memory result;
+    result.arena = arena;
+    result.used = arena->used;
+    ++arena->temp_count;
+    return(result);
+}
+
+internal void
+end_temporary_memory(Temporary_Memory *temp_mem) {
+    Arena *arena = temp_mem->arena;
+    
+    Assert(arena->used >= temp_mem->used);
+    arena->used = temp_mem->used;
+
+    Assert(arena->temp_count > 0);
+    --arena->temp_count;
+}
+
+internal void
+check_arena(Arena *arena) {
+    Assert(arena->temp_count == 0);
+}
 
 internal inline void
 zero_size(memi size, void *ptr) {
@@ -74,7 +106,7 @@ zero_size(memi size, void *ptr) {
 #define zero_struct(instance) zero_size(sizeof(instance), &(instance))
 
 #define BITMAP_BYTES_PER_PIXEL 4
-struct bitmap_t {
+struct Bitmap {
     s32 width;
     s32 height;
     s32 pitch;
@@ -90,7 +122,7 @@ struct low_entity_t {
 };
 
 struct entity_visible_piece_t {
-    bitmap_t *bitmap;
+    Bitmap *bitmap;
     Vec3 offset;
     
     Vec4 color;
@@ -115,12 +147,19 @@ struct pairwise_collision_rule_t {
     pairwise_collision_rule_t *next_in_hash;
 };
 
-struct game_state_t;
-internal void add_collision_rule(game_state_t *state, u32 storage_index_a, u32 storage_index_b, b32 should_collide);
-internal void clear_collision_rules_for(game_state_t *state, u32 storage_index);
+struct Game_State;
+internal void add_collision_rule(Game_State *game_state, u32 storage_index_a, u32 storage_index_b, b32 should_collide);
+internal void clear_collision_rules_for(Game_State *game_state, u32 storage_index);
 
-struct game_state_t {
-    memory_arena_t world_arena;
+struct Ground_Buffer {
+    // NOTE(xkazu0x): An invalid position tells us that
+    // this Ground_Buffer has not been filled
+    world_position_t position; // NOTE(xkazu0x): center of the bitmap
+    void *memory;
+};
+
+struct Game_State {
+    Arena world_arena;
     world_t *world;
     
     u32 camera_following_entity_index;
@@ -134,14 +173,14 @@ struct game_state_t {
 
     f32 meters_to_pixels;
 
-    bitmap_t wall_sprite;
-    bitmap_t stairwell_sprite;
-    bitmap_t grass_sprites[2];
-    bitmap_t stone_sprites[2];
-    bitmap_t shadow_sprite;
-    bitmap_t player_sprites[4];
-    bitmap_t bat_sprite;
-    bitmap_t sword_sprite;
+    Bitmap wall_sprite;
+    Bitmap stairwell_sprite;
+    Bitmap grass_sprites[2];
+    Bitmap stone_sprites[2];
+    Bitmap shadow_sprite;
+    Bitmap player_sprites[4];
+    Bitmap bat_sprite;
+    Bitmap sword_sprite;
     
     // TODO(xkazu0x): must be power of two
     pairwise_collision_rule_t *collision_rule_hash[256];
@@ -155,16 +194,22 @@ struct game_state_t {
     sim_entity_collision_volume_group_t *player_collision;
     sim_entity_collision_volume_group_t *monster_collision;
     sim_entity_collision_volume_group_t *familiar_collision;
+};
 
-    world_position_t ground_buffer_pos;
-    bitmap_t ground_buffer;
+struct Transient_State {
+    b32 initialized;
+    Arena arena;
+
+    Bitmap ground_bitmap_template;
+    u32 ground_buffer_count;
+    Ground_Buffer *ground_buffers;
 };
 
 // TODO(xkazu0x): this is dumb, this should just be part of
 // the renderer pushbuffer - add correction of coordinates
 // in there and be done with it.
 struct entity_visible_piece_group_t {
-    game_state_t *game_state;
+    Game_State *game_state;
     u32 piece_count;
     entity_visible_piece_t pieces[32];
 };

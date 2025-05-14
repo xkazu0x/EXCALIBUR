@@ -16,7 +16,7 @@
   > ChangeDisplaySettings option
 */
 
-global Win32_State win32;
+global Win32_State win32_state;
 
 global XInput_Get_State *xinput_get_state;
 global XInput_Set_State *xinput_set_state;
@@ -168,20 +168,20 @@ win32_unload_game(Win32_Game *game) {
 }
 
 internal void
-win32_build_exe_path_filename(Win32_State *win32, char *filename,
+win32_build_exe_path_filename(Win32_State *win32_state, char *filename,
                               u32 dest_count, char *dest) {
-    cat_strings(win32->one_past_last_exe_filename_slash - win32->exe_filename, win32->exe_filename,
+    cat_strings(win32_state->one_past_last_exe_filename_slash - win32_state->exe_filename, win32_state->exe_filename,
                 string_length(filename), filename,
                 dest_count, dest);
 }
 
 internal void
-win32_get_exe_filename(Win32_State *win32) {
-    DWORD size_of_filename = GetModuleFileName(0, win32->exe_filename, sizeof(win32->exe_filename));
-    win32->one_past_last_exe_filename_slash = win32->exe_filename;
-    for (char *scan = win32->exe_filename; *scan; ++scan) {
+win32_get_exe_filename(Win32_State *win32_state) {
+    DWORD size_of_filename = GetModuleFileName(0, win32_state->exe_filename, sizeof(win32_state->exe_filename));
+    win32_state->one_past_last_exe_filename_slash = win32_state->exe_filename;
+    for (char *scan = win32_state->exe_filename; *scan; ++scan) {
         if (*scan == '\\') {
-            win32->one_past_last_exe_filename_slash = scan + 1;
+            win32_state->one_past_last_exe_filename_slash = scan + 1;
         }
     }
 }
@@ -195,7 +195,7 @@ win32_get_time(void) {
 
 inline f32
 win32_get_delta_seconds(LARGE_INTEGER start, LARGE_INTEGER end) {
-    f32 result = ((f32)(end.QuadPart - start.QuadPart)) / ((f32)(win32.time_frequency));
+    f32 result = ((f32)(end.QuadPart - start.QuadPart)) / ((f32)(win32_state.time_frequency));
     return(result);
 }
 
@@ -209,12 +209,12 @@ win32_resize_framebuffer(OS_Framebuffer *framebuffer, s32 width, s32 height) {
     framebuffer->height = height;
     framebuffer->pitch = framebuffer->width * BYTES_PER_PIXEL;
     
-    win32.bitmap_info.bmiHeader.biSize = sizeof(win32.bitmap_info.bmiHeader);
-    win32.bitmap_info.bmiHeader.biWidth = framebuffer->width;
-    win32.bitmap_info.bmiHeader.biHeight = -framebuffer->height;
-    win32.bitmap_info.bmiHeader.biPlanes = 1;
-    win32.bitmap_info.bmiHeader.biBitCount = 8*BYTES_PER_PIXEL;
-    win32.bitmap_info.bmiHeader.biCompression = BI_RGB;
+    win32_state.bitmap_info.bmiHeader.biSize = sizeof(win32_state.bitmap_info.bmiHeader);
+    win32_state.bitmap_info.bmiHeader.biWidth = framebuffer->width;
+    win32_state.bitmap_info.bmiHeader.biHeight = -framebuffer->height;
+    win32_state.bitmap_info.bmiHeader.biPlanes = 1;
+    win32_state.bitmap_info.bmiHeader.biBitCount = 8*BYTES_PER_PIXEL;
+    win32_state.bitmap_info.bmiHeader.biCompression = BI_RGB;
 
     s32 framebuffer_memory_size = (framebuffer->width*framebuffer->height)*BYTES_PER_PIXEL;
     framebuffer->memory = VirtualAlloc(0, framebuffer_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
@@ -258,18 +258,22 @@ win32_window_toggle_fullscreen(HWND window, WINDOWPLACEMENT *placement) {
 
 internal void
 win32_display_framebuffer(OS_Framebuffer framebuffer, HWND window_handle, s32 window_width, s32 window_height) {
-    s32 display_width = ((f32)framebuffer.width/(f32)framebuffer.height)*window_height;
-    s32 display_height = window_height;
+    //s32 display_width = ((f32)framebuffer.width/(f32)framebuffer.height)*window_height;
+    //s32 display_height = window_height;
+    s32 scale = 3;
+    s32 display_width = framebuffer.width*scale;
+    s32 display_height = framebuffer.height*scale;
 
-    s32 display_x = (window_width - display_width)/2;
-    s32 display_y = 0;
+    s32 offset = 16;
+    s32 display_x = offset;
+    s32 display_y = offset;
         
     HDC window_device = GetDC(window_handle);
     StretchDIBits(window_device,
                   display_x, display_y, display_width, display_height,
                   0, 0, framebuffer.width, framebuffer.height,
                   framebuffer.memory,
-                  &win32.bitmap_info,
+                  &win32_state.bitmap_info,
                   DIB_RGB_COLORS, SRCCOPY);
     ReleaseDC(window_handle, window_device);
 }
@@ -304,15 +308,15 @@ WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
 
     ///////////////////////////
     // NOTE(xkazu0x): game load
-    win32_get_exe_filename(&win32);
+    win32_get_exe_filename(&win32_state);
     
     char source_game_code_dll_fullpath[WIN32_FILENAME_MAX];
-    win32_build_exe_path_filename(&win32, "excalibur_game.dll",
+    win32_build_exe_path_filename(&win32_state, "excalibur_game.dll",
                                   sizeof(source_game_code_dll_fullpath),
                                   source_game_code_dll_fullpath);
     
     char temp_game_code_dll_fullpath[WIN32_FILENAME_MAX];
-    win32_build_exe_path_filename(&win32, "excalibur_game_temp.dll",
+    win32_build_exe_path_filename(&win32_state, "excalibur_game_temp.dll",
                                   sizeof(temp_game_code_dll_fullpath),
                                   temp_game_code_dll_fullpath);
 
@@ -449,10 +453,10 @@ WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
     memory.debug_os_read_file = debug_os_read_file;
     memory.debug_os_write_file = debug_os_write_file;
     
-    win32.game_memory_size = memory.permanent_storage_size + memory.transient_storage_size;
-    win32.game_memory_block = VirtualAlloc(base_address, win32.game_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    win32_state.game_memory_size = memory.permanent_storage_size + memory.transient_storage_size;
+    win32_state.game_memory_block = VirtualAlloc(base_address, win32_state.game_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     
-    memory.permanent_storage = win32.game_memory_block;
+    memory.permanent_storage = win32_state.game_memory_block;
     memory.transient_storage = ((u8 *)memory.permanent_storage + memory.permanent_storage_size);
     if (!memory.permanent_storage) {
         log_fatal("failed to allocate game memory");
@@ -472,7 +476,7 @@ WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
 
     LARGE_INTEGER large_integer;
     QueryPerformanceFrequency(&large_integer);
-    win32.time_frequency = large_integer.QuadPart;
+    win32_state.time_frequency = large_integer.QuadPart;
 
     // NOTE(xkazu0x): set the windows scheduler granularity to 1ms
     // so that our Sleep() can be more granular
@@ -640,7 +644,7 @@ WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
         // NOTE(xkazu0x): key presses
         if (input.keyboard[Key_Escape].pressed) quit = true;
         if (input.keyboard[Key_F1].pressed) pause = !pause;
-        if (input.keyboard[Key_F11].pressed) win32_window_toggle_fullscreen(window_handle, &win32.window_placement);
+        if (input.keyboard[Key_F11].pressed) win32_window_toggle_fullscreen(window_handle, &win32_state.window_placement);
 
         // NOTE(xkazu0x): update and render
         if (!pause) {
@@ -659,7 +663,7 @@ WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
         LARGE_INTEGER raw_end_counter = win32_get_time();
         f32 raw_seconds_per_frame = win32_get_delta_seconds(last_counter, raw_end_counter);
         f32 raw_ms_per_frame = 1000.0f*raw_seconds_per_frame;
-        f32 raw_frames_per_second = (f32)win32.time_frequency/(f32)(raw_end_counter.QuadPart - last_counter.QuadPart);
+        f32 raw_frames_per_second = (f32)win32_state.time_frequency/(f32)(raw_end_counter.QuadPart - last_counter.QuadPart);
 
         // TODO(xkazu0x): PROBRABLY BUGGY
         f32 seconds_elapsed_for_frame = raw_seconds_per_frame;
@@ -691,7 +695,7 @@ WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
         
         LARGE_INTEGER end_counter = win32_get_time();
         f32 ms_per_frame = 1000.0f*win32_get_delta_seconds(last_counter, end_counter);
-        f32 frames_per_second = (f32)win32.time_frequency/(f32)(end_counter.QuadPart - last_counter.QuadPart);
+        f32 frames_per_second = (f32)win32_state.time_frequency/(f32)(end_counter.QuadPart - last_counter.QuadPart);
 
         last_counter = end_counter;
         last_cycle_count = end_cycle_count;
