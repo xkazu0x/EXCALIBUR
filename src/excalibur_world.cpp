@@ -1,6 +1,6 @@
 #define WORLD_CHUNK_SAFE_MARGIN (s32_max/64)
 #define WORLD_CHUNK_UNINITIALIZED s32_max
-#define TILES_PER_CHUNK 16
+#define TILES_PER_CHUNK 8
 
 inline World_Position
 null_position(void) {
@@ -88,12 +88,8 @@ get_world_chunk(World *world, s32 chunk_x, s32 chunk_y, s32 chunk_z,
 }
 
 internal void
-initialize_world(World *world, f32 tile_side_in_meters, f32 tile_depth_in_meters) {
-    world->tile_side_in_meters = tile_side_in_meters;
-    world->tile_depth_in_meters = tile_depth_in_meters;
-    world->chunk_dim_in_meters = make_vec3(((f32)TILES_PER_CHUNK)*tile_side_in_meters,
-                                           ((f32)TILES_PER_CHUNK)*tile_side_in_meters,
-                                           tile_depth_in_meters);
+initialize_world(World *world, Vec3 chunk_dim_in_meters) {
+    world->chunk_dim_in_meters = chunk_dim_in_meters;
     world->first_free = 0;
     for (u32 chunk_index = 0;
          chunk_index < ArrayCount(world->chunk_hash);
@@ -128,20 +124,6 @@ map_into_chunk_space(World *world, World_Position base_pos, Vec3 offset) {
     return(result);
 }
 
-inline World_Position
-chunk_position_from_tile_position(World *world, s32 tile_x, s32 tile_y, s32 tile_z,
-                                  Vec3 additional_offset = make_vec3(0.0f)) {
-    World_Position base_pos = {};
-
-    Vec3 tile_dim = make_vec3(world->tile_side_in_meters, world->tile_side_in_meters, world->tile_depth_in_meters);
-    Vec3 offset = hadamard_product(tile_dim, make_vec3((f32)tile_x, (f32)tile_y, (f32)tile_z));
-    World_Position result = map_into_chunk_space(world, base_pos, additional_offset + offset);
-    
-    Assert(is_canonical(world, result.offset_));
-    
-    return(result);
-}
-
 inline Vec3
 subtract(World *world, World_Position *a, World_Position *b) {
     Vec3 delta_chunk = make_vec3((f32)a->chunk_x - (f32)b->chunk_x,
@@ -159,6 +141,12 @@ centered_chunk_point(u32 chunk_x, u32 chunk_y, u32 chunk_z) {
     result.chunk_x = chunk_x;
     result.chunk_y = chunk_y;
     result.chunk_z = chunk_z;
+    return(result);
+}
+
+inline World_Position
+centered_chunk_point(World_Chunk *chunk) {
+    World_Position result = centered_chunk_point(chunk->chunk_x, chunk->chunk_y, chunk->chunk_z);
     return(result);
 }
 

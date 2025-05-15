@@ -160,6 +160,8 @@ struct Ground_Buffer {
 struct Game_State {
     Arena world_arena;
     World *world;
+
+    f32 typical_floor_height;
     
     u32 camera_following_entity_index;
     World_Position camera_pos;
@@ -171,6 +173,7 @@ struct Game_State {
     Low_Entity low_entities[100000];
 
     f32 meters_to_pixels;
+    f32 pixels_to_meters;
 
     Bitmap wall_sprite;
     Bitmap stairwell_sprite;

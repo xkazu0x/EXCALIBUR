@@ -214,6 +214,9 @@ internal inline Vec3 get_rect_center(Rect3 rect);
 internal inline Rect2 rect_add_radius(Rect2 rect, Vec2 radiuse);
 internal inline Rect3 rect_add_radius(Rect3 rect, Vec3 radius);
 
+internal inline Rect2 rect_offset(Rect2 rect, Vec2 offset);
+internal inline Rect3 rect_offset(Rect3 rect, Vec3 offset);
+
 internal inline b32 is_in_rect(Rect2 rect, Vec2 test);
 internal inline b32 is_in_rect(Rect3 rect, Vec3 test);
 

@@ -622,6 +622,22 @@ rect_add_radius(Rect3 rect, Vec3 radius) {
     return(result);
 }
 
+internal inline Rect2
+rect_offset(Rect2 rect, Vec2 offset) {
+    Rect2 result;
+    result.min = rect.min + offset;
+    result.max = rect.max + offset;
+    return(result);
+}
+
+internal inline Rect3
+rect_offset(Rect3 rect, Vec3 offset) {
+    Rect3 result;
+    result.min = rect.min + offset;
+    result.max = rect.max + offset;
+    return(result);
+}
+
 internal inline b32
 is_in_rect(Rect2 rect, Vec2 test) {
     b32 result = ((test.x >= rect.min.x) &&
