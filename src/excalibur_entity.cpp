@@ -1,10 +1,8 @@
-inline move_spec_t
+inline Move_Spec
 default_move_spec(void) {
-    move_spec_t result;
-
+    Move_Spec result;
     result.unit_max_accel_vector = false;
     result.speed = 1.0f;
     result.drag= 0.0f;
-    
     return(result);
 }

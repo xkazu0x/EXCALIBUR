@@ -102,7 +102,6 @@ zero_size(memi size, void *ptr) {
         *byte++ = 0;
     }
 }
-
 #define zero_struct(instance) zero_size(sizeof(instance), &(instance))
 
 #define BITMAP_BYTES_PER_PIXEL 4
@@ -113,15 +112,15 @@ struct Bitmap {
     void *memory;
 };
 
-struct low_entity_t {
+struct Low_Entity {
     // TODO(xkazu0x): it's kind of busted that pos's can be invalid here,
     // AND we store whether they would be invalid in the flags field...
     // can we do something better here?
-    world_position_t pos;
-    sim_entity_t sim;
+    World_Position pos;
+    Sim_Entity sim;
 };
 
-struct entity_visible_piece_t {
+struct Entity_Visible_Piece {
     Bitmap *bitmap;
     Vec3 offset;
     
@@ -131,7 +130,7 @@ struct entity_visible_piece_t {
     f32 entity_zc;
 };
 
-struct controlled_player_t {
+struct Controlled_Player {
     u32 entity_index;
     // NOTE(xkazu0x): these are the gamepad requests for simulation
     Vec2 dd_pos;
@@ -139,12 +138,12 @@ struct controlled_player_t {
     f32 d_z;
 };
 
-struct pairwise_collision_rule_t {
+struct Pairwise_Collision_Rule {
     b32 can_collide;
     u32 storage_index_a;
     u32 storage_index_b;
 
-    pairwise_collision_rule_t *next_in_hash;
+    Pairwise_Collision_Rule *next_in_hash;
 };
 
 struct Game_State;
@@ -154,22 +153,22 @@ internal void clear_collision_rules_for(Game_State *game_state, u32 storage_inde
 struct Ground_Buffer {
     // NOTE(xkazu0x): An invalid position tells us that
     // this Ground_Buffer has not been filled
-    world_position_t position; // NOTE(xkazu0x): center of the bitmap
+    World_Position position; // NOTE(xkazu0x): center of the bitmap
     void *memory;
 };
 
 struct Game_State {
     Arena world_arena;
-    world_t *world;
+    World *world;
     
     u32 camera_following_entity_index;
-    world_position_t camera_pos;
+    World_Position camera_pos;
     
-    controlled_player_t controlled_players[Gamepad_Count];
+    Controlled_Player controlled_players[Gamepad_Count];
     
     // TODO(xkazu0x): change the name to "stored entity"
     u32 low_entity_count;
-    low_entity_t low_entities[100000];
+    Low_Entity low_entities[100000];
 
     f32 meters_to_pixels;
 
@@ -183,17 +182,17 @@ struct Game_State {
     Bitmap sword_sprite;
     
     // TODO(xkazu0x): must be power of two
-    pairwise_collision_rule_t *collision_rule_hash[256];
-    pairwise_collision_rule_t *first_free_collision_rule;
+    Pairwise_Collision_Rule *collision_rule_hash[256];
+    Pairwise_Collision_Rule *first_free_collision_rule;
 
-    sim_entity_collision_volume_group_t *null_collision;
-    sim_entity_collision_volume_group_t *standard_room_collision;
-    sim_entity_collision_volume_group_t *wall_collision;
-    sim_entity_collision_volume_group_t *stair_collision;
-    sim_entity_collision_volume_group_t *sword_collision;
-    sim_entity_collision_volume_group_t *player_collision;
-    sim_entity_collision_volume_group_t *monster_collision;
-    sim_entity_collision_volume_group_t *familiar_collision;
+    Sim_Entity_Collision_Volume_Group *null_collision;
+    Sim_Entity_Collision_Volume_Group *standard_room_collision;
+    Sim_Entity_Collision_Volume_Group *wall_collision;
+    Sim_Entity_Collision_Volume_Group *stair_collision;
+    Sim_Entity_Collision_Volume_Group *sword_collision;
+    Sim_Entity_Collision_Volume_Group *player_collision;
+    Sim_Entity_Collision_Volume_Group *monster_collision;
+    Sim_Entity_Collision_Volume_Group *familiar_collision;
 };
 
 struct Transient_State {
@@ -208,10 +207,10 @@ struct Transient_State {
 // TODO(xkazu0x): this is dumb, this should just be part of
 // the renderer pushbuffer - add correction of coordinates
 // in there and be done with it.
-struct entity_visible_piece_group_t {
+struct Entity_Visible_Piece_Group {
     Game_State *game_state;
     u32 piece_count;
-    entity_visible_piece_t pieces[32];
+    Entity_Visible_Piece pieces[32];
 };
 
 #endif // EXCALIBUR_GAME_H
