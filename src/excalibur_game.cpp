@@ -561,28 +561,75 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
     buffer.memory = ground_buffer->memory;
 
     ground_buffer->position = *pos;
-    
-    // TODO(xkazu0x): look into wang hashing here or some other spatial seed generation "thing"!
-    random_series_t series = random_seed(464*pos->chunk_x + 132*pos->chunk_y + 235*pos->chunk_z);
 
     f32 width = (f32)buffer.width;
     f32 height = (f32)buffer.height;
-    
-    for (u32 ground_index = 0;
-         ground_index < 800;
-         ++ground_index) {
-        Bitmap *sprite;
-        if (random_choice(&series, 2)) {
-            sprite = game_state->grass_sprites + random_choice(&series, ArrayCount(game_state->grass_sprites));
-        } else {
-            sprite = game_state->stone_sprites + random_choice(&series, ArrayCount(game_state->stone_sprites));
+    for (s32 chunk_offset_y = -1;
+         chunk_offset_y <= 1;
+         ++chunk_offset_y) {
+        for (s32 chunk_offset_x = -1;
+             chunk_offset_x <= 1;
+             ++chunk_offset_x) {
+            s32 chunk_x = pos->chunk_x + chunk_offset_x;
+            s32 chunk_y = pos->chunk_y + chunk_offset_y;
+            u32 chunk_z = pos->chunk_z;
+            
+            // TODO(xkazu0x): look into wang hashing here or some other spatial seed generation "thing"!
+            random_series_t series = random_seed(464*chunk_x + 132*chunk_y + 235*chunk_z);
+
+            Vec2 center = make_vec2(chunk_offset_x*width, -chunk_offset_y*height);
+            
+            for (u32 ground_index = 0;
+                 ground_index < 64;
+                 ++ground_index) {
+                Bitmap *sprite;
+                if (random_choice(&series, 2)) {
+                    sprite = game_state->grass_sprites + random_choice(&series, ArrayCount(game_state->grass_sprites));
+                } else {
+                    sprite = game_state->stone_sprites + random_choice(&series, ArrayCount(game_state->stone_sprites));
+                }
+        
+                Vec2 sprite_center = 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height);
+                Vec2 offset = make_vec2(width*random_unilateral(&series), height*random_unilateral(&series));
+                Vec2 pos = center + offset - sprite_center;
+        
+                draw_bitmap(&buffer, sprite, pos.x, pos.y);
+            }
         }
+    }
+    
+    for (s32 chunk_offset_y = -1;
+         chunk_offset_y <= 1;
+         ++chunk_offset_y) {
+        for (s32 chunk_offset_x = -1;
+             chunk_offset_x <= 1;
+             ++chunk_offset_x) {
+            s32 chunk_x = pos->chunk_x + chunk_offset_x;
+            s32 chunk_y = pos->chunk_y + chunk_offset_y;
+            u32 chunk_z = pos->chunk_z;
+            
+            // TODO(xkazu0x): look into wang hashing here or some other spatial seed generation "thing"!
+            random_series_t series = random_seed(464*chunk_x + 132*chunk_y + 235*chunk_z);
+
+            Vec2 center = make_vec2(chunk_offset_x*width, -chunk_offset_y*height);
+                        
+            for (u32 ground_index = 0;
+                 ground_index < 8;
+                 ++ground_index) {
+                Bitmap *sprite;
+                if (random_choice(&series, 2)) {
+                    sprite = game_state->tuft_sprites + random_choice(&series, ArrayCount(game_state->tuft_sprites));
+                } else {
+                    sprite = game_state->tuft_sprites + random_choice(&series, ArrayCount(game_state->tuft_sprites));
+                }
         
-        Vec2 sprite_center = 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height);
-        Vec2 offset = make_vec2(width*random_unilateral(&series), height*random_unilateral(&series));
-        Vec2 pos = offset - sprite_center;
+                Vec2 sprite_center = 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height);
+                Vec2 offset = make_vec2(width*random_unilateral(&series), height*random_unilateral(&series));
+                Vec2 pos = center + offset - sprite_center;
         
-        draw_bitmap(&buffer, sprite, pos.x, pos.y);
+                draw_bitmap(&buffer, sprite, pos.x, pos.y);
+            }
+        }
     }
 }
 
@@ -609,18 +656,6 @@ make_empty_bitmap(Arena *arena, u32 width, u32 height, b32 clear = true) {
     return(result);
 }
 
-#if 0
-internal void
-request_ground_buffers(World_Position center_pos, Rect3 bounds) {
-    bounds = rect_offset(bounds, center_pos.offset_);
-    center_pos.offset_ = make_vec3(0.0f);
-    //for (u32) {
-    //}
-    // TODO(xkazu0x): This is just a test fill
-    fill_ground_chunk(tran_state, game_state, tran_state->ground_buffers, &game_state->camera_pos);
-}
-#endif
-
 shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
     Assert(sizeof(Game_State) <= memory->permanent_storage_size);
     Game_State *game_state = (Game_State *)memory->permanent_storage;
@@ -628,9 +663,12 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
     u32 tile_count_x = 17;
     u32 tile_count_y = 9;
     s32 tile_size_in_pixels = 16;
+
+    f32 tile_side_in_meters = 1.4f;
+    f32 tile_depth_in_meters = 3.0f;
     
-    u32 ground_buffer_width = 128;
-    u32 ground_buffer_height = 128;
+    u32 ground_buffer_width = 64;
+    u32 ground_buffer_height = 64;
     
     if (!memory->initialized) {
         game_state->typical_floor_height = 3.0f;
@@ -648,9 +686,6 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
         
         World *world = game_state->world;
         initialize_world(world, world_chunk_dim_in_meters);
-
-        f32 tile_side_in_meters = 1.4f;
-        f32 tile_depth_in_meters = 3.0f;
         
         game_state->null_collision =
             make_null_collision(game_state);
@@ -693,6 +728,8 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
         game_state->grass_sprites[1]  = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/grass01.bmp");
         game_state->stone_sprites[0]  = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/stone00.bmp");
         game_state->stone_sprites[1]  = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/stone01.bmp");
+        game_state->tuft_sprites[0]   = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/tuft0.bmp");
+        game_state->tuft_sprites[1]   = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/tuft1.bmp");
         game_state->shadow_sprite     = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/shadow.bmp");
         game_state->player_sprites[0] = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/skull_back.bmp");
         game_state->player_sprites[1] = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/skull_right.bmp");
@@ -835,10 +872,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
         tran_state->arena = make_arena(memory->transient_storage_size - sizeof(Transient_State),
                                        (u8 *)memory->transient_storage + sizeof(Transient_State));
         
-        u32 ground_buffer_width = 128;
-        u32 ground_buffer_height = 128;
-        
-        tran_state->ground_buffer_count = 128;
+        tran_state->ground_buffer_count = 32;
         tran_state->ground_buffers = push_array(&tran_state->arena,
                                                 Ground_Buffer,
                                                 tran_state->ground_buffer_count);
@@ -856,6 +890,15 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
         }
         
         tran_state->initialized = true;
+    }
+
+    if (input->executable_reloaded) {
+        for (u32 ground_buffer_index = 0;
+             ground_buffer_index < tran_state->ground_buffer_count;
+             ++ground_buffer_index) {
+            Ground_Buffer *ground_buffer = tran_state->ground_buffers + ground_buffer_index;
+            ground_buffer->position = null_position();
+        }
     }
     
     World *world = game_state->world;
@@ -935,8 +978,21 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
                                                                     screen_height_in_meters,
                                                                     0.0f));
 
+    for (u32 ground_buffer_index = 0;
+         ground_buffer_index < tran_state->ground_buffer_count;
+         ++ground_buffer_index) {
+        Ground_Buffer *ground_buffer = tran_state->ground_buffers + ground_buffer_index;
+        if (is_valid(ground_buffer->position)) {
+            Bitmap bitmap = tran_state->ground_bitmap_template;
+            bitmap.memory = ground_buffer->memory;
+            Vec3 delta = game_state->meters_to_pixels*subtract(game_state->world, &ground_buffer->position, &game_state->camera_pos);
+            Vec2 ground = make_vec2(screen_center.x + delta.x - 0.5f*bitmap.width,
+                                    screen_center.y - delta.y - 0.5f*bitmap.height);
+            draw_bitmap(draw_buffer, &bitmap, ground.x, ground.y);
+        }
+    }
+    
     {
-        
         World_Position min_chunk_pos = map_into_chunk_space(world, game_state->camera_pos, get_rect_min(camera_bounds_in_meters));
         World_Position max_chunk_pos = map_into_chunk_space(world, game_state->camera_pos, get_rect_max(camera_bounds_in_meters));
     
@@ -954,27 +1010,34 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     Vec2 screen_pos = make_vec2(screen_center.x + meters_to_pixels*rel_pos.x,
                                                 screen_center.y - meters_to_pixels*rel_pos.y);
                     Vec2 screen_dim = 0.5f*meters_to_pixels*world->chunk_dim_in_meters.xy;
-
+                    
                     b32 found = false;
-                    Ground_Buffer *empty_ground_buffer = 0;
+                    f32 furthest_ground_buffer_length_squared = 0.0f;
+                    Ground_Buffer *furthest_ground_buffer = 0;
                         
                     // TODO(xkazu0x): This is super inefficient!
                     for (u32 ground_buffer_index = 0;
                          ground_buffer_index < tran_state->ground_buffer_count;
                          ++ground_buffer_index) {
                         Ground_Buffer *ground_buffer = tran_state->ground_buffers + ground_buffer_index;
-                        if (are_in_same_chunk(world,
-                                              &ground_buffer->position,
-                                              &chunk_center_pos)) {
-                            found = true;
+                        if (are_in_same_chunk(world, &ground_buffer->position, &chunk_center_pos)) {
+                            furthest_ground_buffer = 0;
                             break;
-                        } else if (!is_valid(ground_buffer->position)) {
-                            empty_ground_buffer = ground_buffer;
+                        } else if (is_valid(ground_buffer->position)) {
+                            Vec3 rel_pos = subtract(world, &ground_buffer->position, &game_state->camera_pos);
+                            f32 distance_length_squared = length_squared(rel_pos.xy);
+                            if (furthest_ground_buffer_length_squared < distance_length_squared) {
+                                furthest_ground_buffer_length_squared = distance_length_squared;
+                                furthest_ground_buffer = ground_buffer;
+                            }
+                        } else {
+                            furthest_ground_buffer_length_squared = f32_max;
+                            furthest_ground_buffer = ground_buffer;
                         }
                     }
 
-                    if (!found && empty_ground_buffer) {
-                        fill_ground_chunk(tran_state, game_state, empty_ground_buffer, &chunk_center_pos);
+                    if (furthest_ground_buffer) {
+                        fill_ground_chunk(tran_state, game_state, furthest_ground_buffer, &chunk_center_pos);
                     }
                         
                     draw_rect_outline(draw_buffer,
@@ -992,20 +1055,6 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
     Temporary_Memory sim_memory = begin_temporary_memory(&tran_state->arena);
     Sim_Region *sim_region = begin_sim(&tran_state->arena, game_state, world,
                                          game_state->camera_pos, sim_bounds, clock->dt);
-
-    for (u32 ground_buffer_index = 0;
-         ground_buffer_index < tran_state->ground_buffer_count;
-         ++ground_buffer_index) {
-        Ground_Buffer *ground_buffer = tran_state->ground_buffers + ground_buffer_index;
-        if (is_valid(ground_buffer->position)) {
-            Bitmap bitmap = tran_state->ground_bitmap_template;
-            bitmap.memory = ground_buffer->memory;
-            Vec3 delta = game_state->meters_to_pixels*subtract(game_state->world, &ground_buffer->position, &game_state->camera_pos);
-            Vec2 ground = make_vec2(screen_center.x + delta.x - 0.5f*bitmap.width,
-                                    screen_center.y - delta.y - 0.5f*bitmap.height);
-            draw_bitmap(draw_buffer, &bitmap, ground.x, ground.y);
-        }
-    }
 
     // TODO(xkazu0x): move this out into excalibur_entity.cpp
     Entity_Visible_Piece_Group piece_group;

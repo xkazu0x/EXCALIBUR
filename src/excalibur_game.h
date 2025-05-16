@@ -179,6 +179,7 @@ struct Game_State {
     Bitmap stairwell_sprite;
     Bitmap grass_sprites[2];
     Bitmap stone_sprites[2];
+    Bitmap tuft_sprites[2];
     Bitmap shadow_sprite;
     Bitmap player_sprites[4];
     Bitmap bat_sprite;

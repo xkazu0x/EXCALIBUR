@@ -171,6 +171,9 @@ struct OS_Input {
     Digital_Button keyboard[Key_Count];
     Gamepad gamepads[Gamepad_Count];
     Mouse mouse;
+
+    // TODO(xkazu0x):
+    b32 executable_reloaded;
 };
 
 #define BYTES_PER_PIXEL 4

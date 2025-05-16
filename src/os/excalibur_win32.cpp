@@ -493,10 +493,12 @@ WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
     
     while (!quit) {
         // NOTE(xkazu0x): game reload
+        input.executable_reloaded = false;
         FILETIME game_new_write_time = win32_get_last_write_time(source_game_code_dll_fullpath);
         if (CompareFileTime(&game_new_write_time, &game.last_write_time) != 0) {
             win32_unload_game(&game);
             game = win32_load_game(source_game_code_dll_fullpath, temp_game_code_dll_fullpath);
+            input.executable_reloaded = true;
         }
                 
         // NOTE(xkazu0x): input reset
