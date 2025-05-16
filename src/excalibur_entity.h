@@ -33,8 +33,14 @@ make_entity_spatial(Sim_Entity *entity, Vec3 pos, Vec3 d_pos) {
 }
 
 internal Vec3
+get_entity_ground_point(Sim_Entity *entity, Vec3 for_entity_pos) {
+    Vec3 result = for_entity_pos;
+    return(result);
+}
+
+internal Vec3
 get_entity_ground_point(Sim_Entity *entity) {
-    Vec3 result = entity->pos;
+    Vec3 result = get_entity_ground_point(entity, entity->pos);
     return(result);
 }
 

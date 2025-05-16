@@ -56,14 +56,16 @@ make_arena(memi reserve_size, void *base_memory) {
 }
 
 internal void *
-arena_push(Arena *arena, memi size) {
+arena_push_(Arena *arena, memi size) {
     Assert((arena->used + size) <= arena->reserve_size);
     void *result = arena->base_memory + arena->used;
     arena->used += size;
     return(result);
 }
-#define push_struct(arena, type) (type *)arena_push(arena, sizeof(type))
-#define push_array(arena, type, count) (type *)arena_push(arena, sizeof(type)*(count))
+
+#define push_size(arena, size) arena_push_(arena, size)
+#define push_struct(arena, type) (type *)arena_push_(arena, sizeof(type))
+#define push_array(arena, type, count) (type *)arena_push_(arena, sizeof(type)*(count))
 
 struct Temporary_Memory {
     Arena *arena;
@@ -120,16 +122,6 @@ struct Low_Entity {
     Sim_Entity sim;
 };
 
-struct Entity_Visible_Piece {
-    Bitmap *bitmap;
-    Vec3 offset;
-    
-    Vec4 color;
-    Vec2 size;
-    
-    f32 entity_zc;
-};
-
 struct Controlled_Player {
     u32 entity_index;
     // NOTE(xkazu0x): these are the gamepad requests for simulation
@@ -154,7 +146,7 @@ struct Ground_Buffer {
     // NOTE(xkazu0x): An invalid position tells us that
     // this Ground_Buffer has not been filled
     World_Position position; // NOTE(xkazu0x): center of the bitmap
-    void *memory;
+    Bitmap bitmap;
 };
 
 struct Game_State {
@@ -203,18 +195,17 @@ struct Transient_State {
     b32 initialized;
     Arena arena;
 
-    Bitmap ground_bitmap_template;
     u32 ground_buffer_count;
     Ground_Buffer *ground_buffers;
 };
 
-// TODO(xkazu0x): this is dumb, this should just be part of
-// the renderer pushbuffer - add correction of coordinates
-// in there and be done with it.
-struct Entity_Visible_Piece_Group {
-    Game_State *game_state;
-    u32 piece_count;
-    Entity_Visible_Piece pieces[32];
-};
+internal Low_Entity *
+get_low_entity(Game_State *game_state, u32 index) {
+    Low_Entity *result = 0;
+    if ((index > 0) && (index < game_state->low_entity_count)) {
+        result = game_state->low_entities + index;
+    }
+    return(result);
+}
 
 #endif // EXCALIBUR_GAME_H

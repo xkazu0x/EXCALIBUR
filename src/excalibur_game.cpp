@@ -5,20 +5,15 @@
 #include "excalibur_simulation.h"
 #include "excalibur_entity.h"
 #include "excalibur_game.h"
-
-internal Low_Entity *
-get_low_entity(Game_State *game_state, u32 index) {
-    Low_Entity *result = 0;
-    if ((index > 0) && (index < game_state->low_entity_count)) {
-        result = game_state->low_entities + index;
-    }
-    return(result);
-}
+#include "excalibur_render_group.h"
 
 #include "base/excalibur_base.cpp"
 #include "excalibur_world.cpp"
 #include "excalibur_simulation.cpp"
 #include "excalibur_entity.cpp"
+#include "excalibur_render_group.cpp"
+
+// TODO(xkazu0x): stopped at 31:00
 
 internal Gamepad *
 get_gamepad(OS_Input *input, u32 index) {
@@ -392,48 +387,7 @@ add_familiar(Game_State *game_state, u32 tile_x, u32 tile_y, u32 tile_z) {
 }
 
 internal void
-push_piece(Entity_Visible_Piece_Group *group, Bitmap *bitmap,
-           Vec3 offset, Vec2 size, Vec4 color, f32 entity_zc = 1.0f) {
-    Assert(group->piece_count < ArrayCount(group->pieces));
-    
-    Entity_Visible_Piece *piece = group->pieces + group->piece_count++;
-    piece->bitmap = bitmap;
-    piece->offset = make_vec3(group->game_state->meters_to_pixels*offset.x,
-                              group->game_state->meters_to_pixels*(-offset.y),
-                              offset.z);
-    piece->color = color;
-    piece->size = size;
-    piece->entity_zc = entity_zc;
-}
-
-internal void
-push_bitmap(Entity_Visible_Piece_Group *group, Bitmap *bitmap, Vec3 offset,
-            f32 alpha = 1.0f, f32 entity_zc = 1.0f) {
-    push_piece(group, bitmap, offset, make_vec2(0.0f), make_vec4(make_vec3(1.0f), alpha), entity_zc);
-}
-
-internal void
-push_rect(Entity_Visible_Piece_Group *group, Vec3 offset, Vec2 size, Vec4 color,
-          f32 entity_zc = 1.0f) {
-    push_piece(group, 0, offset, size, color, entity_zc);
-}
-
-internal void
-push_rect_outline(Entity_Visible_Piece_Group *group, Vec3 offset, Vec2 size, Vec4 color,
-                  f32 entity_zc = 1.0f) {
-    f32 thickness = 0.2f;
-    
-    // NOTE(xkazu0x): top and bottom
-    push_piece(group, 0, offset - make_vec3(0.0f, 0.5f*size.y, 0.0f), make_vec2(size.x, thickness), color, entity_zc);
-    push_piece(group, 0, offset + make_vec3(0.0f, 0.5f*size.y, 0.0f), make_vec2(size.x, thickness), color, entity_zc);
-    
-    // NOTE(xkazu0x): left and right
-    push_piece(group, 0, offset - make_vec3(0.5f*size.x, 0.0f, 0.0f), make_vec2(thickness, size.y), color, entity_zc);
-    push_piece(group, 0, offset + make_vec3(0.5f*size.x, 0.0f, 0.0f), make_vec2(thickness, size.y), color, entity_zc);
-}
-
-internal void
-draw_hit_points(Entity_Visible_Piece_Group *piece_group, Sim_Entity *entity) {
+draw_hit_points(Render_Group *piece_group, Sim_Entity *entity) {
     if (entity->hit_point_max >= 1) {
         Vec2 health_dim = make_vec2(0.125f*1.4f);
         f32 spacing_x = 1.5f*health_dim.x;
@@ -557,13 +511,12 @@ make_null_collision(Game_State *game_state) {
 
 internal void
 fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Buffer *ground_buffer, World_Position *pos) {
-    Bitmap buffer = tran_state->ground_bitmap_template;
-    buffer.memory = ground_buffer->memory;
+    Bitmap *buffer = &ground_buffer->bitmap;
 
     ground_buffer->position = *pos;
 
-    f32 width = (f32)buffer.width;
-    f32 height = (f32)buffer.height;
+    f32 width = (f32)buffer->width;
+    f32 height = (f32)buffer->height;
     for (s32 chunk_offset_y = -1;
          chunk_offset_y <= 1;
          ++chunk_offset_y) {
@@ -593,7 +546,7 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
                 Vec2 offset = make_vec2(width*random_unilateral(&series), height*random_unilateral(&series));
                 Vec2 pos = center + offset - sprite_center;
         
-                draw_bitmap(&buffer, sprite, pos.x, pos.y);
+                draw_bitmap(buffer, sprite, pos.x, pos.y);
             }
         }
     }
@@ -627,7 +580,7 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
                 Vec2 offset = make_vec2(width*random_unilateral(&series), height*random_unilateral(&series));
                 Vec2 pos = center + offset - sprite_center;
         
-                draw_bitmap(&buffer, sprite, pos.x, pos.y);
+                draw_bitmap(buffer, sprite, pos.x, pos.y);
             }
         }
     }
@@ -648,7 +601,7 @@ make_empty_bitmap(Arena *arena, u32 width, u32 height, b32 clear = true) {
     result.height = height;
     result.pitch = result.width*BYTES_PER_PIXEL;
     s32 bitmap_size = width*height*BYTES_PER_PIXEL;
-    result.memory = arena_push(arena, bitmap_size);
+    result.memory = push_size(arena, bitmap_size);
     if (clear) {
         clear_bitmap(&result);
     }
@@ -762,7 +715,8 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
              screen_index < 10;
              ++screen_index)
         {
-            u32 door_direction = random_choice(&series, (door_up || door_down) ? 2 : 3);
+            //u32 door_direction = random_choice(&series, (door_up || door_down) ? 2 : 3);
+            u32 door_direction = random_choice(&series, 2);
             
             b32 created_z_door = false;
             if (door_direction == 2) {
@@ -872,7 +826,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
         tran_state->arena = make_arena(memory->transient_storage_size - sizeof(Transient_State),
                                        (u8 *)memory->transient_storage + sizeof(Transient_State));
         
-        tran_state->ground_buffer_count = 32;
+        tran_state->ground_buffer_count = 64;
         tran_state->ground_buffers = push_array(&tran_state->arena,
                                                 Ground_Buffer,
                                                 tran_state->ground_buffer_count);
@@ -881,11 +835,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
              ground_buffer_index < tran_state->ground_buffer_count;
              ++ground_buffer_index) {
             Ground_Buffer *ground_buffer = tran_state->ground_buffers + ground_buffer_index;
-            tran_state->ground_bitmap_template = make_empty_bitmap(&tran_state->arena,
-                                                                   ground_buffer_width,
-                                                                   ground_buffer_height,
-                                                                   false);
-            ground_buffer->memory = tran_state->ground_bitmap_template.memory;
+            ground_buffer->bitmap = make_empty_bitmap(&tran_state->arena, ground_buffer_width, ground_buffer_height, false);
             ground_buffer->position = null_position();
         }
         
@@ -944,6 +894,10 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
 
     ////////////////////////////
     // NOTE(xkazu0x): Render
+
+    Temporary_Memory render_memory = begin_temporary_memory(&tran_state->arena);
+    // TODO(xkazu0x): Decide what out push buffer size is!
+    Render_Group *render_group = alloc_render_group(&tran_state->arena, MB(4), game_state->meters_to_pixels);
     
     Bitmap _draw_buffer = {};
     Bitmap *draw_buffer = &_draw_buffer;
@@ -983,12 +937,9 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
          ++ground_buffer_index) {
         Ground_Buffer *ground_buffer = tran_state->ground_buffers + ground_buffer_index;
         if (is_valid(ground_buffer->position)) {
-            Bitmap bitmap = tran_state->ground_bitmap_template;
-            bitmap.memory = ground_buffer->memory;
-            Vec3 delta = game_state->meters_to_pixels*subtract(game_state->world, &ground_buffer->position, &game_state->camera_pos);
-            Vec2 ground = make_vec2(screen_center.x + delta.x - 0.5f*bitmap.width,
-                                    screen_center.y - delta.y - 0.5f*bitmap.height);
-            draw_bitmap(draw_buffer, &bitmap, ground.x, ground.y);
+            Bitmap *bitmap = &ground_buffer->bitmap;
+            Vec3 delta = subtract(game_state->world, &ground_buffer->position, &game_state->camera_pos);
+            push_bitmap(render_group, bitmap, delta, 0.5f*make_vec2(bitmap->width, bitmap->height));
         }
     }
     
@@ -1055,18 +1006,13 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
     Temporary_Memory sim_memory = begin_temporary_memory(&tran_state->arena);
     Sim_Region *sim_region = begin_sim(&tran_state->arena, game_state, world,
                                          game_state->camera_pos, sim_bounds, clock->dt);
-
+    
     // TODO(xkazu0x): move this out into excalibur_entity.cpp
-    Entity_Visible_Piece_Group piece_group;
-    piece_group.game_state = game_state;
-
-    Sim_Entity *entity = sim_region->entities;
     for (u32 entity_index = 0;
          entity_index < sim_region->entity_count;
-         ++entity_index, ++entity)
-    {
+         ++entity_index) {
+        Sim_Entity *entity = sim_region->entities + entity_index;
         if (entity->updatable) {
-            piece_group.piece_count = 0;
             f32 delta = clock->dt;
 
             f32 shadow_alpha = 1.0f - 0.5f*entity->pos.z;
@@ -1074,6 +1020,9 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
 
             Move_Spec move_spec = default_move_spec();
             Vec3 dd_pos = make_vec3(0.0f);
+
+            Render_Basis *basis = push_struct(&tran_state->arena, Render_Basis);
+            render_group->default_basis = basis;
             
             switch (entity->type) {
                 case EntityType_Space: {
@@ -1082,20 +1031,20 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
                          volume_index < entity->collision->volume_count;
                          ++volume_index) {
                         Sim_Entity_Collision_Volume *volume = entity->collision->volumes + volume_index;
-                        push_rect_outline(&piece_group, make_vec3(volume->offset.x, volume->offset.y, 0.0f), volume->dim.xy, make_vec4(0.2f, 0.3f, 0.3f, 1.0f));
+                        push_rect_outline(render_group, make_vec3(volume->offset.x, volume->offset.y, 0.0f), volume->dim.xy, make_vec4(0.2f, 0.3f, 0.3f, 1.0f));
                     }
 #endif
                 } break;
                     
                 case EntityType_Wall: {
-                    push_rect(&piece_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.5f, 0.2f, 1.0f));
+                    push_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.5f, 0.2f, 1.0f));
                     
                     Bitmap *sprite = &game_state->wall_sprite;
                     Vec3 offset = make_vec3(-0.5f*sprite->width*pixels_to_meters,
                                             0.5f*sprite->height*pixels_to_meters,
                                             0.0f);
                     
-                    push_bitmap(&piece_group, sprite, offset);
+                    push_bitmap(render_group, sprite, offset, make_vec2(0.0f));
                 } break;
                     
                 case EntityType_Stairwell: {
@@ -1104,11 +1053,11 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
                                             0.5f*sprite->height*pixels_to_meters,
                                             entity->walkable_height);
                     
-                    push_rect(&piece_group, make_vec3(0.0f), entity->walkable_dim, make_vec4(1.0f, 0.0f, 1.0f, 1.0f));
-                    push_rect(&piece_group, make_vec3(0.0f, 0.0f, offset.z), entity->walkable_dim, make_vec4(0.0f, 1.0f, 1.0f, 1.0f));
+                    push_rect(render_group, make_vec3(0.0f), entity->walkable_dim, make_vec4(1.0f, 0.0f, 1.0f, 1.0f));
+                    push_rect(render_group, make_vec3(0.0f, entity->walkable_height, 0.0f), entity->walkable_dim, make_vec4(0.0f, 1.0f, 1.0f, 1.0f));
 
-                    push_bitmap(&piece_group, sprite, make_vec3(offset.xy, 0.0f));
-                    push_bitmap(&piece_group, sprite, offset);
+                    //push_bitmap(render_group, sprite, make_vec3(offset.xy, 0.0f));
+                    //push_bitmap(render_group, sprite, offset);
                 } break;
 
                 case EntityType_Player: {
@@ -1136,18 +1085,17 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
                             }
                         }
                     }
-
                     
-                    push_rect(&piece_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 1.0f, 0.0f, 1.0f));
+                    push_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 1.0f, 0.0f, 1.0f));
                     
                     Bitmap *sprite = &game_state->player_sprites[entity->direction];
                     Vec2 offset = make_vec2(-0.5f*sprite->width*pixels_to_meters,
                                             0.5f*sprite->height*pixels_to_meters);
                     
-                    push_bitmap(&piece_group, &game_state->shadow_sprite, make_vec3(offset, 0.0f), shadow_alpha, 0.0f);
-                    push_bitmap(&piece_group, sprite, make_vec3(offset, 0.0f));
+                    push_bitmap(render_group, &game_state->shadow_sprite, make_vec3(offset, 0.0f), make_vec2(0.0f), shadow_alpha, 0.0f);
+                    push_bitmap(render_group, sprite, make_vec3(offset, 0.0f), make_vec2(0.0f));
                     
-                    draw_hit_points(&piece_group, entity);
+                    draw_hit_points(render_group, entity);
                 } break;
                     
                 case EntityType_Sword: {
@@ -1167,8 +1115,8 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
                         make_entity_non_spatial(entity);
                     }
                     
-                    push_rect(&piece_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(0.0f, 1.0f, 0.0f, 1.0f));
-                    //push_bitmap(&piece_group, &game_state->sword_sprite, make_vec3(0.0f));
+                    push_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(0.0f, 1.0f, 0.0f, 1.0f));
+                    //push_bitmap(render_group, &game_state->sword_sprite, make_vec3(0.0f));
                 } break;
                     
                 case EntityType_Familiar: {
@@ -1210,7 +1158,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
                         entity->t_bob -= (2.0f*pi32);
                     }
 
-                    push_rect(&piece_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(0.0f, 1.0f, 0.0f, 1.0f));
+                    push_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(0.0f, 1.0f, 0.0f, 1.0f));
                     
                     f32 bob_sin = sin_f32(5.0f*entity->t_bob);
                     
@@ -1218,21 +1166,21 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     Vec2 offset = make_vec2(-0.5f*sprite->width*pixels_to_meters,
                                             0.5f*sprite->height*pixels_to_meters);
 
-                    push_bitmap(&piece_group, &game_state->shadow_sprite, make_vec3(offset, 0.0f), (0.5f*shadow_alpha) + 0.2f*bob_sin, 0.0f);
-                    push_bitmap(&piece_group, sprite, make_vec3(offset, 0.2f*bob_sin - 0.6f));
+                    push_bitmap(render_group, &game_state->shadow_sprite, make_vec3(offset, 0.0f), make_vec2(0.0f), (0.5f*shadow_alpha) + 0.2f*bob_sin, 0.0f);
+                    push_bitmap(render_group, sprite, make_vec3(offset, 0.2f*bob_sin - 0.6f), make_vec2(0.0f));
                 } break;
                     
                 case EntityType_Monster: {
-                    push_rect(&piece_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.0f, 0.0f, 1.0f));
+                    push_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.0f, 0.0f, 1.0f));
                     
                     Bitmap *sprite = &game_state->player_sprites[2];
                     Vec2 offset = make_vec2(-0.5f*sprite->width*pixels_to_meters,
                                             0.5f*sprite->height*pixels_to_meters);
                     
-                    push_bitmap(&piece_group, &game_state->shadow_sprite, make_vec3(offset, 0.0f), shadow_alpha, 0.0f);
-                    push_bitmap(&piece_group, sprite, make_vec3(offset, 0.0f));
+                    push_bitmap(render_group, &game_state->shadow_sprite, make_vec3(offset, 0.0f), make_vec2(0.0f), shadow_alpha, 0.0f);
+                    push_bitmap(render_group, sprite, make_vec3(offset, 0.0f), make_vec2(0.0f));
                     
-                    draw_hit_points(&piece_group, entity);
+                    draw_hit_points(render_group, entity);
                 } break;
                     
                 default: {
@@ -1244,38 +1192,37 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 is_entity_flag_set(entity, EntityFlag_Moveable)) {
                 move_entity(game_state, sim_region, entity, clock->dt, &move_spec, dd_pos);
             }
+
+            basis->pos = get_entity_ground_point(entity);
+        }
+    }
             
-            for (u32 piece_index = 0; piece_index < piece_group.piece_count; piece_index++) {
-                Entity_Visible_Piece *piece = piece_group.pieces + piece_index;
+    for (u32 base_address = 0;
+         base_address < render_group->push_buffer_size;
+         ) {
+        Entity_Visible_Piece *piece = (Entity_Visible_Piece *)(render_group->push_buffer_base + base_address);
+        base_address += sizeof(Entity_Visible_Piece);
                                 
-                Vec3 entity_base_pos = get_entity_ground_point(entity);
-                f32 fudge_z = (1.0f + 0.1f*entity_base_pos.z + piece->offset.z);
+        Vec3 entity_base_pos = piece->basis->pos;
+        f32 fudge_z = (1.0f + 0.1f*entity_base_pos.z + piece->offset.z);
             
-                f32 entity_ground_point_x = screen_center.x + meters_to_pixels*fudge_z*entity_base_pos.x;
-                f32 entity_ground_point_y = screen_center.y - meters_to_pixels*fudge_z*entity_base_pos.y;
-                f32 entity_z = -meters_to_pixels*entity_base_pos.z;
+        f32 entity_ground_point_x = screen_center.x + meters_to_pixels*fudge_z*entity_base_pos.x;
+        f32 entity_ground_point_y = screen_center.y - meters_to_pixels*fudge_z*entity_base_pos.y;
+        f32 entity_z = -meters_to_pixels*entity_base_pos.z;
                 
-                Vec2 center = make_vec2(entity_ground_point_x + piece->offset.x,
-                                        entity_ground_point_y + piece->offset.y + piece->entity_zc*entity_z);
-                if (piece->bitmap) {
-                    draw_bitmap(draw_buffer, piece->bitmap, center.x, center.y, piece->color.a);
-                } else {
-                    Vec2 half_size = 0.5f*meters_to_pixels*piece->size;
-                    Vec3 color = make_vec3(piece->color.r, piece->color.g, piece->color.b);
-                    draw_rect(draw_buffer, center - half_size, center + half_size, color);
-                }
-            }
+        Vec2 center = make_vec2(entity_ground_point_x + piece->offset.x,
+                                entity_ground_point_y + piece->offset.y + piece->entity_zc*entity_z);
+        if (piece->bitmap) {
+            draw_bitmap(draw_buffer, piece->bitmap, center.x, center.y, piece->color.a);
+        } else {
+            Vec2 half_size = 0.5f*meters_to_pixels*piece->size;
+            draw_rect(draw_buffer, center - half_size, center + half_size, piece->color.rgb);
         }
     }
     
-    ////////////////////////////////
-    // NOTE(xkazu0x): simulation end
-    //World_Position world_origin = {};
-    //Vec3 delta_origin = subtract(sim_region->world, &world_origin, &sim_region->origin);
-    //draw_rect(draw_buffer, delta_origin.xy, make_vec2(tile_size_in_pixels), make_vec3(1.0f));
-    
     end_sim(sim_region, game_state);
     end_temporary_memory(&sim_memory);
+    end_temporary_memory(&render_memory);
     
     check_arena(&game_state->world_arena);
     check_arena(&tran_state->arena);

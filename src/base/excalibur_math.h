@@ -88,11 +88,11 @@ union Vec4 {
     };
 
     struct {
-        Vec2 xyz;
+        Vec3 xyz;
         f32 _w0;
     };
     struct {
-        Vec2 rgb;
+        Vec3 rgb;
         f32 _a0;
     };
     

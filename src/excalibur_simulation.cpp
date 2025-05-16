@@ -352,7 +352,7 @@ handle_overlap(Game_State *state, Sim_Entity *mover, Sim_Entity *region,
 }
 
 internal b32
-speculative_collide(Sim_Entity *mover, Sim_Entity *region) {
+speculative_collide(Sim_Entity *mover, Sim_Entity *region, Vec3 test_pos) {
     b32 result = true;
     if (region->type == EntityType_Stairwell) {
         f32 step_height = 0.1f;
@@ -360,7 +360,7 @@ speculative_collide(Sim_Entity *mover, Sim_Entity *region) {
         result = ((abs_f32(get_entity_ground_point(mover).z - ground) > step_height) ||
                   ((bary.y > 0.1f) && (bary.y < 0.9f)));
 #endif
-        Vec3 mover_ground_point = get_entity_ground_point(mover);
+        Vec3 mover_ground_point = get_entity_ground_point(mover, test_pos);
         f32 ground = get_stair_ground(region, mover_ground_point);
         result = (abs_f32(mover_ground_point.z - ground) > step_height);
     }
@@ -556,8 +556,8 @@ move_entity(Game_State *state, Sim_Region *region, Sim_Entity *entity, f32 delta
                                         }
                                         
                                         if (hit_this) {
-                                            //Vec3 test_pos = entity->pos + t_min_test*player_delta;
-                                            if (speculative_collide(entity, test_entity)) {
+                                            Vec3 test_pos = entity->pos + t_min_test*player_delta;
+                                            if (speculative_collide(entity, test_entity, test_pos)) {
                                                 t_min = t_min_test;
                                                 wall_normal_min = test_wall_normal;
                                                 hit_entity_min = test_entity;
