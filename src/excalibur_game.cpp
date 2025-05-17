@@ -13,8 +13,6 @@
 #include "excalibur_entity.cpp"
 #include "excalibur_render_group.cpp"
 
-// TODO(xkazu0x): stopped at 31:00
-
 internal Gamepad *
 get_gamepad(OS_Input *input, u32 index) {
     Assert(index < Gamepad_Count);
@@ -23,125 +21,6 @@ get_gamepad(OS_Input *input, u32 index) {
         result = &input->gamepads[index];
     }
     return(result);
-}
-
-internal void
-draw_rect(Bitmap *framebuffer, Vec2 min, Vec2 max, Vec3 color) {
-    s32 min_x = round_f32_to_s32(min.x);
-    s32 min_y = round_f32_to_s32(min.y);
-    
-    s32 max_x = round_f32_to_s32(max.x);
-    s32 max_y = round_f32_to_s32(max.y);
-
-    if (min_x < 0) min_x = 0;
-    if (min_y < 0) min_y = 0;
-    
-    if (max_x > framebuffer->width) max_x = framebuffer->width;
-    if (max_y > framebuffer->height) max_y = framebuffer->height;
-
-    u32 out_color = ((round_f32_to_u32(color.r * 255.0f) << 16) |
-                     (round_f32_to_u32(color.g * 255.0f) << 8) |
-                     (round_f32_to_u32(color.b * 255.0f) << 0));
-    
-    u8 *row = ((u8 *)framebuffer->memory +
-                 (min_x * BYTES_PER_PIXEL) +
-                 (min_y * framebuffer->pitch));
-    for (s32 y = min_y; y < max_y; ++y) {
-        u32 *pixel = (u32 *)row;
-        for (s32 x = min_x; x < max_x; ++x) {
-            *pixel++ = out_color;
-        }
-        row += framebuffer->pitch;
-    }
-}
-
-internal void
-draw_rect_outline(Bitmap *draw_buffer, Vec2 min, Vec2 max, Vec3 color, f32 r = 1.0f) {    
-    // NOTE(xkazu0x): top and bottom
-    draw_rect(draw_buffer,
-              make_vec2(min.x - r, min.y - r),
-              make_vec2(max.x + r, min.y + r),
-              color);
-    draw_rect(draw_buffer,
-              make_vec2(min.x - r, max.y - r),
-              make_vec2(max.x + r, max.y + r),
-              color);
-    
-    // NOTE(xkazu0x): left and right
-    draw_rect(draw_buffer,
-              make_vec2(min.x - r, min.y - r),
-              make_vec2(min.x + r, max.y + r),
-              color);
-    draw_rect(draw_buffer,
-              make_vec2(max.x - r, min.y - r),
-              make_vec2(max.x + r, max.y + r),
-              color);
-}
-
-internal void
-draw_bitmap(Bitmap *framebuffer, Bitmap *bitmap,
-            f32 offset_x, f32 offset_y, f32 c_alpha = 1.0f) {
-    s32 min_x = round_f32_to_s32(offset_x);
-    s32 min_y = round_f32_to_s32(offset_y);
-    s32 max_x = min_x + bitmap->width;
-    s32 max_y = min_y + bitmap->height;
-
-    s32 source_offset_x = 0;
-    s32 source_offset_y = 0;
-    
-    if (min_x < 0) {
-        source_offset_x = -min_x;
-        min_x = 0;
-    }
-    if (min_y < 0) {
-        source_offset_y = -min_y;
-        min_y = 0;
-    }
-    
-    if (max_x > framebuffer->width) max_x = framebuffer->width;
-    if (max_y > framebuffer->height) max_y = framebuffer->height;
-
-    // TODO(xkazu0x): source_row needs to be changed based on cliping
-    u8 *source_row = (u8 *)bitmap->memory + source_offset_y*bitmap->pitch + BYTES_PER_PIXEL*source_offset_x;
-    u8 *dest_row = ((u8 *)framebuffer->memory +
-                    min_x*BYTES_PER_PIXEL +
-                    min_y*framebuffer->pitch);
-    
-    for (s32 y = min_y; y < max_y; ++y) {
-        u32 *dest   = (u32 *)dest_row;
-        u32 *source = (u32 *)source_row;
-        
-        for (s32 x = min_x; x < max_x; ++x) {
-            f32 src_a = (f32)((*source >> 24) & 0xFF);
-            f32 src_r = c_alpha*(f32)((*source >> 16) & 0xFF);
-            f32 src_g = c_alpha*(f32)((*source >> 8) & 0xFF);
-            f32 src_b = c_alpha*(f32)((*source >> 0) & 0xFF);
-            f32 real_src_a = (src_a/255.0f)*c_alpha;
-            
-            f32 dest_a = (f32)((*dest >> 24) & 0xFF);
-            f32 dest_r = (f32)((*dest >> 16) & 0xFF);
-            f32 dest_g = (f32)((*dest >> 8) & 0xFF);
-            f32 dest_b = (f32)((*dest >> 0) & 0xFF);
-            f32 real_dest_a = (dest_a/255.0f);
-
-            f32 inv_real_src_a = (1.0f - real_src_a);
-            f32 a = 255.0f*(real_src_a + real_dest_a - real_src_a*real_dest_a);
-            f32 r = inv_real_src_a*dest_r + src_r;
-            f32 g = inv_real_src_a*dest_g + src_g;
-            f32 b = inv_real_src_a*dest_b + src_b;
-
-            *dest = (((u32)(a + 0.5f) << 24) |
-                     ((u32)(r + 0.5f) << 16) |
-                     ((u32)(g + 0.5f) << 8) |
-                     ((u32)(b + 0.5f) << 0));
-            
-            ++dest;
-            ++source;
-        }
-        
-        dest_row += framebuffer->pitch;
-        source_row += bitmap->pitch;
-    }
 }
 
 #pragma pack(push, 1)
@@ -510,10 +389,10 @@ make_null_collision(Game_State *game_state) {
 }
 
 internal void
-fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Buffer *ground_buffer, World_Position *pos) {
+fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Buffer *ground_buffer, World_Position *position) {
     Bitmap *buffer = &ground_buffer->bitmap;
 
-    ground_buffer->position = *pos;
+    ground_buffer->position = *position;
 
     f32 width = (f32)buffer->width;
     f32 height = (f32)buffer->height;
@@ -523,9 +402,9 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
         for (s32 chunk_offset_x = -1;
              chunk_offset_x <= 1;
              ++chunk_offset_x) {
-            s32 chunk_x = pos->chunk_x + chunk_offset_x;
-            s32 chunk_y = pos->chunk_y + chunk_offset_y;
-            u32 chunk_z = pos->chunk_z;
+            s32 chunk_x = position->chunk_x + chunk_offset_x;
+            s32 chunk_y = position->chunk_y + chunk_offset_y;
+            u32 chunk_z = position->chunk_z;
             
             // TODO(xkazu0x): look into wang hashing here or some other spatial seed generation "thing"!
             random_series_t series = random_seed(464*chunk_x + 132*chunk_y + 235*chunk_z);
@@ -544,9 +423,9 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
         
                 Vec2 sprite_center = 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height);
                 Vec2 offset = make_vec2(width*random_unilateral(&series), height*random_unilateral(&series));
-                Vec2 pos = center + offset - sprite_center;
+                Vec2 draw_pos = center + offset - sprite_center;
         
-                draw_bitmap(buffer, sprite, pos.x, pos.y);
+                draw_bitmap(buffer, sprite, draw_pos);
             }
         }
     }
@@ -557,9 +436,9 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
         for (s32 chunk_offset_x = -1;
              chunk_offset_x <= 1;
              ++chunk_offset_x) {
-            s32 chunk_x = pos->chunk_x + chunk_offset_x;
-            s32 chunk_y = pos->chunk_y + chunk_offset_y;
-            u32 chunk_z = pos->chunk_z;
+            s32 chunk_x = position->chunk_x + chunk_offset_x;
+            s32 chunk_y = position->chunk_y + chunk_offset_y;
+            u32 chunk_z = position->chunk_z;
             
             // TODO(xkazu0x): look into wang hashing here or some other spatial seed generation "thing"!
             random_series_t series = random_seed(464*chunk_x + 132*chunk_y + 235*chunk_z);
@@ -580,7 +459,7 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
                 Vec2 offset = make_vec2(width*random_unilateral(&series), height*random_unilateral(&series));
                 Vec2 pos = center + offset - sprite_center;
         
-                draw_bitmap(buffer, sprite, pos.x, pos.y);
+                draw_bitmap(buffer, sprite, pos);
             }
         }
     }
@@ -625,7 +504,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
     
     if (!memory->initialized) {
         game_state->typical_floor_height = 3.0f;
-        game_state->meters_to_pixels = 11.4285714286; // tile_size_in_pixels/1.4f (tile_size_in_meters);
+        game_state->meters_to_pixels = 11.4285714286f; // tile_size_in_pixels/1.4f (tile_size_in_meters);
         game_state->pixels_to_meters = 1.0f/game_state->meters_to_pixels;
         
         Vec3 world_chunk_dim_in_meters = make_vec3(game_state->pixels_to_meters*(f32)ground_buffer_width,
@@ -897,7 +776,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
 
     Temporary_Memory render_memory = begin_temporary_memory(&tran_state->arena);
     // TODO(xkazu0x): Decide what out push buffer size is!
-    Render_Group *render_group = alloc_render_group(&tran_state->arena, MB(4), game_state->meters_to_pixels);
+    Render_Group *render_group = render_group_alloc(&tran_state->arena, MB(4), game_state->meters_to_pixels);
     
     Bitmap _draw_buffer = {};
     Bitmap *draw_buffer = &_draw_buffer;
@@ -915,7 +794,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 color = make_rgb(74.0f, 60.0f, 74.0f);
             }
             
-            Vec2 min = make_vec2(x*tile_size_in_pixels, y*tile_size_in_pixels);
+            Vec2 min = make_vec2((f32)x*tile_size_in_pixels, (f32)y*tile_size_in_pixels);
             Vec2 max = make_vec2(min.x + tile_size_in_pixels, min.y + tile_size_in_pixels);
             
             draw_rect(draw_buffer, min, max, color);
@@ -939,7 +818,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
         if (is_valid(ground_buffer->position)) {
             Bitmap *bitmap = &ground_buffer->bitmap;
             Vec3 delta = subtract(game_state->world, &ground_buffer->position, &game_state->camera_pos);
-            push_bitmap(render_group, bitmap, delta, 0.5f*make_vec2(bitmap->width, bitmap->height));
+            push_bitmap(render_group, bitmap, delta, 0.5f*make_vec2((f32)bitmap->width, (f32)bitmap->height));
         }
     }
     
@@ -957,12 +836,11 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
                      chunk_x <= max_chunk_pos.chunk_x;
                      ++chunk_x) {
                     World_Position chunk_center_pos = centered_chunk_point(chunk_x, chunk_y, chunk_z);
-                    Vec3 rel_pos = subtract(world, &chunk_center_pos, &game_state->camera_pos);
-                    Vec2 screen_pos = make_vec2(screen_center.x + meters_to_pixels*rel_pos.x,
-                                                screen_center.y - meters_to_pixels*rel_pos.y);
+                    Vec3 chunk_rel_pos = subtract(world, &chunk_center_pos, &game_state->camera_pos);
+                    Vec2 screen_pos = make_vec2(screen_center.x + meters_to_pixels*chunk_rel_pos.x,
+                                                screen_center.y - meters_to_pixels*chunk_rel_pos.y);
                     Vec2 screen_dim = 0.5f*meters_to_pixels*world->chunk_dim_in_meters.xy;
                     
-                    b32 found = false;
                     f32 furthest_ground_buffer_length_squared = 0.0f;
                     Ground_Buffer *furthest_ground_buffer = 0;
                         
@@ -975,8 +853,8 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
                             furthest_ground_buffer = 0;
                             break;
                         } else if (is_valid(ground_buffer->position)) {
-                            Vec3 rel_pos = subtract(world, &ground_buffer->position, &game_state->camera_pos);
-                            f32 distance_length_squared = length_squared(rel_pos.xy);
+                            Vec3 ground_rel_pos = subtract(world, &ground_buffer->position, &game_state->camera_pos);
+                            f32 distance_length_squared = length_squared(ground_rel_pos.xy);
                             if (furthest_ground_buffer_length_squared < distance_length_squared) {
                                 furthest_ground_buffer_length_squared = distance_length_squared;
                                 furthest_ground_buffer = ground_buffer;
@@ -1026,7 +904,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
             
             switch (entity->type) {
                 case EntityType_Space: {
-#if 1
+#if 0
                     for (u32 volume_index = 0;
                          volume_index < entity->collision->volume_count;
                          ++volume_index) {
@@ -1196,29 +1074,8 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
             basis->pos = get_entity_ground_point(entity);
         }
     }
-            
-    for (u32 base_address = 0;
-         base_address < render_group->push_buffer_size;
-         ) {
-        Entity_Visible_Piece *piece = (Entity_Visible_Piece *)(render_group->push_buffer_base + base_address);
-        base_address += sizeof(Entity_Visible_Piece);
-                                
-        Vec3 entity_base_pos = piece->basis->pos;
-        f32 fudge_z = (1.0f + 0.1f*entity_base_pos.z + piece->offset.z);
-            
-        f32 entity_ground_point_x = screen_center.x + meters_to_pixels*fudge_z*entity_base_pos.x;
-        f32 entity_ground_point_y = screen_center.y - meters_to_pixels*fudge_z*entity_base_pos.y;
-        f32 entity_z = -meters_to_pixels*entity_base_pos.z;
-                
-        Vec2 center = make_vec2(entity_ground_point_x + piece->offset.x,
-                                entity_ground_point_y + piece->offset.y + piece->entity_zc*entity_z);
-        if (piece->bitmap) {
-            draw_bitmap(draw_buffer, piece->bitmap, center.x, center.y, piece->color.a);
-        } else {
-            Vec2 half_size = 0.5f*meters_to_pixels*piece->size;
-            draw_rect(draw_buffer, center - half_size, center + half_size, piece->color.rgb);
-        }
-    }
+
+    render_group_draw(render_group, draw_buffer);
     
     end_sim(sim_region, game_state);
     end_temporary_memory(&sim_memory);

@@ -168,20 +168,23 @@ win32_unload_game(Win32_Game *game) {
 }
 
 internal void
-win32_build_exe_path_filename(Win32_State *win32_state, char *filename,
+win32_build_exe_path_filename(Win32_State *state, char *filename,
                               u32 dest_count, char *dest) {
-    cat_strings(win32_state->one_past_last_exe_filename_slash - win32_state->exe_filename, win32_state->exe_filename,
+    cat_strings(state->one_past_last_exe_filename_slash - state->exe_filename, state->exe_filename,
                 string_length(filename), filename,
                 dest_count, dest);
 }
 
 internal void
-win32_get_exe_filename(Win32_State *win32_state) {
-    DWORD size_of_filename = GetModuleFileName(0, win32_state->exe_filename, sizeof(win32_state->exe_filename));
-    win32_state->one_past_last_exe_filename_slash = win32_state->exe_filename;
-    for (char *scan = win32_state->exe_filename; *scan; ++scan) {
+win32_get_exe_filename(Win32_State *state) {
+    //DWORD size_of_filename;
+    GetModuleFileName(0, state->exe_filename, sizeof(state->exe_filename));
+    state->one_past_last_exe_filename_slash = state->exe_filename;
+    for (char *scan = state->exe_filename;
+         *scan;
+         ++scan) {
         if (*scan == '\\') {
-            win32_state->one_past_last_exe_filename_slash = scan + 1;
+            state->one_past_last_exe_filename_slash = scan + 1;
         }
     }
 }

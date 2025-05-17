@@ -39,7 +39,7 @@
 #endif
 
 #define InvalidPath        Assert(!"Invalid Path!")
-#define NotImplemented     Assert(!"Not Implemented!")
+#define InvalidDefaultCase default: {InvalidPath;} break;
 
 #define KB(x) (((u64)(x)) << 10)
 #define MB(x) (((u64)(x)) << 20)

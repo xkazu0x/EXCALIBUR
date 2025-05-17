@@ -250,26 +250,6 @@ struct test_wall_t {
 };
 
 internal b32
-test_wall(f32 wall_x, f32 rel_x, f32 rel_y, f32 player_delta_x, f32 player_delta_y,
-          f32 *t_min, f32 min_y, f32 max_y) {
-    b32 hit = false;
-    
-    f32 t_epsilon = 0.001f;
-    if (player_delta_x != 0.0f) {
-        f32 t_result = (wall_x - rel_x) / player_delta_x;
-        f32 y = rel_y + t_result*player_delta_y;
-        if ((t_result >= 0.0f) && (*t_min > t_result)) {
-            if (y >= min_y && (y <= max_y)) {
-                *t_min = Max(0.0f, t_result - t_epsilon);
-                hit = true;
-            }
-        }
-    }
-    
-    return(hit);
-}
-
-internal b32
 can_collide(Game_State *state, Sim_Entity *a, Sim_Entity *b) {
     b32 result = false;
 
@@ -395,8 +375,6 @@ internal void
 move_entity(Game_State *state, Sim_Region *region, Sim_Entity *entity, f32 delta,
             Move_Spec *move_spec, Vec3 dd_pos) {
     Assert(!is_entity_flag_set(entity, EntityFlag_NonSpatial));
-    
-    World *world = region->world;
     
     if (move_spec->unit_max_accel_vector) {
         f32 dd_pos_length = length_squared(dd_pos);
