@@ -284,7 +284,7 @@ draw_hit_points(Render_Group *piece_group, Sim_Entity *entity) {
                 color = make_rgba(164.0f, 157.0f, 164.0f, 255.0f);
             }
             
-            push_rect(piece_group, make_vec3(hit_pos, 0.0f), health_dim, color, 0.0f);
+            render_rect(piece_group, make_vec3(hit_pos, 0.0f), health_dim, color, 0.0f);
             hit_pos += hit_dpos;
         }
     }
@@ -390,12 +390,15 @@ make_null_collision(Game_State *game_state) {
 
 internal void
 fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Buffer *ground_buffer, World_Position *position) {
-    Bitmap *buffer = &ground_buffer->bitmap;
+    Temporary_Memory render_memory = begin_temporary_memory(&tran_state->arena);
+    Render_Group *render_group = render_group_alloc(&tran_state->arena, MB(4), 1.0f);
 
+    Bitmap *output_target = &ground_buffer->bitmap;
     ground_buffer->position = *position;
 
-    f32 width = (f32)buffer->width;
-    f32 height = (f32)buffer->height;
+    f32 width = (f32)output_target->width;
+    f32 height = (f32)output_target->height;
+
     for (s32 chunk_offset_y = -1;
          chunk_offset_y <= 1;
          ++chunk_offset_y) {
@@ -425,7 +428,10 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
                 Vec2 offset = make_vec2(width*random_unilateral(&series), height*random_unilateral(&series));
                 Vec2 draw_pos = center + offset - sprite_center;
         
-                draw_bitmap(buffer, sprite, draw_pos);
+                render_bitmap(render_group,
+                              sprite,
+                              make_vec3(draw_pos, 0.0f),
+                              make_vec2(0.0f));
             }
         }
     }
@@ -457,12 +463,18 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
         
                 Vec2 sprite_center = 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height);
                 Vec2 offset = make_vec2(width*random_unilateral(&series), height*random_unilateral(&series));
-                Vec2 pos = center + offset - sprite_center;
+                Vec2 draw_pos = center + offset - sprite_center;
         
-                draw_bitmap(buffer, sprite, pos);
+                render_bitmap(render_group,
+                              sprite,
+                              make_vec3(draw_pos, 0.0f),
+                              make_vec2(0.0f));
             }
         }
     }
+
+    render_group_draw(render_group, output_target);
+    end_temporary_memory(&render_memory);
 }
 
 internal void
@@ -494,7 +506,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
     
     u32 tile_count_x = 17;
     u32 tile_count_y = 9;
-    s32 tile_size_in_pixels = 16;
+    //s32 tile_size_in_pixels = 16;
 
     f32 tile_side_in_meters = 1.4f;
     f32 tile_depth_in_meters = 3.0f;
@@ -785,7 +797,9 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
     draw_buffer->pitch  = framebuffer->pitch;
     draw_buffer->memory = framebuffer->memory;
 
-    // NOTE(xkazu0x): Clear Screen
+    render_clear(render_group, make_vec4(1.0f, 0.0f, 1.0f, 0.0f));
+
+#if 0
     for (u32 y = 0; y < 12; ++y) {
         for (u32 x = 0; x < 20; ++x) {
             Vec3 color = make_rgb(57.0f, 44.0f, 49.0f);
@@ -800,6 +814,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
             draw_rect(draw_buffer, min, max, color);
         }
     }
+#endif
     
     Vec2 screen_center = make_vec2(0.5f*(f32)draw_buffer->width,
                                    0.5f*(f32)draw_buffer->height);
@@ -810,7 +825,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
                                                           make_vec3(screen_width_in_meters,
                                                                     screen_height_in_meters,
                                                                     0.0f));
-
+    
     for (u32 ground_buffer_index = 0;
          ground_buffer_index < tran_state->ground_buffer_count;
          ++ground_buffer_index) {
@@ -818,7 +833,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
         if (is_valid(ground_buffer->position)) {
             Bitmap *bitmap = &ground_buffer->bitmap;
             Vec3 delta = subtract(game_state->world, &ground_buffer->position, &game_state->camera_pos);
-            push_bitmap(render_group, bitmap, delta, 0.5f*make_vec2((f32)bitmap->width, (f32)bitmap->height));
+            render_bitmap(render_group, bitmap, delta, 0.5f*make_vec2((f32)bitmap->width, (f32)bitmap->height));
         }
     }
     
@@ -837,9 +852,6 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
                      ++chunk_x) {
                     World_Position chunk_center_pos = centered_chunk_point(chunk_x, chunk_y, chunk_z);
                     Vec3 chunk_rel_pos = subtract(world, &chunk_center_pos, &game_state->camera_pos);
-                    Vec2 screen_pos = make_vec2(screen_center.x + meters_to_pixels*chunk_rel_pos.x,
-                                                screen_center.y - meters_to_pixels*chunk_rel_pos.y);
-                    Vec2 screen_dim = 0.5f*meters_to_pixels*world->chunk_dim_in_meters.xy;
                     
                     f32 furthest_ground_buffer_length_squared = 0.0f;
                     Ground_Buffer *furthest_ground_buffer = 0;
@@ -868,11 +880,11 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     if (furthest_ground_buffer) {
                         fill_ground_chunk(tran_state, game_state, furthest_ground_buffer, &chunk_center_pos);
                     }
-                        
-                    draw_rect_outline(draw_buffer,
-                                      screen_pos - screen_dim,
-                                      screen_pos + screen_dim,
-                                      make_vec3(1.0f, 1.0f, 0.0f));
+                    
+                    render_rect_outline(render_group,
+                                        make_vec3(chunk_rel_pos.xy, 0.0f),
+                                        world->chunk_dim_in_meters.xy,
+                                        make_vec4(1.0f, 1.0f, 0.0f, 1.0f));
                 }
             }
         }
@@ -904,25 +916,26 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
             
             switch (entity->type) {
                 case EntityType_Space: {
-#if 0
                     for (u32 volume_index = 0;
                          volume_index < entity->collision->volume_count;
                          ++volume_index) {
                         Sim_Entity_Collision_Volume *volume = entity->collision->volumes + volume_index;
-                        push_rect_outline(render_group, make_vec3(volume->offset.x, volume->offset.y, 0.0f), volume->dim.xy, make_vec4(0.2f, 0.3f, 0.3f, 1.0f));
+                        render_rect_outline(render_group,
+                                            make_vec3(volume->offset.xy, 0.0f),
+                                            volume->dim.xy,
+                                            make_vec4(0.0f, 1.0f, 1.0f, 1.0f));
                     }
-#endif
                 } break;
                     
                 case EntityType_Wall: {
-                    push_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.5f, 0.2f, 1.0f));
+                    render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.5f, 0.2f, 1.0f));
                     
                     Bitmap *sprite = &game_state->wall_sprite;
                     Vec3 offset = make_vec3(-0.5f*sprite->width*pixels_to_meters,
                                             0.5f*sprite->height*pixels_to_meters,
                                             0.0f);
                     
-                    push_bitmap(render_group, sprite, offset, make_vec2(0.0f));
+                    render_bitmap(render_group, sprite, offset, make_vec2(0.0f));
                 } break;
                     
                 case EntityType_Stairwell: {
@@ -931,11 +944,11 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
                                             0.5f*sprite->height*pixels_to_meters,
                                             entity->walkable_height);
                     
-                    push_rect(render_group, make_vec3(0.0f), entity->walkable_dim, make_vec4(1.0f, 0.0f, 1.0f, 1.0f));
-                    push_rect(render_group, make_vec3(0.0f, entity->walkable_height, 0.0f), entity->walkable_dim, make_vec4(0.0f, 1.0f, 1.0f, 1.0f));
+                    render_rect(render_group, make_vec3(0.0f), entity->walkable_dim, make_vec4(1.0f, 0.0f, 1.0f, 1.0f));
+                    render_rect(render_group, make_vec3(0.0f, entity->walkable_height, 0.0f), entity->walkable_dim, make_vec4(0.0f, 1.0f, 1.0f, 1.0f));
 
-                    //push_bitmap(render_group, sprite, make_vec3(offset.xy, 0.0f));
-                    //push_bitmap(render_group, sprite, offset);
+                    //render_bitmap(render_group, sprite, make_vec3(offset.xy, 0.0f));
+                    //render_bitmap(render_group, sprite, offset);
                 } break;
 
                 case EntityType_Player: {
@@ -964,14 +977,14 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
                         }
                     }
                     
-                    push_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 1.0f, 0.0f, 1.0f));
+                    render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.5f, 0.3f, 1.0f));
                     
                     Bitmap *sprite = &game_state->player_sprites[entity->direction];
                     Vec2 offset = make_vec2(-0.5f*sprite->width*pixels_to_meters,
                                             0.5f*sprite->height*pixels_to_meters);
                     
-                    push_bitmap(render_group, &game_state->shadow_sprite, make_vec3(offset, 0.0f), make_vec2(0.0f), shadow_alpha, 0.0f);
-                    push_bitmap(render_group, sprite, make_vec3(offset, 0.0f), make_vec2(0.0f));
+                    render_bitmap(render_group, &game_state->shadow_sprite, make_vec3(offset, 0.0f), make_vec2(0.0f), shadow_alpha, 0.0f);
+                    render_bitmap(render_group, sprite, make_vec3(offset, 0.0f), make_vec2(0.0f));
                     
                     draw_hit_points(render_group, entity);
                 } break;
@@ -993,8 +1006,8 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
                         make_entity_non_spatial(entity);
                     }
                     
-                    push_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(0.0f, 1.0f, 0.0f, 1.0f));
-                    //push_bitmap(render_group, &game_state->sword_sprite, make_vec3(0.0f));
+                    render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(0.0f, 1.0f, 0.0f, 1.0f));
+                    //render_bitmap(render_group, &game_state->sword_sprite, make_vec3(0.0f));
                 } break;
                     
                 case EntityType_Familiar: {
@@ -1036,7 +1049,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
                         entity->t_bob -= (2.0f*pi32);
                     }
 
-                    push_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(0.0f, 1.0f, 0.0f, 1.0f));
+                    render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(0.0f, 1.0f, 0.0f, 1.0f));
                     
                     f32 bob_sin = sin_f32(5.0f*entity->t_bob);
                     
@@ -1044,19 +1057,19 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     Vec2 offset = make_vec2(-0.5f*sprite->width*pixels_to_meters,
                                             0.5f*sprite->height*pixels_to_meters);
 
-                    push_bitmap(render_group, &game_state->shadow_sprite, make_vec3(offset, 0.0f), make_vec2(0.0f), (0.5f*shadow_alpha) + 0.2f*bob_sin, 0.0f);
-                    push_bitmap(render_group, sprite, make_vec3(offset, 0.2f*bob_sin - 0.6f), make_vec2(0.0f));
+                    render_bitmap(render_group, &game_state->shadow_sprite, make_vec3(offset, 0.0f), make_vec2(0.0f), (0.5f*shadow_alpha) + 0.2f*bob_sin, 0.0f);
+                    render_bitmap(render_group, sprite, make_vec3(offset, 0.2f*bob_sin - 0.6f), make_vec2(0.0f));
                 } break;
                     
                 case EntityType_Monster: {
-                    push_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.0f, 0.0f, 1.0f));
+                    render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.0f, 0.0f, 1.0f));
                     
                     Bitmap *sprite = &game_state->player_sprites[2];
                     Vec2 offset = make_vec2(-0.5f*sprite->width*pixels_to_meters,
                                             0.5f*sprite->height*pixels_to_meters);
                     
-                    push_bitmap(render_group, &game_state->shadow_sprite, make_vec3(offset, 0.0f), make_vec2(0.0f), shadow_alpha, 0.0f);
-                    push_bitmap(render_group, sprite, make_vec3(offset, 0.0f), make_vec2(0.0f));
+                    render_bitmap(render_group, &game_state->shadow_sprite, make_vec3(offset, 0.0f), make_vec2(0.0f), shadow_alpha, 0.0f);
+                    render_bitmap(render_group, sprite, make_vec3(offset, 0.0f), make_vec2(0.0f));
                     
                     draw_hit_points(render_group, entity);
                 } break;

@@ -1,5 +1,5 @@
 internal void
-draw_rect(Bitmap *buffer, Vec2 min, Vec2 max, Vec3 color) {
+draw_rect(Bitmap *buffer, Vec2 min, Vec2 max, Vec3 color, f32 a) {
     s32 min_x = round_f32_to_s32(min.x);
     s32 min_y = round_f32_to_s32(min.y);
     
@@ -12,13 +12,14 @@ draw_rect(Bitmap *buffer, Vec2 min, Vec2 max, Vec3 color) {
     if (max_x > buffer->width) max_x = buffer->width;
     if (max_y > buffer->height) max_y = buffer->height;
 
-    u32 out_color = ((round_f32_to_u32(color.r * 255.0f) << 16) |
-                     (round_f32_to_u32(color.g * 255.0f) << 8) |
-                     (round_f32_to_u32(color.b * 255.0f) << 0));
+    u32 out_color = ((round_f32_to_u32(a*255.0f) << 24) |
+                     (round_f32_to_u32(color.r*255.0f) << 16) |
+                     (round_f32_to_u32(color.g*255.0f) << 8) |
+                     (round_f32_to_u32(color.b*255.0f) << 0));
     
     u8 *row = ((u8 *)buffer->memory +
-                 (min_x * BYTES_PER_PIXEL) +
-                 (min_y * buffer->pitch));
+               (min_x*BYTES_PER_PIXEL) +
+               (min_y*buffer->pitch));
     for (s32 y = min_y; y < max_y; ++y) {
         u32 *pixel = (u32 *)row;
         for (s32 x = min_x; x < max_x; ++x) {
@@ -116,67 +117,6 @@ draw_bitmap(Bitmap *buffer, Bitmap *bitmap, Vec2 offset, f32 c_alpha) {
     }
 }
 
-internal Render_Entry_Header *
-render_push_(Render_Group *group, u32 size, Render_Entry_Type type) {
-    Render_Entry_Header *result = 0;
-    if ((group->push_buffer_size + size) < group->max_push_buffer_size) {
-        result = (Render_Entry_Header *)(group->push_buffer_base + group->push_buffer_size);
-        result->type = type;
-        group->push_buffer_size += size;
-    } else {
-        InvalidPath;
-    }
-    return(result);
-}
-
-internal void
-push_entry(Render_Group *group, Bitmap *bitmap, Vec3 offset, Vec2 align, Vec4 color, f32 entity_zc) {
-    Render_Entry_Bitmap *entry = render_push(group, Render_Entry_Bitmap);
-    if (entry) {
-        entry->entity_basis.basis = group->default_basis;
-        entry->entity_basis.offset = make_vec3(group->meters_to_pixels*offset.x - align.x,
-                                               group->meters_to_pixels*(-offset.y) - align.y,
-                                               offset.z);
-        entry->entity_basis.entity_zc = entity_zc;
-        entry->bitmap = bitmap;
-        entry->color = color;
-    }
-}
-
-internal void
-push_bitmap(Render_Group *group, Bitmap *bitmap, Vec3 offset, Vec2 align, f32 alpha, f32 entity_zc) {
-    push_entry(group, bitmap, offset, align, make_vec4(make_vec3(1.0f), alpha), entity_zc);
-}
-
-internal void
-push_rect(Render_Group *group, Vec3 offset, Vec2 dim, Vec4 color, f32 entity_zc) {
-    Render_Entry_Rect *entry = render_push(group, Render_Entry_Rect);
-    if (entry) {
-        Vec2 half_dim = 0.5f*group->meters_to_pixels*dim;
-        entry->entity_basis.basis = group->default_basis;
-        entry->entity_basis.offset = make_vec3((group->meters_to_pixels*make_vec2(offset.x, (-offset.y)) - half_dim),
-                                               offset.z);
-        entry->entity_basis.entity_zc = entity_zc;
-        
-        entry->dim = group->meters_to_pixels*dim;
-        entry->color = color;
-    }
-}
-
-// TODO(xkazu0x): fix this function
-internal void
-push_rect_outline(Render_Group *group, Vec3 offset, Vec2 dim, Vec4 color, f32 entity_zc) {
-    //f32 thickness = 0.2f;
-    
-    // NOTE(xkazu0x): top and bottom
-    //push_entry(group, 0, offset - make_vec3(0.0f, 0.5f*dim.y, 0.0f), make_vec2(0.0f), make_vec2(dim.x, thickness), color, entity_zc);
-    //push_entry(group, 0, offset + make_vec3(0.0f, 0.5f*dim.y, 0.0f), make_vec2(0.0f), make_vec2(dim.x, thickness), color, entity_zc);
-    
-    // NOTE(xkazu0x): left and right
-    //push_entry(group, 0, offset - make_vec3(0.5f*dim.x, 0.0f, 0.0f), make_vec2(0.0f), make_vec2(thickness, dim.y), color, entity_zc);
-    //push_entry(group, 0, offset + make_vec3(0.5f*dim.x, 0.0f, 0.0f), make_vec2(0.0f), make_vec2(thickness, dim.y), color, entity_zc);
-}
-
 internal Vec2
 get_render_entity_basis_point(Render_Group *group, Render_Entity_Basis *entity_basis, Vec2 screen_center) {
     Vec3 entity_base_pos = entity_basis->basis->pos;
@@ -217,33 +157,98 @@ render_group_draw(Render_Group *group, Bitmap *output_target) {
         switch (header->type) {
             case RenderEntryType_Render_Entry_Clear: {
                 Render_Entry_Clear *entry = (Render_Entry_Clear *)header;
-                base_address += sizeof(*entry);
-            } break;
-                
-            case RenderEntryType_Render_Entry_Bitmap: {
-                Render_Entry_Bitmap *entry = (Render_Entry_Bitmap *)header;
-                
                 {
-                    Assert(entry->bitmap);
-                    Vec2 point = get_render_entity_basis_point(group, &entry->entity_basis, screen_center);
-                    draw_bitmap(output_target, entry->bitmap, point, entry->color.a);
+                    draw_rect(output_target,
+                              make_vec2(0.0f),
+                              make_vec2((f32)output_target->width, (f32)output_target->height),
+                              entry->color.rgb, entry->color.a);
                 }
-                
                 base_address += sizeof(*entry);
             } break;
                 
             case RenderEntryType_Render_Entry_Rect: {
                 Render_Entry_Rect *entry = (Render_Entry_Rect *)header;
-                
                 {
                     Vec2 point = get_render_entity_basis_point(group, &entry->entity_basis, screen_center);
                     draw_rect(output_target, point, point + entry->dim, entry->color.rgb);
                 }
+                base_address += sizeof(*entry);
+            } break;
                 
+            case RenderEntryType_Render_Entry_Bitmap: {
+                Render_Entry_Bitmap *entry = (Render_Entry_Bitmap *)header;
+                {
+                    Assert(entry->bitmap);
+                    Vec2 point = get_render_entity_basis_point(group, &entry->entity_basis, screen_center);
+                    draw_bitmap(output_target, entry->bitmap, point, entry->color.a);
+                }
                 base_address += sizeof(*entry);
             } break;
 
             InvalidDefaultCase;
         }
+    }
+}
+
+internal Render_Entry_Header *
+render_push_(Render_Group *group, u32 size, Render_Entry_Type type) {
+    Render_Entry_Header *result = 0;
+    if ((group->push_buffer_size + size) < group->max_push_buffer_size) {
+        result = (Render_Entry_Header *)(group->push_buffer_base + group->push_buffer_size);
+        result->type = type;
+        group->push_buffer_size += size;
+    } else {
+        InvalidPath;
+    }
+    return(result);
+}
+
+internal void
+render_clear(Render_Group *group, Vec4 color) {
+    Render_Entry_Clear *entry = render_push(group, Render_Entry_Clear);
+    if (entry) {
+        entry->color = color;
+    }
+}
+
+internal void
+render_rect(Render_Group *group, Vec3 offset, Vec2 dim, Vec4 color, f32 entity_zc) {
+    Render_Entry_Rect *entry = render_push(group, Render_Entry_Rect);
+    if (entry) {
+        Vec2 half_dim = 0.5f*group->meters_to_pixels*dim;
+        entry->entity_basis.basis = group->default_basis;
+        entry->entity_basis.offset = make_vec3((group->meters_to_pixels*make_vec2(offset.x, (-offset.y)) - half_dim),
+                                               offset.z);
+        entry->entity_basis.entity_zc = entity_zc;
+        
+        entry->dim = group->meters_to_pixels*dim;
+        entry->color = color;
+    }
+}
+
+internal void
+render_rect_outline(Render_Group *group, Vec3 offset, Vec2 dim, Vec4 color, f32 entity_zc) {
+    f32 thickness = 0.2f;
+    
+    // NOTE(xkazu0x): top and bottom
+    render_rect(group, offset - make_vec3(0.0f, 0.5f*dim.y, 0.0f), make_vec2(dim.x, thickness), color, entity_zc);
+    render_rect(group, offset + make_vec3(0.0f, 0.5f*dim.y, 0.0f), make_vec2(dim.x, thickness), color, entity_zc);
+    
+    // NOTE(xkazu0x): left and right
+    render_rect(group, offset - make_vec3(0.5f*dim.x, 0.0f, 0.0f), make_vec2(thickness, dim.y), color, entity_zc);
+    render_rect(group, offset + make_vec3(0.5f*dim.x, 0.0f, 0.0f), make_vec2(thickness, dim.y), color, entity_zc);
+}
+
+internal void
+render_bitmap(Render_Group *group, Bitmap *bitmap, Vec3 offset, Vec2 align, f32 alpha, f32 entity_zc) {
+    Render_Entry_Bitmap *entry = render_push(group, Render_Entry_Bitmap);
+    if (entry) {
+        entry->entity_basis.basis = group->default_basis;
+        entry->entity_basis.offset = make_vec3(group->meters_to_pixels*offset.x - align.x,
+                                               group->meters_to_pixels*(-offset.y) - align.y,
+                                               offset.z);
+        entry->entity_basis.entity_zc = entity_zc;
+        entry->bitmap = bitmap;
+        entry->color = make_vec4(make_vec3(1.0f), alpha);
     }
 }

@@ -378,7 +378,7 @@ WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
     window_class.hInstance = instance;
     window_class.hIcon = LoadIcon(0, IDI_APPLICATION);
     window_class.hCursor = LoadCursor(0, IDC_ARROW);
-    window_class.hbrBackground = CreateSolidBrush(RGB(255, 0, 255));
+    window_class.hbrBackground = CreateSolidBrush(RGB(0, 0, 0));
     window_class.lpszMenuName = 0;
     window_class.lpszClassName = "excalibur_window_class";
     ATOM window_atom = RegisterClassA(&window_class);
