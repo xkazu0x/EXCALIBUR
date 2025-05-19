@@ -1090,13 +1090,13 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
 
     game_state->time += clock->dt;
     f32 angle = game_state->time;
-    f32 axis_scale = 32.0f;
+    f32 axis_scale = 16.0f;
 
     // TODO(xkazu0x): Add a perpendicular operator!
-    Vec2 origin = screen_center + 2.0f*make_vec2(sin_f32(10.0f*angle), cos_f32(10.0f*angle));
-    Vec2 axis_x = axis_scale*make_vec2(cos_f32(angle), sin_f32(angle));
-    //Vec2 axis_y = make_vec2(-axis_x.y, axis_x.x);
-    Vec2 axis_y = axis_scale*make_vec2(cos_f32(angle + 1.0f), sin_f32(angle + 1.0f));
+    Vec2 origin = screen_center;
+    Vec2 axis_x = (axis_scale + axis_scale*cos_f32(angle))*make_vec2(cos_f32(angle), sin_f32(angle));
+    //Vec2 axis_y = perp(axis_x);
+    Vec2 axis_y = (axis_scale + axis_scale*cos_f32(angle))*make_vec2(cos_f32(angle + 1.0f), sin_f32(angle + 1.0f));
     Render_Entry_Coordinate_System *c = render_coordinate_system(render_group, origin, axis_x, axis_y, make_vec4(1.0f, 1.0f, 0.0f, 1.0f));
     u32 point_index = 0;
     for (f32 y = 0;

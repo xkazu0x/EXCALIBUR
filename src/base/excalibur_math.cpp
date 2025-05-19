@@ -507,6 +507,12 @@ length(Vec4 v) {
     return(result);
 }
 
+internal inline Vec2
+perp(Vec2 v) {
+    Vec2 result = {-v.y, v.x};
+    return(result);
+}
+
 ////////////////////////////////
 // NOTE(xkazu0x): Rectangle functions
 

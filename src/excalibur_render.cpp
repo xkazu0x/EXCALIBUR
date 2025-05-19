@@ -30,6 +30,85 @@ draw_rect(Bitmap *buffer, Vec2 min, Vec2 max, Vec3 color, f32 a) {
 }
 
 internal void
+draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 axis_x, Vec2 axis_y, Vec4 color) {
+    u32 out_color = ((round_f32_to_u32(color.a*255.0f) << 24) |
+                     (round_f32_to_u32(color.r*255.0f) << 16) |
+                     (round_f32_to_u32(color.g*255.0f) << 8) |
+                     (round_f32_to_u32(color.b*255.0f) << 0));
+
+    Vec2 points[4] = {
+        origin,
+        origin + axis_x,
+        origin + axis_x + axis_y,
+        origin + axis_y,
+    };
+
+    s32 width_max = (buffer->width - 1);
+    s32 height_max = (buffer->height - 1);
+    
+    s32 min_x = width_max;
+    s32 max_x = 0;
+    s32 min_y = height_max;
+    s32 max_y = 0;
+
+    for (s32 point_index = 0;
+         point_index < ArrayCount(points);
+         ++point_index) {
+        Vec2 test_point = points[point_index];
+        
+        s32 floor_x = (s32)floor_f32(test_point.x);
+        s32 ceil_x = (s32)ceil_f32(test_point.x);
+        
+        s32 floor_y = (s32)floor_f32(test_point.y);
+        s32 ceil_y = (s32)ceil_f32(test_point.y);
+
+        if (min_x > floor_x) min_x = floor_x;
+        if (min_y > floor_y) min_y = floor_y;
+        
+        if (max_x < ceil_x) max_x = ceil_x;
+        if (max_y < ceil_y) max_y = ceil_y;
+    }
+
+    if (min_x < 0 ) min_x = 0;
+    if (min_y < 0 ) min_y = 0;
+    if (max_x > width_max) max_x = width_max;
+    if (max_y > height_max) max_y = height_max;
+    
+    u8 *row = ((u8 *)buffer->memory +
+               (min_x*BYTES_PER_PIXEL) +
+               (min_y*buffer->pitch));
+    for (s32 y = min_y;
+         y <= max_y;
+         ++y) {
+        u32 *pixel = (u32 *)row;
+        for (s32 x = min_x;
+             x <= max_x;
+             ++x) {
+#if 1
+            Vec2 pixel_point = make_vec2((f32)x, (f32)y);
+            // TODO(xkazu0x): perp_dot()
+            // TODO(xkazu0x): Simpler origin
+            f32 edge0 = dot_product(pixel_point - origin                    , -perp(axis_x));
+            f32 edge1 = dot_product(pixel_point - (origin + axis_x)         , -perp(axis_y));
+            f32 edge2 = dot_product(pixel_point - (origin + axis_x + axis_y),  perp(axis_x));
+            f32 edge3 = dot_product(pixel_point - (origin + axis_y)         ,  perp(axis_y));
+           
+            if ((edge0 < 0) &&
+                (edge1 < 0) &&
+                (edge2 < 0) &&
+                (edge3 < 0)) {
+                *pixel = out_color;
+            }
+#else
+            *pixel = out_color;
+#endif
+            ++pixel;
+        }
+        row += buffer->pitch;
+    }
+}
+
+internal void
 draw_rect_outline(Bitmap *buffer, Vec2 min, Vec2 max, Vec3 color, f32 r) {
     // NOTE(xkazu0x): top and bottom
     draw_rect(buffer,
@@ -188,6 +267,12 @@ render_group_draw(Render_Group *group, Bitmap *output_target) {
             case RenderEntryType_Render_Entry_Coordinate_System: {
                 Render_Entry_Coordinate_System *entry = (Render_Entry_Coordinate_System *)header;
                 {
+                    draw_rect_slowly(output_target,
+                                     entry->origin,
+                                     entry->axis_x,
+                                     entry->axis_y,
+                                     make_vec4(1.0f, 0.5f, 0.3f, 1.0f));
+                    
                     Vec2 dim = make_vec2(1.0f);
                     Vec2 point = entry->origin;
                     draw_rect(output_target, point - dim, point + dim, entry->color.rgb);
@@ -198,6 +283,10 @@ render_group_draw(Render_Group *group, Bitmap *output_target) {
                     point = entry->origin + entry->axis_y;
                     draw_rect(output_target, point - dim, point + dim, entry->color.rgb);
 
+                    Vec2 max = entry->origin + entry->axis_x + entry->axis_y;
+                    draw_rect(output_target, max - dim, max + dim, entry->color.rgb);
+                    
+#if 0
                     for (u32 point_index = 0;
                          point_index < ArrayCount(entry->points);
                          ++point_index) {
@@ -205,6 +294,7 @@ render_group_draw(Render_Group *group, Bitmap *output_target) {
                         p = entry->origin + p.x*entry->axis_x + p.y*entry->axis_y;
                         draw_rect(output_target, p - dim, p + dim, entry->color.rgb);
                     }
+#endif
                 }
                 base_address += sizeof(*entry);
             } break;
