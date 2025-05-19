@@ -189,6 +189,8 @@ struct Game_State {
     Sim_Entity_Collision_Volume_Group *player_collision;
     Sim_Entity_Collision_Volume_Group *monster_collision;
     Sim_Entity_Collision_Volume_Group *familiar_collision;
+
+    f32 time;
 };
 
 struct Transient_State {

@@ -1,5 +1,5 @@
-#ifndef EXCALIBUR_RENDER_GROUP_H
-#define EXCALIBUR_RENDER_GROUP_H
+#ifndef EXCALIBUR_RENDER_H
+#define EXCALIBUR_RENDER_H
 
 struct Render_Basis {
     Vec3 pos;
@@ -16,8 +16,10 @@ enum Render_Entry_Type {
     RenderEntryType_Render_Entry_Clear,
     RenderEntryType_Render_Entry_Rect,
     RenderEntryType_Render_Entry_Bitmap,
+    RenderEntryType_Render_Entry_Coordinate_System,
 };
 
+// TODO(xkazu0x): remove the header!
 struct Render_Entry_Header {
     Render_Entry_Type type;
 };
@@ -39,6 +41,16 @@ struct Render_Entry_Bitmap {
     Render_Entity_Basis entity_basis;
     Bitmap *bitmap;
     Vec4 color;
+};
+
+struct Render_Entry_Coordinate_System {
+    Render_Entry_Header header;
+    Vec2 origin;
+    Vec2 axis_x;
+    Vec2 axis_y;
+    Vec4 color;
+
+    Vec2 points[16];
 };
 
 struct Render_Group {
@@ -67,4 +79,4 @@ internal void render_rect(Render_Group *group, Vec3 offset, Vec2 dim, Vec4 color
 internal void render_rect_outline(Render_Group *group, Vec3 offset, Vec2 dim, Vec4 color, f32 entity_zc = 1.0f);
 internal void render_bitmap(Render_Group *group, Bitmap *bitmap, Vec3 offset, Vec2 align, f32 alpha = 1.0f, f32 entity_zc = 1.0f);
 
-#endif // EXCALIBUR_RENDER_GROUP_H
+#endif // EXCALIBUR_RENDER_H

@@ -184,7 +184,30 @@ render_group_draw(Render_Group *group, Bitmap *output_target) {
                 }
                 base_address += sizeof(*entry);
             } break;
+                
+            case RenderEntryType_Render_Entry_Coordinate_System: {
+                Render_Entry_Coordinate_System *entry = (Render_Entry_Coordinate_System *)header;
+                {
+                    Vec2 dim = make_vec2(1.0f);
+                    Vec2 point = entry->origin;
+                    draw_rect(output_target, point - dim, point + dim, entry->color.rgb);
+                    
+                    point = entry->origin + entry->axis_x;
+                    draw_rect(output_target, point - dim, point + dim, entry->color.rgb);
+                    
+                    point = entry->origin + entry->axis_y;
+                    draw_rect(output_target, point - dim, point + dim, entry->color.rgb);
 
+                    for (u32 point_index = 0;
+                         point_index < ArrayCount(entry->points);
+                         ++point_index) {
+                        Vec2 p = entry->points[point_index];
+                        p = entry->origin + p.x*entry->axis_x + p.y*entry->axis_y;
+                        draw_rect(output_target, p - dim, p + dim, entry->color.rgb);
+                    }
+                }
+                base_address += sizeof(*entry);
+            } break;
             InvalidDefaultCase;
         }
     }
@@ -251,4 +274,16 @@ render_bitmap(Render_Group *group, Bitmap *bitmap, Vec3 offset, Vec2 align, f32 
         entry->bitmap = bitmap;
         entry->color = make_vec4(make_vec3(1.0f), alpha);
     }
+}
+
+internal Render_Entry_Coordinate_System *
+render_coordinate_system(Render_Group *group, Vec2 origin, Vec2 axis_x, Vec2 axis_y, Vec4 color) {
+    Render_Entry_Coordinate_System *entry = render_push(group, Render_Entry_Coordinate_System);
+    if (entry) {
+        entry->origin = origin;
+        entry->axis_x = axis_x;
+        entry->axis_y = axis_y;
+        entry->color = color;
+    }
+    return(entry);
 }
