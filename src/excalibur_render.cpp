@@ -30,11 +30,10 @@ draw_rect(Bitmap *buffer, Vec2 min, Vec2 max, Vec3 color, f32 a) {
 }
 
 internal void
-draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 axis_x, Vec2 axis_y, Vec4 color) {
-    u32 out_color = ((round_f32_to_u32(color.a*255.0f) << 24) |
-                     (round_f32_to_u32(color.r*255.0f) << 16) |
-                     (round_f32_to_u32(color.g*255.0f) << 8) |
-                     (round_f32_to_u32(color.b*255.0f) << 0));
+draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 axis_x, Vec2 axis_y,
+                 Vec4 color, Bitmap *texture) {
+    f32 inv_x_axis_length_squared = 1.0f/length_squared(axis_x);
+    f32 inv_y_axis_length_squared = 1.0f/length_squared(axis_y);
 
     Vec2 points[4] = {
         origin,
@@ -48,6 +47,7 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 axis_x, Vec2 axis_y, Vec4 col
     
     s32 min_x = width_max;
     s32 max_x = 0;
+    
     s32 min_y = height_max;
     s32 max_y = 0;
 
@@ -71,6 +71,7 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 axis_x, Vec2 axis_y, Vec4 col
 
     if (min_x < 0 ) min_x = 0;
     if (min_y < 0 ) min_y = 0;
+    
     if (max_x > width_max) max_x = width_max;
     if (max_y > height_max) max_y = height_max;
     
@@ -86,18 +87,96 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 axis_x, Vec2 axis_y, Vec4 col
              ++x) {
 #if 1
             Vec2 pixel_point = make_vec2((f32)x, (f32)y);
+            Vec2 d = pixel_point - origin;
+
             // TODO(xkazu0x): perp_dot()
             // TODO(xkazu0x): Simpler origin
-            f32 edge0 = dot_product(pixel_point - origin                    , -perp(axis_x));
-            f32 edge1 = dot_product(pixel_point - (origin + axis_x)         , -perp(axis_y));
-            f32 edge2 = dot_product(pixel_point - (origin + axis_x + axis_y),  perp(axis_x));
-            f32 edge3 = dot_product(pixel_point - (origin + axis_y)         ,  perp(axis_y));
+            f32 edge0 = dot_product(d, -perp(axis_x));
+            f32 edge1 = dot_product(d - axis_x, -perp(axis_y));
+            f32 edge2 = dot_product(d - axis_x - axis_y, perp(axis_x));
+            f32 edge3 = dot_product(d - axis_y, perp(axis_y));
            
             if ((edge0 < 0) &&
                 (edge1 < 0) &&
                 (edge2 < 0) &&
                 (edge3 < 0)) {
-                *pixel = out_color;
+                f32 u = inv_x_axis_length_squared*dot_product(d, axis_x);
+                f32 v = inv_y_axis_length_squared*dot_product(d, axis_y);
+
+                // TODO(xkazu0x):  SSE clamping
+                Assert((u >= 0.0f) && (u <= 1.0f));
+                Assert((v >= 0.0f) && (v <= 1.0f));
+
+                // TODO(xkazu0x): formalize texture boundaries
+                f32 tx = ((u*(f32)(texture->width - 2)));
+                f32 ty = ((v*(f32)(texture->height - 2)));
+                
+                s32 x = (s32)tx;
+                s32 y = (s32)ty;
+
+                f32 fx = tx - (f32)x;
+                f32 fy = ty - (f32)y;
+
+                Assert((x >= 0) && (x < texture->width));
+                Assert((y >= 0) && (y < texture->height));
+                
+                u8 *texel_ptr = ((u8 *)texture->memory) + x*sizeof(u32) + y*texture->pitch;
+                u32 texel_ptr_a = *(u32 *)(texel_ptr);
+                u32 texel_ptr_b = *(u32 *)(texel_ptr + sizeof(u32));
+                u32 texel_ptr_c = *(u32 *)(texel_ptr + texture->pitch);
+                u32 texel_ptr_d = *(u32 *)(texel_ptr + texture->pitch + sizeof(u32));
+
+                // TODO(xkazu0x): color.a
+                Vec4 texel_a = make_vec4((f32)((texel_ptr_a >> 16) & 0xFF),
+                                         (f32)((texel_ptr_a >> 8) & 0xFF),
+                                         (f32)((texel_ptr_a >> 0) & 0xFF),
+                                         (f32)((texel_ptr_a >> 24) & 0xFF));
+                
+                Vec4 texel_b = make_vec4((f32)((texel_ptr_b >> 16) & 0xFF),
+                                         (f32)((texel_ptr_b >> 8) & 0xFF),
+                                         (f32)((texel_ptr_b >> 0) & 0xFF),
+                                         (f32)((texel_ptr_b >> 24) & 0xFF));
+                
+                Vec4 texel_c = make_vec4((f32)((texel_ptr_c >> 16) & 0xFF),
+                                         (f32)((texel_ptr_c >> 8) & 0xFF),
+                                         (f32)((texel_ptr_c >> 0) & 0xFF),
+                                         (f32)((texel_ptr_c >> 24) & 0xFF));
+                
+                Vec4 texel_d = make_vec4((f32)((texel_ptr_d >> 16) & 0xFF),
+                                         (f32)((texel_ptr_d >> 8) & 0xFF),
+                                         (f32)((texel_ptr_d >> 0) & 0xFF),
+                                         (f32)((texel_ptr_d >> 24) & 0xFF));
+
+#if 1
+                Vec4 texel = lerp(lerp(texel_a, fx, texel_b),
+                                  fy,
+                                  lerp(texel_c, fx, texel_d));
+#else
+                Vec4 texel = texel_a;
+#endif
+                f32 src_a = texel.a;
+                f32 src_r = texel.r;
+                f32 src_g = texel.g;
+                f32 src_b = texel.b;
+                
+                f32 real_src_a = (src_a/255.0f)*color.a;
+            
+                f32 dest_a = (f32)((*pixel >> 24) & 0xFF);
+                f32 dest_r = (f32)((*pixel >> 16) & 0xFF);
+                f32 dest_g = (f32)((*pixel >> 8) & 0xFF);
+                f32 dest_b = (f32)((*pixel >> 0) & 0xFF);
+                f32 real_dest_a = (dest_a/255.0f);
+
+                f32 inv_real_src_a = (1.0f - real_src_a);
+                f32 a = 255.0f*(real_src_a + real_dest_a - real_src_a*real_dest_a);
+                f32 r = inv_real_src_a*dest_r + src_r;
+                f32 g = inv_real_src_a*dest_g + src_g;
+                f32 b = inv_real_src_a*dest_b + src_b;
+
+                *pixel = (((u32)(a + 0.5f) << 24) |
+                          ((u32)(r + 0.5f) << 16) |
+                          ((u32)(g + 0.5f) << 8) |
+                          ((u32)(b + 0.5f) << 0));
             }
 #else
             *pixel = out_color;
@@ -271,20 +350,23 @@ render_group_draw(Render_Group *group, Bitmap *output_target) {
                                      entry->origin,
                                      entry->axis_x,
                                      entry->axis_y,
-                                     make_vec4(1.0f, 0.5f, 0.3f, 1.0f));
+                                     entry->color,
+                                     entry->texture);
                     
+                    Vec3 point_color = make_vec3(1.0f, 0.0f, 0.0f);
+                        
                     Vec2 dim = make_vec2(1.0f);
                     Vec2 point = entry->origin;
-                    draw_rect(output_target, point - dim, point + dim, entry->color.rgb);
+                    draw_rect(output_target, point - dim, point + dim, point_color);
                     
                     point = entry->origin + entry->axis_x;
-                    draw_rect(output_target, point - dim, point + dim, entry->color.rgb);
+                    draw_rect(output_target, point - dim, point + dim, point_color);
                     
                     point = entry->origin + entry->axis_y;
-                    draw_rect(output_target, point - dim, point + dim, entry->color.rgb);
+                    draw_rect(output_target, point - dim, point + dim, point_color);
 
                     Vec2 max = entry->origin + entry->axis_x + entry->axis_y;
-                    draw_rect(output_target, max - dim, max + dim, entry->color.rgb);
+                    draw_rect(output_target, max - dim, max + dim, point_color);
                     
 #if 0
                     for (u32 point_index = 0;
@@ -367,13 +449,15 @@ render_bitmap(Render_Group *group, Bitmap *bitmap, Vec3 offset, Vec2 align, f32 
 }
 
 internal Render_Entry_Coordinate_System *
-render_coordinate_system(Render_Group *group, Vec2 origin, Vec2 axis_x, Vec2 axis_y, Vec4 color) {
+render_coordinate_system(Render_Group *group, Vec2 origin, Vec2 axis_x, Vec2 axis_y,
+                         Vec4 color, Bitmap *texture) {
     Render_Entry_Coordinate_System *entry = render_push(group, Render_Entry_Coordinate_System);
     if (entry) {
         entry->origin = origin;
         entry->axis_x = axis_x;
         entry->axis_y = axis_y;
         entry->color = color;
+        entry->texture = texture;
     }
     return(entry);
 }

@@ -49,7 +49,8 @@ struct Render_Entry_Coordinate_System {
     Vec2 axis_x;
     Vec2 axis_y;
     Vec4 color;
-
+    Bitmap *texture;
+    
     Vec2 points[16];
 };
 
@@ -78,5 +79,6 @@ internal void render_clear(Render_Group *group, Vec4 color);
 internal void render_rect(Render_Group *group, Vec3 offset, Vec2 dim, Vec4 color, f32 entity_zc = 1.0f);
 internal void render_rect_outline(Render_Group *group, Vec3 offset, Vec2 dim, Vec4 color, f32 entity_zc = 1.0f);
 internal void render_bitmap(Render_Group *group, Bitmap *bitmap, Vec3 offset, Vec2 align, f32 alpha = 1.0f, f32 entity_zc = 1.0f);
+internal Render_Entry_Coordinate_System *render_coordinate_system(Render_Group *group, Vec2 origin, Vec2 axis_x, Vec2 axis_y, Vec4 color, Bitmap *texture);
 
 #endif // EXCALIBUR_RENDER_H

@@ -174,6 +174,8 @@ internal inline f32 length(Vec2 v);
 internal inline f32 length(Vec3 v);
 internal inline f32 length(Vec4 v);
 
+internal inline Vec2 perp(Vec2 v);
+
 ////////////////////////////////
 // NOTE(xkazu0x): Rectangle types
 
@@ -225,6 +227,7 @@ internal inline b32 rect_intersect(Rect3 a, Rect3 b);
 ////////////////
 
 internal inline f32 lerp(f32 a, f32 t, f32 b);
+internal inline Vec4 lerp(Vec4 a, f32 t, Vec4 b);
 
 internal inline f32 clamp(f32 min, f32 value, f32 max);
 internal inline f32 clamp01(f32 value);
