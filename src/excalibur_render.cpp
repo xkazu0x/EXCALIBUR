@@ -1,3 +1,31 @@
+internal Vec4
+srgb255_to_linear1(Vec4 color) {
+    Vec4 result;
+
+    f32 inv255 = 1.0f/255.0f;
+    
+    result.r = square(inv255*color.r);
+    result.g = square(inv255*color.g);
+    result.b = square(inv255*color.b);
+    result.a = inv255*color.a;
+    
+    return(result);
+}
+
+internal Vec4
+linear1_to_srgb255(Vec4 color) {
+    Vec4 result;
+    
+    f32 one255 = 255.0f;
+    
+    result.r = one255*square_root(color.r);
+    result.g = one255*square_root(color.g);
+    result.b = one255*square_root(color.b);
+    result.a = one255*color.a;
+    
+    return(result);
+}
+
 internal void
 draw_rect(Bitmap *buffer, Vec2 min, Vec2 max, Vec3 color, f32 a) {
     s32 min_x = round_f32_to_s32(min.x);
@@ -104,27 +132,27 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 axis_x, Vec2 axis_y,
                 f32 v = inv_y_axis_length_squared*dot_product(d, axis_y);
 
                 // TODO(xkazu0x):  SSE clamping
-                Assert((u >= 0.0f) && (u <= 1.0f));
-                Assert((v >= 0.0f) && (v <= 1.0f));
+                //Assert((u >= 0.0f) && (u <= 1.0f));
+                //Assert((v >= 0.0f) && (v <= 1.0f));
 
                 // TODO(xkazu0x): formalize texture boundaries
-                f32 tx = ((u*(f32)(texture->width - 2)));
-                f32 ty = ((v*(f32)(texture->height - 2)));
+                f32 f32_texture_x = ((u*(f32)(texture->width - 2)));
+                f32 f32_texture_y = ((v*(f32)(texture->height - 2)));
                 
-                s32 x = (s32)tx;
-                s32 y = (s32)ty;
+                s32 s32_texture_x = (s32)f32_texture_x;
+                s32 s32_texture_y = (s32)f32_texture_y;
 
-                f32 fx = tx - (f32)x;
-                f32 fy = ty - (f32)y;
+                f32 f32_texture_rel_x = f32_texture_x - (f32)s32_texture_x;
+                f32 f32_texture_rel_y = f32_texture_y - (f32)s32_texture_y;
 
-                Assert((x >= 0) && (x < texture->width));
-                Assert((y >= 0) && (y < texture->height));
+                Assert((s32_texture_x >= 0) && (s32_texture_x < texture->width));
+                Assert((s32_texture_y >= 0) && (s32_texture_y < texture->height));
                 
-                u8 *texel_ptr = ((u8 *)texture->memory) + x*sizeof(u32) + y*texture->pitch;
+                u8 *texel_ptr = ((u8 *)texture->memory) + s32_texture_x*BYTES_PER_PIXEL + s32_texture_y*texture->pitch;
                 u32 texel_ptr_a = *(u32 *)(texel_ptr);
-                u32 texel_ptr_b = *(u32 *)(texel_ptr + sizeof(u32));
+                u32 texel_ptr_b = *(u32 *)(texel_ptr + BYTES_PER_PIXEL);
                 u32 texel_ptr_c = *(u32 *)(texel_ptr + texture->pitch);
-                u32 texel_ptr_d = *(u32 *)(texel_ptr + texture->pitch + sizeof(u32));
+                u32 texel_ptr_d = *(u32 *)(texel_ptr + texture->pitch + BYTES_PER_PIXEL);
 
                 // TODO(xkazu0x): color.a
                 Vec4 texel_a = make_vec4((f32)((texel_ptr_a >> 16) & 0xFF),
@@ -147,36 +175,44 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 axis_x, Vec2 axis_y,
                                          (f32)((texel_ptr_d >> 0) & 0xFF),
                                          (f32)((texel_ptr_d >> 24) & 0xFF));
 
+                // NOTE(xkazu0x): Go from sRGB to "linear" brightness space
+                texel_a = srgb255_to_linear1(texel_a);
+                texel_b = srgb255_to_linear1(texel_b);
+                texel_c = srgb255_to_linear1(texel_c);
+                texel_d = srgb255_to_linear1(texel_d);
+                
 #if 1
-                Vec4 texel = lerp(lerp(texel_a, fx, texel_b),
-                                  fy,
-                                  lerp(texel_c, fx, texel_d));
+                Vec4 texel = lerp(lerp(texel_a, f32_texture_rel_x, texel_b),
+                                  f32_texture_rel_y,
+                                  lerp(texel_c, f32_texture_rel_x, texel_d));
 #else
                 Vec4 texel = texel_a;
 #endif
-                f32 src_a = texel.a;
-                f32 src_r = texel.r;
-                f32 src_g = texel.g;
-                f32 src_b = texel.b;
                 
-                f32 real_src_a = (src_a/255.0f)*color.a;
-            
-                f32 dest_a = (f32)((*pixel >> 24) & 0xFF);
-                f32 dest_r = (f32)((*pixel >> 16) & 0xFF);
-                f32 dest_g = (f32)((*pixel >> 8) & 0xFF);
-                f32 dest_b = (f32)((*pixel >> 0) & 0xFF);
-                f32 real_dest_a = (dest_a/255.0f);
-
-                f32 inv_real_src_a = (1.0f - real_src_a);
-                f32 a = 255.0f*(real_src_a + real_dest_a - real_src_a*real_dest_a);
-                f32 r = inv_real_src_a*dest_r + src_r;
-                f32 g = inv_real_src_a*dest_g + src_g;
-                f32 b = inv_real_src_a*dest_b + src_b;
-
-                *pixel = (((u32)(a + 0.5f) << 24) |
-                          ((u32)(r + 0.5f) << 16) |
-                          ((u32)(g + 0.5f) << 8) |
-                          ((u32)(b + 0.5f) << 0));
+                Vec4 dest = make_vec4((f32)((*pixel >> 16) & 0xFF),
+                                      (f32)((*pixel >> 8) & 0xFF),
+                                      (f32)((*pixel >> 0) & 0xFF),
+                                      (f32)((*pixel >> 24) & 0xFF));
+                
+                // NOTE(xkazu0x): Go from sRGB to "linear" brightness space
+                dest = srgb255_to_linear1(dest);
+                
+                f32 rsa = texel.a*color.a;
+                f32 rda = dest.a;
+                f32 inv_rsa = (1.0f - rsa);
+                
+                Vec4 blended = make_vec4(inv_rsa*dest.r + color.a*color.r*texel.r,
+                                         inv_rsa*dest.g + color.a*color.g*texel.g,
+                                         inv_rsa*dest.b + color.a*color.b*texel.b,
+                                         (rsa + rda - rsa*rda));
+                
+                // NOTE(xkazu0x): Go from "linear" brightness space to sRGB
+                Vec4 blended255 = linear1_to_srgb255(blended);
+                
+                *pixel = (((u32)(blended255.a + 0.5f) << 24) |
+                          ((u32)(blended255.r + 0.5f) << 16) |
+                          ((u32)(blended255.g + 0.5f) << 8) |
+                          ((u32)(blended255.b + 0.5f) << 0));
             }
 #else
             *pixel = out_color;

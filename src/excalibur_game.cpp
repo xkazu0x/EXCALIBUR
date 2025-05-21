@@ -1102,11 +1102,15 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
     Vec2 axis_x = axis_scale*make_vec2(1.0f, 0.0f);
     Vec2 axis_y = axis_scale*make_vec2(0.0f, 1.0f);
 #endif
+    Vec4 color = make_vec4(0.5f + 0.5f*sin_f32(angle),
+                           0.5f + 0.5f*cos_f32(3.0f*angle),
+                           0.5f + 0.5f*sin_f32(6.0f*angle),
+                           0.5f + 0.5f*cos_f32(9.0f*angle));
     Render_Entry_Coordinate_System *c = render_coordinate_system(render_group,
                                                                  make_vec2(disp, 0.0f) + origin - 0.5f*axis_x - 0.5f*axis_y,
                                                                  axis_x,
                                                                  axis_y,
-                                                                 make_vec4(1.0f, 1.0f, 0.0f, 1.0f),
+                                                                 color,
                                                                  &game_state->player_sprites[2]);
     u32 point_index = 0;
     for (f32 y = 0;
