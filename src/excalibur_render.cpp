@@ -27,7 +27,7 @@ linear1_to_srgb255(Vec4 color) {
 }
 
 internal void
-draw_rect(Bitmap *buffer, Vec2 min, Vec2 max, Vec3 color, f32 a) {
+draw_rect(Bitmap *buffer, Vec2 min, Vec2 max, Vec4 color) {
     s32 min_x = round_f32_to_s32(min.x);
     s32 min_y = round_f32_to_s32(min.y);
     
@@ -40,7 +40,7 @@ draw_rect(Bitmap *buffer, Vec2 min, Vec2 max, Vec3 color, f32 a) {
     if (max_x > buffer->width) max_x = buffer->width;
     if (max_y > buffer->height) max_y = buffer->height;
 
-    u32 out_color = ((round_f32_to_u32(a*255.0f) << 24) |
+    u32 out_color = ((round_f32_to_u32(color.a*255.0f) << 24) |
                      (round_f32_to_u32(color.r*255.0f) << 16) |
                      (round_f32_to_u32(color.g*255.0f) << 8) |
                      (round_f32_to_u32(color.b*255.0f) << 0));
@@ -48,9 +48,13 @@ draw_rect(Bitmap *buffer, Vec2 min, Vec2 max, Vec3 color, f32 a) {
     u8 *row = ((u8 *)buffer->memory +
                (min_x*BYTES_PER_PIXEL) +
                (min_y*buffer->pitch));
-    for (s32 y = min_y; y < max_y; ++y) {
+    for (s32 y = min_y;
+         y < max_y;
+         ++y) {
         u32 *pixel = (u32 *)row;
-        for (s32 x = min_x; x < max_x; ++x) {
+        for (s32 x = min_x;
+             x < max_x;
+             ++x) {
             *pixel++ = out_color;
         }
         row += buffer->pitch;
@@ -60,6 +64,9 @@ draw_rect(Bitmap *buffer, Vec2 min, Vec2 max, Vec3 color, f32 a) {
 internal void
 draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 axis_x, Vec2 axis_y,
                  Vec4 color, Bitmap *texture) {
+    // NOTE(xkazu0x): premultiply color up front
+    color.rgb *= color.a;
+    
     f32 inv_x_axis_length_squared = 1.0f/length_squared(axis_x);
     f32 inv_y_axis_length_squared = 1.0f/length_squared(axis_y);
 
@@ -188,24 +195,16 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 axis_x, Vec2 axis_y,
 #else
                 Vec4 texel = texel_a;
 #endif
+                texel = hadamard(texel, color);
                 
                 Vec4 dest = make_vec4((f32)((*pixel >> 16) & 0xFF),
                                       (f32)((*pixel >> 8) & 0xFF),
                                       (f32)((*pixel >> 0) & 0xFF),
                                       (f32)((*pixel >> 24) & 0xFF));
-                
                 // NOTE(xkazu0x): Go from sRGB to "linear" brightness space
                 dest = srgb255_to_linear1(dest);
                 
-                f32 rsa = texel.a*color.a;
-                f32 rda = dest.a;
-                f32 inv_rsa = (1.0f - rsa);
-                
-                Vec4 blended = make_vec4(inv_rsa*dest.r + color.a*color.r*texel.r,
-                                         inv_rsa*dest.g + color.a*color.g*texel.g,
-                                         inv_rsa*dest.b + color.a*color.b*texel.b,
-                                         (rsa + rda - rsa*rda));
-                
+                Vec4 blended = (1.0f - texel.a)*dest + texel;
                 // NOTE(xkazu0x): Go from "linear" brightness space to sRGB
                 Vec4 blended255 = linear1_to_srgb255(blended);
                 
@@ -221,29 +220,6 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 axis_x, Vec2 axis_y,
         }
         row += buffer->pitch;
     }
-}
-
-internal void
-draw_rect_outline(Bitmap *buffer, Vec2 min, Vec2 max, Vec3 color, f32 r) {
-    // NOTE(xkazu0x): top and bottom
-    draw_rect(buffer,
-              make_vec2(min.x - r, min.y - r),
-              make_vec2(max.x + r, min.y + r),
-              color);
-    draw_rect(buffer,
-              make_vec2(min.x - r, max.y - r),
-              make_vec2(max.x + r, max.y + r),
-              color);
-    
-    // NOTE(xkazu0x): left and right
-    draw_rect(buffer,
-              make_vec2(min.x - r, min.y - r),
-              make_vec2(min.x + r, max.y + r),
-              color);
-    draw_rect(buffer,
-              make_vec2(max.x - r, min.y - r),
-              make_vec2(max.x + r, max.y + r),
-              color);
 }
 
 internal void
@@ -274,33 +250,35 @@ draw_bitmap(Bitmap *buffer, Bitmap *bitmap, Vec2 offset, f32 c_alpha) {
                     min_x*BYTES_PER_PIXEL +
                     min_y*buffer->pitch);
     
-    for (s32 y = min_y; y < max_y; ++y) {
+    for (s32 y = min_y;
+         y < max_y;
+         ++y) {
         u32 *dest   = (u32 *)dest_row;
         u32 *source = (u32 *)source_row;
         
-        for (s32 x = min_x; x < max_x; ++x) {
-            f32 src_a = (f32)((*source >> 24) & 0xFF);
-            f32 src_r = c_alpha*(f32)((*source >> 16) & 0xFF);
-            f32 src_g = c_alpha*(f32)((*source >> 8) & 0xFF);
-            f32 src_b = c_alpha*(f32)((*source >> 0) & 0xFF);
-            f32 real_src_a = (src_a/255.0f)*c_alpha;
+        for (s32 x = min_x;
+             x < max_x;
+             ++x) {
+            Vec4 texel = make_vec4((f32)((*source >> 16) & 0xFF),
+                                   (f32)((*source >> 8) & 0xFF),
+                                   (f32)((*source >> 0) & 0xFF),
+                                   (f32)((*source >> 24) & 0xFF));
+            texel = srgb255_to_linear1(texel);
+            texel *= c_alpha;
             
-            f32 dest_a = (f32)((*dest >> 24) & 0xFF);
-            f32 dest_r = (f32)((*dest >> 16) & 0xFF);
-            f32 dest_g = (f32)((*dest >> 8) & 0xFF);
-            f32 dest_b = (f32)((*dest >> 0) & 0xFF);
-            f32 real_dest_a = (dest_a/255.0f);
+            Vec4 d = make_vec4((f32)((*dest >> 16) & 0xFF),
+                               (f32)((*dest >> 8) & 0xFF),
+                               (f32)((*dest >> 0) & 0xFF),
+                               (f32)((*dest >> 24) & 0xFF));
+            d = srgb255_to_linear1(d);
 
-            f32 inv_real_src_a = (1.0f - real_src_a);
-            f32 a = 255.0f*(real_src_a + real_dest_a - real_src_a*real_dest_a);
-            f32 r = inv_real_src_a*dest_r + src_r;
-            f32 g = inv_real_src_a*dest_g + src_g;
-            f32 b = inv_real_src_a*dest_b + src_b;
-
-            *dest = (((u32)(a + 0.5f) << 24) |
-                     ((u32)(r + 0.5f) << 16) |
-                     ((u32)(g + 0.5f) << 8) |
-                     ((u32)(b + 0.5f) << 0));
+            Vec4 result = (1.0f - texel.a)*d + texel;
+            result = linear1_to_srgb255(result);
+            
+            *dest = (((u32)(result.a + 0.5f) << 24) |
+                     ((u32)(result.r + 0.5f) << 16) |
+                     ((u32)(result.g + 0.5f) << 8) |
+                     ((u32)(result.b + 0.5f) << 0));
             
             ++dest;
             ++source;
@@ -311,18 +289,27 @@ draw_bitmap(Bitmap *buffer, Bitmap *bitmap, Vec2 offset, f32 c_alpha) {
     }
 }
 
-internal Vec2
-get_render_entity_basis_point(Render_Group *group, Render_Entity_Basis *entity_basis, Vec2 screen_center) {
-    Vec3 entity_base_pos = entity_basis->basis->pos;
-    f32 fudge_z = (1.0f + 0.1f*entity_base_pos.z + entity_basis->offset.z);
-            
-    f32 entity_ground_point_x = screen_center.x + group->meters_to_pixels*fudge_z*entity_base_pos.x;
-    f32 entity_ground_point_y = screen_center.y - group->meters_to_pixels*fudge_z*entity_base_pos.y;
-    f32 entity_z = -group->meters_to_pixels*entity_base_pos.z;
-                
-    Vec2 center = make_vec2(entity_ground_point_x + entity_basis->offset.x,
-                            entity_ground_point_y + entity_basis->offset.y + entity_basis->entity_zc*entity_z);
-    return(center);
+internal void
+draw_rect_outline(Bitmap *buffer, Vec2 min, Vec2 max, Vec4 color, f32 r) {
+    // NOTE(xkazu0x): top and bottom
+    draw_rect(buffer,
+              make_vec2(min.x - r, min.y - r),
+              make_vec2(max.x + r, min.y + r),
+              color);
+    draw_rect(buffer,
+              make_vec2(min.x - r, max.y - r),
+              make_vec2(max.x + r, max.y + r),
+              color);
+    
+    // NOTE(xkazu0x): left and right
+    draw_rect(buffer,
+              make_vec2(min.x - r, min.y - r),
+              make_vec2(min.x + r, max.y + r),
+              color);
+    draw_rect(buffer,
+              make_vec2(max.x - r, min.y - r),
+              make_vec2(max.x + r, max.y + r),
+              color);
 }
 
 internal Render_Group *
@@ -340,93 +327,14 @@ render_group_alloc(Arena *arena, u32 max_push_buffer_size, f32 meters_to_pixels)
     return(result);
 }
 
-internal void
-render_group_draw(Render_Group *group, Bitmap *output_target) {
-    Vec2 screen_center = 0.5f*make_vec2((f32)output_target->width, (f32)output_target->height);
-        
-    for (u32 base_address = 0;
-         base_address < group->push_buffer_size;
-         ) {
-        Render_Entry_Header *header = (Render_Entry_Header *)(group->push_buffer_base + base_address);
-        switch (header->type) {
-            case RenderEntryType_Render_Entry_Clear: {
-                Render_Entry_Clear *entry = (Render_Entry_Clear *)header;
-                {
-                    draw_rect(output_target,
-                              make_vec2(0.0f),
-                              make_vec2((f32)output_target->width, (f32)output_target->height),
-                              entry->color.rgb, entry->color.a);
-                }
-                base_address += sizeof(*entry);
-            } break;
-                
-            case RenderEntryType_Render_Entry_Rect: {
-                Render_Entry_Rect *entry = (Render_Entry_Rect *)header;
-                {
-                    Vec2 point = get_render_entity_basis_point(group, &entry->entity_basis, screen_center);
-                    draw_rect(output_target, point, point + entry->dim, entry->color.rgb);
-                }
-                base_address += sizeof(*entry);
-            } break;
-                
-            case RenderEntryType_Render_Entry_Bitmap: {
-                Render_Entry_Bitmap *entry = (Render_Entry_Bitmap *)header;
-                {
-                    Assert(entry->bitmap);
-                    Vec2 point = get_render_entity_basis_point(group, &entry->entity_basis, screen_center);
-                    draw_bitmap(output_target, entry->bitmap, point, entry->color.a);
-                }
-                base_address += sizeof(*entry);
-            } break;
-                
-            case RenderEntryType_Render_Entry_Coordinate_System: {
-                Render_Entry_Coordinate_System *entry = (Render_Entry_Coordinate_System *)header;
-                {
-                    draw_rect_slowly(output_target,
-                                     entry->origin,
-                                     entry->axis_x,
-                                     entry->axis_y,
-                                     entry->color,
-                                     entry->texture);
-                    
-                    Vec3 point_color = make_vec3(1.0f, 0.0f, 0.0f);
-                        
-                    Vec2 dim = make_vec2(1.0f);
-                    Vec2 point = entry->origin;
-                    draw_rect(output_target, point - dim, point + dim, point_color);
-                    
-                    point = entry->origin + entry->axis_x;
-                    draw_rect(output_target, point - dim, point + dim, point_color);
-                    
-                    point = entry->origin + entry->axis_y;
-                    draw_rect(output_target, point - dim, point + dim, point_color);
-
-                    Vec2 max = entry->origin + entry->axis_x + entry->axis_y;
-                    draw_rect(output_target, max - dim, max + dim, point_color);
-                    
-#if 0
-                    for (u32 point_index = 0;
-                         point_index < ArrayCount(entry->points);
-                         ++point_index) {
-                        Vec2 p = entry->points[point_index];
-                        p = entry->origin + p.x*entry->axis_x + p.y*entry->axis_y;
-                        draw_rect(output_target, p - dim, p + dim, entry->color.rgb);
-                    }
-#endif
-                }
-                base_address += sizeof(*entry);
-            } break;
-            InvalidDefaultCase;
-        }
-    }
-}
-
-internal Render_Entry_Header *
+internal void *
 render_push_(Render_Group *group, u32 size, Render_Entry_Type type) {
-    Render_Entry_Header *result = 0;
+    void *result = 0;
+    size += sizeof(Render_Entry_Header);
     if ((group->push_buffer_size + size) < group->max_push_buffer_size) {
-        result = (Render_Entry_Header *)(group->push_buffer_base + group->push_buffer_size);
-        result->type = type;
+        Render_Entry_Header *header = (Render_Entry_Header *)(group->push_buffer_base + group->push_buffer_size);
+        header->type = type;
+        result = (u8 *)header + sizeof(*header);
         group->push_buffer_size += size;
     } else {
         InvalidPath;
@@ -484,7 +392,7 @@ render_bitmap(Render_Group *group, Bitmap *bitmap, Vec3 offset, Vec2 align, f32 
     }
 }
 
-internal Render_Entry_Coordinate_System *
+internal void
 render_coordinate_system(Render_Group *group, Vec2 origin, Vec2 axis_x, Vec2 axis_y,
                          Vec4 color, Bitmap *texture) {
     Render_Entry_Coordinate_System *entry = render_push(group, Render_Entry_Coordinate_System);
@@ -495,5 +403,102 @@ render_coordinate_system(Render_Group *group, Vec2 origin, Vec2 axis_x, Vec2 axi
         entry->color = color;
         entry->texture = texture;
     }
-    return(entry);
+}
+
+internal Vec2
+get_render_entity_basis_point(Render_Group *group, Render_Entity_Basis *entity_basis, Vec2 screen_center) {
+    Vec3 entity_base_pos = entity_basis->basis->pos;
+    f32 fudge_z = (1.0f + 0.1f*entity_base_pos.z + entity_basis->offset.z);
+            
+    f32 entity_ground_point_x = screen_center.x + group->meters_to_pixels*fudge_z*entity_base_pos.x;
+    f32 entity_ground_point_y = screen_center.y - group->meters_to_pixels*fudge_z*entity_base_pos.y;
+    f32 entity_z = -group->meters_to_pixels*entity_base_pos.z;
+                
+    Vec2 center = make_vec2(entity_ground_point_x + entity_basis->offset.x,
+                            entity_ground_point_y + entity_basis->offset.y + entity_basis->entity_zc*entity_z);
+    return(center);
+}
+
+internal void
+render_group_draw(Render_Group *group, Bitmap *output_target) {
+    Vec2 screen_center = 0.5f*make_vec2((f32)output_target->width, (f32)output_target->height);
+        
+    for (u32 base_address = 0;
+         base_address < group->push_buffer_size;
+         ) {
+        Render_Entry_Header *header = (Render_Entry_Header *)(group->push_buffer_base + base_address);
+        base_address += sizeof(*header);
+        void *data = (u8 *)header + sizeof(*header);
+        
+        switch (header->type) {
+            case RenderEntryType_Render_Entry_Clear: {
+                Render_Entry_Clear *entry = (Render_Entry_Clear *)data;
+                {
+                    draw_rect(output_target,
+                              make_vec2(0.0f),
+                              make_vec2((f32)output_target->width, (f32)output_target->height),
+                              entry->color);
+                }
+                base_address += sizeof(*entry);
+            } break;
+                
+            case RenderEntryType_Render_Entry_Rect: {
+                Render_Entry_Rect *entry = (Render_Entry_Rect *)data;
+                {
+                    Vec2 point = get_render_entity_basis_point(group, &entry->entity_basis, screen_center);
+                    draw_rect(output_target, point, point + entry->dim, entry->color);
+                }
+                base_address += sizeof(*entry);
+            } break;
+                
+            case RenderEntryType_Render_Entry_Bitmap: {
+                Render_Entry_Bitmap *entry = (Render_Entry_Bitmap *)data;
+                {
+                    Assert(entry->bitmap);
+                    Vec2 point = get_render_entity_basis_point(group, &entry->entity_basis, screen_center);
+                    draw_bitmap(output_target, entry->bitmap, point, entry->color.a);
+                }
+                base_address += sizeof(*entry);
+            } break;
+                
+            case RenderEntryType_Render_Entry_Coordinate_System: {
+                Render_Entry_Coordinate_System *entry = (Render_Entry_Coordinate_System *)data;
+                {
+                    draw_rect_slowly(output_target,
+                                     entry->origin,
+                                     entry->axis_x,
+                                     entry->axis_y,
+                                     entry->color,
+                                     entry->texture);
+                    
+                    Vec4 point_color = make_vec4(1.0f, 0.0f, 0.0f, 1.0f);
+                        
+                    Vec2 dim = make_vec2(1.0f);
+                    Vec2 point = entry->origin;
+                    draw_rect(output_target, point - dim, point + dim, point_color);
+                    
+                    point = entry->origin + entry->axis_x;
+                    draw_rect(output_target, point - dim, point + dim, point_color);
+                    
+                    point = entry->origin + entry->axis_y;
+                    draw_rect(output_target, point - dim, point + dim, point_color);
+
+                    Vec2 max = entry->origin + entry->axis_x + entry->axis_y;
+                    draw_rect(output_target, max - dim, max + dim, point_color);
+                    
+#if 0
+                    for (u32 point_index = 0;
+                         point_index < ArrayCount(entry->points);
+                         ++point_index) {
+                        Vec2 p = entry->points[point_index];
+                        p = entry->origin + p.x*entry->axis_x + p.y*entry->axis_y;
+                        draw_rect(output_target, p - dim, p + dim, entry->color.rgb);
+                    }
+#endif
+                }
+                base_address += sizeof(*entry);
+            } break;
+            InvalidDefaultCase;
+        }
+    }
 }

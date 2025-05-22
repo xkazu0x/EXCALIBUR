@@ -59,13 +59,15 @@ rotate_right(u32 value, s32 amount) {
 #include <intrin.h>
 #endif
 
-internal inline bit_scan_result_t
+internal inline Bit_Scan
 find_least_significant_set_bit(u32 value) {
-    bit_scan_result_t result = {};
+    Bit_Scan result = {};
 #if COMPILER_CL
     result.found = _BitScanForward((unsigned long *)&result.index, value);
 #else
-    for (u32 test = 0; test < 32; test++) {
+    for (u32 test = 0;
+         test < 32;
+         ++test) {
         if (value & (1 << test)) {
             result.index = test;
             result.found = true;
@@ -427,7 +429,7 @@ operator!=(Vec4 a, Vec4 b) {
 }
 
 internal inline Vec2
-hadamard_product(Vec2 a, Vec2 b) {
+hadamard(Vec2 a, Vec2 b) {
     Vec2 result;
     result.x = a.x*b.x;
     result.y = a.y*b.y;
@@ -435,7 +437,7 @@ hadamard_product(Vec2 a, Vec2 b) {
 }
 
 internal inline Vec3
-hadamard_product(Vec3 a, Vec3 b) {
+hadamard(Vec3 a, Vec3 b) {
     Vec3 result;
     result.x = a.x*b.x;
     result.y = a.y*b.y;
@@ -444,7 +446,7 @@ hadamard_product(Vec3 a, Vec3 b) {
 }
 
 internal inline Vec4
-hadamard_product(Vec4 a, Vec4 b) {
+hadamard(Vec4 a, Vec4 b) {
     Vec4 result;
     result.x = a.x*b.x;
     result.y = a.y*b.y;
@@ -675,7 +677,7 @@ rect_intersect(Rect3 a, Rect3 b) {
     return(result);
 }
 
-////////////////
+////////////////////////////////
 
 internal inline f32
 lerp(f32 a, f32 t, f32 b) {

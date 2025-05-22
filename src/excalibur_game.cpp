@@ -69,10 +69,10 @@ debug_load_bitmap(Debug_OS_Read_File *debug_os_read_file, OS_Thread *thread, cha
         u32 blue_mask = header->blue_mask;
         u32 alpha_mask = ~(red_mask | green_mask | blue_mask);
         
-        bit_scan_result_t red_scan = find_least_significant_set_bit(red_mask);
-        bit_scan_result_t green_scan = find_least_significant_set_bit(green_mask);
-        bit_scan_result_t blue_scan = find_least_significant_set_bit(blue_mask);
-        bit_scan_result_t alpha_scan = find_least_significant_set_bit(alpha_mask);
+        Bit_Scan red_scan = find_least_significant_set_bit(red_mask);
+        Bit_Scan green_scan = find_least_significant_set_bit(green_mask);
+        Bit_Scan blue_scan = find_least_significant_set_bit(blue_mask);
+        Bit_Scan alpha_scan = find_least_significant_set_bit(alpha_mask);
 
         Assert(red_scan.found);
         Assert(green_scan.found);
@@ -85,24 +85,27 @@ debug_load_bitmap(Debug_OS_Read_File *debug_os_read_file, OS_Thread *thread, cha
         s32 alpha_shift_down = (s32)alpha_scan.index;
         
         u32 *source_dest = pixels;
-        for (s32 y = 0; y < header->height; ++y) {
-            for (s32 x = 0; x < header->width; ++x) {
+        for (s32 y = 0;
+             y < header->height;
+             ++y) {
+            for (s32 x = 0;
+                 x < header->width;
+                 ++x) {
                 u32 color = *source_dest;
 
-                f32 r = (f32)((color & red_mask)   >> red_shift_down);
-                f32 g = (f32)((color & green_mask) >> green_shift_down);
-                f32 b = (f32)((color & blue_mask)  >> blue_shift_down);
-                f32 a = (f32)((color & alpha_mask) >> alpha_shift_down);
+                Vec4 texel = make_vec4((f32)((color & red_mask)   >> red_shift_down),
+                                       (f32)((color & green_mask) >> green_shift_down),
+                                       (f32)((color & blue_mask)  >> blue_shift_down),
+                                       (f32)((color & alpha_mask) >> alpha_shift_down));
                 
-                f32 an = (a/255.0f);
-                r = r*an;
-                g = g*an;
-                b = b*an;
+                texel = srgb255_to_linear1(texel);
+                texel.rgb *= texel.a;
+                texel = linear1_to_srgb255(texel);
                 
-                *source_dest = (((u32)(a + 0.5f) << 24) |
-                                ((u32)(r + 0.5f) << 16) |
-                                ((u32)(g + 0.5f) << 8) |
-                                ((u32)(b + 0.5f) << 0));
+                *source_dest++ = (((u32)(texel.a + 0.5f) << 24) |
+                                  ((u32)(texel.r + 0.5f) << 16) |
+                                  ((u32)(texel.g + 0.5f) << 8) |
+                                  ((u32)(texel.b + 0.5f) << 0));
             }
         }
     }
@@ -155,7 +158,7 @@ chunk_position_from_tile_position(World *world, s32 tile_x, s32 tile_y, s32 tile
     f32 tile_depth_in_meters = 3.0f;
     
     Vec3 tile_dim = make_vec3(tile_side_in_meters, tile_side_in_meters, tile_depth_in_meters);
-    Vec3 offset = hadamard_product(tile_dim, make_vec3((f32)tile_x, (f32)tile_y, (f32)tile_z));
+    Vec3 offset = hadamard(tile_dim, make_vec3((f32)tile_x, (f32)tile_y, (f32)tile_z));
     World_Position result = map_into_chunk_space(world, base_pos, additional_offset + offset);
     
     Assert(is_canonical(world, result.offset_));
@@ -697,7 +700,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
         
         add_monster(game_state, camera_tile_x + 2, camera_tile_y + 2, camera_tile_z);
         for (u32 familiar_index = 0;
-             familiar_index < 10;
+             familiar_index < 1;
              ++familiar_index) {
             s32 familiar_offset_x = random_between(&series, -5, 5);
             s32 familiar_offset_y = random_between(&series, -3, 3);
@@ -1089,9 +1092,9 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
     }
 
     game_state->time += clock->dt;
-    f32 axis_scale = 32.0f;
+    f32 axis_scale = 64.0f;
     f32 angle = game_state->time;
-    f32 disp = 50.0f*cos_f32(angle);
+    //f32 disp = 50.0f*cos_f32(angle);
 
     // TODO(xkazu0x): Add a perpendicular operator!
     Vec2 origin = screen_center;
@@ -1102,26 +1105,20 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
     Vec2 axis_x = axis_scale*make_vec2(1.0f, 0.0f);
     Vec2 axis_y = axis_scale*make_vec2(0.0f, 1.0f);
 #endif
+#if 1
     Vec4 color = make_vec4(0.5f + 0.5f*sin_f32(angle),
                            0.5f + 0.5f*cos_f32(3.0f*angle),
                            0.5f + 0.5f*sin_f32(6.0f*angle),
                            0.5f + 0.5f*cos_f32(9.0f*angle));
-    Render_Entry_Coordinate_System *c = render_coordinate_system(render_group,
-                                                                 make_vec2(disp, 0.0f) + origin - 0.5f*axis_x - 0.5f*axis_y,
-                                                                 axis_x,
-                                                                 axis_y,
-                                                                 color,
-                                                                 &game_state->player_sprites[2]);
-    u32 point_index = 0;
-    for (f32 y = 0;
-         y < 1.0f;
-         y += 0.25f) {
-        for (f32 x = 0;
-             x < 1.0f;
-             x += 0.25f) {
-            c->points[point_index++] = make_vec2(x, y);
-        }
-    }
+#else
+    Vec4 color = make_vec4(1.0f);
+#endif
+    render_coordinate_system(render_group,
+                             origin - 0.5f*axis_x - 0.5f*axis_y,
+                             axis_x,
+                             axis_y,
+                             color,
+                             &game_state->player_sprites[2]);
     
     render_group_draw(render_group, draw_buffer);
     

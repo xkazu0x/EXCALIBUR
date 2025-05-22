@@ -18,6 +18,9 @@
 #define square(x) ((x)*(x))
 #define square_root(x) sqrt_f32(x)
 
+////////////////////////////////
+// NOTE(xkazu0x): intrinsics
+
 internal inline s32 round_f32_to_s32(f32 x);
 internal inline u32 round_f32_to_u32(f32 x);
 
@@ -29,12 +32,12 @@ internal inline s32 sign_of(s32 x);
 internal inline u32 rotate_left(u32 value, s32 amount);
 internal inline u32 rotate_right(u32 value, s32 amount);
 
-struct bit_scan_result_t {
+struct Bit_Scan {
     b32 found;
     u32 index;
 };
 
-internal inline bit_scan_result_t find_least_significant_set_bit(u32 value);
+internal inline Bit_Scan find_least_significant_set_bit(u32 value);
 
 ////////////////////////////////
 // NOTE(xkazu0x): Vector types
@@ -158,9 +161,9 @@ internal inline b32 operator!=(Vec2 a, Vec2 b);
 internal inline b32 operator!=(Vec3 a, Vec3 b);
 internal inline b32 operator!=(Vec4 a, Vec4 b);
 
-internal inline Vec2 hadamard_product(Vec2 a, Vec2 b);
-internal inline Vec3 hadamard_product(Vec3 a, Vec3 b);
-internal inline Vec4 hadamard_product(Vec4 a, Vec4 b);
+internal inline Vec2 hadamard(Vec2 a, Vec2 b);
+internal inline Vec3 hadamard(Vec3 a, Vec3 b);
+internal inline Vec4 hadamard(Vec4 a, Vec4 b);
 
 internal inline f32 dot_product(Vec2 a, Vec2 b);
 internal inline f32 dot_product(Vec3 a, Vec3 b);
@@ -224,7 +227,7 @@ internal inline b32 is_in_rect(Rect3 rect, Vec3 test);
 
 internal inline b32 rect_intersect(Rect3 a, Rect3 b);
 
-////////////////
+////////////////////////////////
 
 internal inline f32 lerp(f32 a, f32 t, f32 b);
 internal inline Vec4 lerp(Vec4 a, f32 t, Vec4 b);
