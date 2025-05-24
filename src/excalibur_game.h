@@ -177,6 +177,8 @@ struct Game_State {
     Bitmap bat_sprite;
     Bitmap sword_sprite;
     
+    Bitmap player_normal;
+    
     // TODO(xkazu0x): must be power of two
     Pairwise_Collision_Rule *collision_rule_hash[256];
     Pairwise_Collision_Rule *first_free_collision_rule;

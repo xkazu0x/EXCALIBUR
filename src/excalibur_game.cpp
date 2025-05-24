@@ -504,8 +504,8 @@ make_empty_bitmap(Arena *arena, u32 width, u32 height, b32 clear = true) {
 
 internal void
 make_sphere_normal_map(Bitmap *bitmap, f32 roughness) {
-    f32 inv_width = 1.0f/(1.0f - (f32)bitmap->width);
-    f32 inv_height = 1.0f/(1.0f - (f32)bitmap->height);
+    f32 inv_width = 1.0f/(f32)(bitmap->width - 1);
+    f32 inv_height = 1.0f/(f32)(bitmap->height - 1);
 
     u8 *row = (u8 *)bitmap->memory;
     for (s32 y = 0;
@@ -515,15 +515,23 @@ make_sphere_normal_map(Bitmap *bitmap, f32 roughness) {
         for (s32 x = 0;
              x < bitmap->width;
              ++x) {
-            Vec2 inv_bitmap = make_vec2(inv_width*(f32)x, inv_height*(f32)y);
+            Vec2 bitmap_coord = make_vec2(inv_width*(f32)x, inv_height*(f32)y);
 
-            // TODO(xkazu0x): Actually generate sphere!!
-            Vec3 normal = make_vec3(2.0f*inv_bitmap.u - 1.0f, 2.0f*inv_bitmap.v - 1.0f, 0.0f);
-            normal.z = square_root(1.0f - Min(1.0f, square(normal.x) + square(normal.y)));
+            f32 normal_x = 2.0f*bitmap_coord.u - 1.0f;
+            f32 normal_y = 2.0f*bitmap_coord.v - 1.0f;
+            
+            f32 root_term = 1.0f - square(normal_x) - square(normal_y);
+            f32 normal_z = 0.0f;
+            Vec3 normal = make_vec3(0.0f, 0.0f, 1.0f);
+
+            if (root_term >= 0.0f) {
+                normal_z = square_root(root_term);
+                normal = make_vec3(normal_x, normal_y, normal_z);
+            }
 
             Vec4 color = make_vec4(255.0f*(0.5f*(normal.x + 1.0f)),
                                    255.0f*(0.5f*(normal.y + 1.0f)),
-                                   127.0f*normal.z,
+                                   255.0f*(0.5f*(normal.z + 1.0f)),
                                    255.0f*roughness);
             
             *pixel++ = (((u32)(color.a + 0.5f) << 24) |
@@ -616,7 +624,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
         game_state->player_sprites[3] = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/skull_left.bmp");
         game_state->bat_sprite        = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/bat.bmp");
         game_state->sword_sprite      = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/shadow.bmp");
-
+        
         add_low_entity(game_state, EntityType_Null, null_position());
 
         random_series_t series = random_seed(0);
@@ -764,6 +772,9 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
             ground_buffer->bitmap = make_empty_bitmap(&tran_state->arena, ground_buffer_width, ground_buffer_height, false);
             ground_buffer->position = null_position();
         }
+
+        game_state->player_normal = make_empty_bitmap(&tran_state->arena, game_state->player_sprites[2].width, game_state->player_sprites[2].height, false);
+        make_sphere_normal_map(&game_state->player_normal, 0.0f);
         
         tran_state->initialized = true;
     }
@@ -1152,7 +1163,8 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
                              axis_y,
                              color,
                              &game_state->player_sprites[2],
-                             0, 0, 0, 0);
+                             &game_state->player_normal,
+                             0, 0, 0);
     
     render_group_draw(render_group, draw_buffer);
     

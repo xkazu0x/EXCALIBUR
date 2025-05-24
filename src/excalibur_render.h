@@ -2,10 +2,7 @@
 #define EXCALIBUR_RENDER_H
 
 struct Environment_Map {
-    // NOTE(xkazu0x): LOD[0] is 2^width_pow2 x 2^height_pow2
-    s32 width_pow2;
-    s32 height_pow2;
-    Bitmap *LOD[4]; // levels of detail
+    Bitmap *LOD[4]; // NOTE(xkazu0x): levels of detail
 };
 
 struct Render_Basis {

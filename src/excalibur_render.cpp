@@ -1,9 +1,17 @@
+internal inline Vec4
+unpack4x8(u32 packed) {
+    Vec4 result = make_vec4((f32)((packed >> 16) & 0xFF),
+                            (f32)((packed >> 8) & 0xFF),
+                            (f32)((packed >> 0) & 0xFF),
+                            (f32)((packed >> 24) & 0xFF));
+    return(result);
+}
+
 internal Vec4
 srgb255_to_linear1(Vec4 color) {
     Vec4 result;
 
     f32 inv255 = 1.0f/255.0f;
-    
     result.r = square(inv255*color.r);
     result.g = square(inv255*color.g);
     result.b = square(inv255*color.b);
@@ -15,13 +23,26 @@ srgb255_to_linear1(Vec4 color) {
 internal Vec4
 linear1_to_srgb255(Vec4 color) {
     Vec4 result;
-    
+
+    // TODO(xkazu0x): something is wrong here
     f32 one255 = 255.0f;
-    
     result.r = one255*square_root(color.r);
     result.g = one255*square_root(color.g);
     result.b = one255*square_root(color.b);
     result.a = one255*color.a;
+    
+    return(result);
+}
+
+internal Vec4
+unscale_and_bias_normal(Vec4 normal) {
+    Vec4 result;
+
+    f32 inv255 = 1.0f/255.0f;
+    result.x = -1.0f + 2.0f*(inv255*normal.x);
+    result.y = -1.0f + 2.0f*(inv255*normal.y);
+    result.z = -1.0f + 2.0f*(inv255*normal.z);
+    result.w = inv255*normal.w;
     
     return(result);
 }
@@ -61,18 +82,71 @@ draw_rect(Bitmap *buffer, Vec2 min, Vec2 max, Vec4 color) {
     }
 }
 
+struct Bilinear_Sample {
+    u32 a;
+    u32 b;
+    u32 c;
+    u32 d;
+};
+
+internal inline Bilinear_Sample
+bilinear_sample(Bitmap *texture, s32 x, s32 y) {
+    Bilinear_Sample result;
+    
+    u8 *texel_ptr = ((u8 *)texture->memory) + y*texture->pitch + x*BYTES_PER_PIXEL;
+    result.a = *(u32 *)(texel_ptr);
+    result.b = *(u32 *)(texel_ptr + sizeof(u32));
+    result.c = *(u32 *)(texel_ptr + texture->pitch);
+    result.d = *(u32 *)(texel_ptr + texture->pitch + sizeof(u32));
+
+    return(result);
+}
+
 internal inline Vec4
-unpack4x8(u32 packed) {
-    Vec4 result = make_vec4((f32)((packed >> 16) & 0xFF),
-                            (f32)((packed >>  8) & 0xFF),
-                            (f32)((packed >>  0) & 0xFF),
-                            (f32)((packed >> 24) & 0xFF));
+srgb_bilinear_blend(Bilinear_Sample texel_sample, f32 fx, f32 fy) {
+    Vec4 texel_a = unpack4x8(texel_sample.a);
+    Vec4 texel_b = unpack4x8(texel_sample.b);
+    Vec4 texel_c = unpack4x8(texel_sample.c);
+    Vec4 texel_d = unpack4x8(texel_sample.d);
+
+    // NOTE(xkazu0x): Go from sRGB to "linear" brightness space
+    texel_a = srgb255_to_linear1(texel_a);
+    texel_b = srgb255_to_linear1(texel_b);
+    texel_c = srgb255_to_linear1(texel_c);
+    texel_d = srgb255_to_linear1(texel_d);
+                
+    Vec4 result = lerp(lerp(texel_a, fx, texel_b),
+                       fy,
+                       lerp(texel_c, fx, texel_d));
     return(result);
 }
 
 internal inline Vec3
 sample_environment_map(Vec2 screen_space, Vec3 normal, f32 roughness, Environment_Map *map) {
-    Vec3 result = normal;
+    u32 lod_index = (u32)(roughness*(f32)(ArrayCount(map->LOD) - 1) + 0.5f);
+    Assert(lod_index < ArrayCount(map->LOD));
+
+    Bitmap *lod = map->LOD[lod_index];
+    
+    //f32 tx = ((u*(f32)(texture->width - 2)));
+    //f32 ty = ((v*(f32)(texture->height - 2)));
+
+    // TODO(xkazu0x): Do intersection math to determine where we should be!
+    f32 tx = 0.0f;
+    f32 ty = 0.0f;
+                
+    s32 x = (s32)tx;
+    s32 y = (s32)ty;
+
+    f32 fx = tx - (f32)x;
+    f32 fy = ty - (f32)y;
+
+    Assert((x >= 0) && (x < lod->width));
+    Assert((y >= 0) && (y < lod->height));
+
+    Bilinear_Sample sample = bilinear_sample(lod, x, y);
+    Vec3 result = srgb_bilinear_blend(sample, fx, fy).xyz;
+    
     return(result);
 }
 
@@ -97,7 +171,6 @@ draw_rect_slowly(Bitmap *buffer,
     s32 width_max = (buffer->width - 1);
     s32 height_max = (buffer->height - 1);
 
-    // TODO(xkazu0x): this is wrong, it should be -> 1.0f/(1.0f - (f32)width//height_max)
     f32 inv_width_max = 1.0f/(f32)width_max;
     f32 inv_height_max = 1.0f/(f32)height_max;
     
@@ -166,77 +239,67 @@ draw_rect_slowly(Bitmap *buffer,
                 //Assert((v >= 0.0f) && (v <= 1.0f));
 
                 // TODO(xkazu0x): formalize texture boundaries
-                f32 f32_texture_x = ((u*(f32)(texture->width - 2)));
-                f32 f32_texture_y = ((v*(f32)(texture->height - 2)));
+                f32 tx = ((u*(f32)(texture->width - 2)));
+                f32 ty = ((v*(f32)(texture->height - 2)));
                 
-                s32 s32_texture_x = (s32)f32_texture_x;
-                s32 s32_texture_y = (s32)f32_texture_y;
+                s32 texture_x = (s32)tx;
+                s32 texture_y = (s32)ty;
 
-                f32 f32_texture_rel_x = f32_texture_x - (f32)s32_texture_x;
-                f32 f32_texture_rel_y = f32_texture_y - (f32)s32_texture_y;
+                f32 fx = tx - (f32)texture_x;
+                f32 fy = ty - (f32)texture_y;
 
-                Assert((s32_texture_x >= 0) && (s32_texture_x < texture->width));
-                Assert((s32_texture_y >= 0) && (s32_texture_y < texture->height));
+                Assert((texture_x >= 0) && (texture_x < texture->width));
+                Assert((texture_y >= 0) && (texture_y < texture->height));
+
+                Bilinear_Sample texel_sample = bilinear_sample(texture, texture_x, texture_y);
+                Vec4 texel = srgb_bilinear_blend(texel_sample, fx, fy);
                 
-                u8 *texel_ptr = ((u8 *)texture->memory) + s32_texture_x*BYTES_PER_PIXEL + s32_texture_y*texture->pitch;
-                u32 texel_ptr_a = *(u32 *)(texel_ptr);
-                u32 texel_ptr_b = *(u32 *)(texel_ptr + BYTES_PER_PIXEL);
-                u32 texel_ptr_c = *(u32 *)(texel_ptr + texture->pitch);
-                u32 texel_ptr_d = *(u32 *)(texel_ptr + texture->pitch + BYTES_PER_PIXEL);
-
-                Vec4 texel_a = unpack4x8(texel_ptr_a);
-                Vec4 texel_b = unpack4x8(texel_ptr_b);
-                Vec4 texel_c = unpack4x8(texel_ptr_c);
-                Vec4 texel_d = unpack4x8(texel_ptr_d);
-
-                // NOTE(xkazu0x): Go from sRGB to "linear" brightness space
-                texel_a = srgb255_to_linear1(texel_a);
-                texel_b = srgb255_to_linear1(texel_b);
-                texel_c = srgb255_to_linear1(texel_c);
-                texel_d = srgb255_to_linear1(texel_d);
-                
-                Vec4 texel = lerp(lerp(texel_a, f32_texture_rel_x, texel_b),
-                                  f32_texture_rel_y,
-                                  lerp(texel_c, f32_texture_rel_x, texel_d));
-
                 if (normal_map) {
-                    u8 *normal_ptr = ((u8 *)texture->memory) + s32_texture_x*BYTES_PER_PIXEL + s32_texture_y*texture->pitch;
-                    u32 normal_ptr_a = *(u32 *)(normal_ptr);
-                    u32 normal_ptr_b = *(u32 *)(normal_ptr + BYTES_PER_PIXEL);
-                    u32 normal_ptr_c = *(u32 *)(normal_ptr + texture->pitch);
-                    u32 normal_ptr_d = *(u32 *)(normal_ptr + texture->pitch + BYTES_PER_PIXEL);
+                    Bilinear_Sample normal_sample = bilinear_sample(normal_map, texture_x, texture_y);
                     
-                    Vec4 normal_a = unpack4x8(normal_ptr_a);
-                    Vec4 normal_b = unpack4x8(normal_ptr_b);
-                    Vec4 normal_c = unpack4x8(normal_ptr_c);
-                    Vec4 normal_d = unpack4x8(normal_ptr_d);
+                    Vec4 normal_a = unpack4x8(normal_sample.a);
+                    Vec4 normal_b = unpack4x8(normal_sample.b);
+                    Vec4 normal_c = unpack4x8(normal_sample.c);
+                    Vec4 normal_d = unpack4x8(normal_sample.d);
                 
-                    Vec4 normal = lerp(lerp(normal_a, f32_texture_rel_x, normal_b),
-                                       f32_texture_rel_y,
-                                       lerp(normal_c, f32_texture_rel_x, normal_d));
+                    Vec4 normal = lerp(lerp(normal_a, fx, normal_b),
+                                       fy,
+                                       lerp(normal_c, fx, normal_d));
 
+                    normal = unscale_and_bias_normal(normal);
+                    // TODO(xkazu0x): Do we really need to do this?
+                    normal.xyz = normalize(normal.xyz);
+
+#if 1
                     Environment_Map *far_map = 0;
-                    f32 t_env_map = normal.z;
+                    f32 t_env_map = normal.y;
                     f32 t_far_map = 0.0f;
                 
-                    if (t_env_map < 0.25f) {
+                    if (t_env_map < -0.5f) {
                         far_map = bottom;
-                        t_far_map = 1.0f - (t_env_map/0.25f);
-                    } else if (t_env_map > 0.75f) {
+                        t_far_map = 2.0f*(t_env_map + 1.0f);
+                    } else if (t_env_map > 0.5f) {
                         far_map = top;
-                        t_far_map = (1.0f - t_env_map)/0.25f;
+                        t_far_map = 2.0f*(t_env_map - 0.5f);
                     }
 
-                    Vec3 light_color = sample_environment_map(screen_space, normal.xyz, normal.w, middle);
+                    Vec3 light_color = make_vec3(0.0f); // sample_environment_map(screen_space, normal.xyz, normal.w, middle);
                     if (far_map) {
-                        Vec3 far_map_color = sample_environment_map(screen_space, normal.xyz, normal.w, middle);
+                        Vec3 far_map_color = sample_environment_map(screen_space, normal.xyz, normal.w, far_map);
                         light_color = lerp(light_color, t_far_map, far_map_color);
                     }
-
-                    texel.rgb = hadamard(texel.rgb, light_color);
+                    
+                    texel.rgb = texel.rgb + texel.a*light_color;
+#else
+                    texel.rgb = make_vec3(0.5f) + 0.5f*normal.rgb;
+                    texel.a = 1.0f;
+#endif
                 }
                 
                 texel = hadamard(texel, color);
+                texel.r = clamp01(texel.r);
+                texel.g = clamp01(texel.g);
+                texel.b = clamp01(texel.b);
                 
                 Vec4 dest = make_vec4((f32)((*pixel >> 16) & 0xFF),
                                       (f32)((*pixel >> 8) & 0xFF),
