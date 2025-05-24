@@ -1,6 +1,13 @@
 #ifndef EXCALIBUR_RENDER_H
 #define EXCALIBUR_RENDER_H
 
+struct Environment_Map {
+    // NOTE(xkazu0x): LOD[0] is 2^width_pow2 x 2^height_pow2
+    s32 width_pow2;
+    s32 height_pow2;
+    Bitmap *LOD[4]; // levels of detail
+};
+
 struct Render_Basis {
     Vec3 pos;
 };
@@ -44,6 +51,10 @@ struct Render_Entry_Coordinate_System {
     Vec2 axis_y;
     Vec4 color;
     Bitmap *texture;
+    Bitmap *normal_map;
+    Environment_Map *top;
+    Environment_Map *middle;
+    Environment_Map *bottom;
 };
 
 struct Render_Group {
@@ -64,7 +75,7 @@ internal void render_clear(Render_Group *group, Vec4 color);
 internal void render_rect(Render_Group *group, Vec3 offset, Vec2 dim, Vec4 color, f32 entity_zc = 1.0f);
 internal void render_rect_outline(Render_Group *group, Vec3 offset, Vec2 dim, Vec4 color, f32 entity_zc = 1.0f);
 internal void render_bitmap(Render_Group *group, Bitmap *bitmap, Vec3 offset, Vec2 align, f32 alpha = 1.0f, f32 entity_zc = 1.0f);
-internal void render_coordinate_system(Render_Group *group, Vec2 origin, Vec2 axis_x, Vec2 axis_y, Vec4 color, Bitmap *texture);
+//internal void render_coordinate_system(Render_Group *group, Vec2 origin, Vec2 axis_x, Vec2 axis_y, Vec4 color, Bitmap *texture, Bitmap *normal_map);
 
 internal void render_group_draw(Render_Group *group, Bitmap *output_target);
 

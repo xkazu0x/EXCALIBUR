@@ -510,6 +510,24 @@ length(Vec4 v) {
 }
 
 internal inline Vec2
+normalize(Vec2 v) {
+    Vec2 result = v * (1.0f/length(v));
+    return(result);
+}
+
+internal inline Vec3
+normalize(Vec3 v) {
+    Vec3 result = v * (1.0f/length(v));
+    return(result);
+}
+
+internal inline Vec4
+normalize(Vec4 v) {
+    Vec4 result = v * (1.0f/length(v));
+    return(result);
+}
+
+internal inline Vec2
 perp(Vec2 v) {
     Vec2 result = {-v.y, v.x};
     return(result);
@@ -682,6 +700,12 @@ rect_intersect(Rect3 a, Rect3 b) {
 internal inline f32
 lerp(f32 a, f32 t, f32 b) {
     f32 result = (1.0f - t)*a + t*b;
+    return(result);
+}
+
+internal inline Vec3
+lerp(Vec3 a, f32 t, Vec3 b) {
+    Vec3 result = (1.0f - t)*a + t*b;
     return(result);
 }
 

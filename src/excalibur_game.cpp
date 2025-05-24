@@ -78,12 +78,12 @@ debug_load_bitmap(Debug_OS_Read_File *debug_os_read_file, OS_Thread *thread, cha
         Assert(green_scan.found);
         Assert(blue_scan.found);
         Assert(alpha_scan.found);
-        
+
         s32 red_shift_down   = (s32)red_scan.index;
         s32 green_shift_down = (s32)green_scan.index;
         s32 blue_shift_down  = (s32)blue_scan.index;
         s32 alpha_shift_down = (s32)alpha_scan.index;
-        
+
         u32 *source_dest = pixels;
         for (s32 y = 0;
              y < header->height;
@@ -176,7 +176,6 @@ add_standard_room(Game_State *game_state, u32 tile_x, u32 tile_y, u32 tile_z) {
     
     return(entity);
 }
-
 
 internal Add_Low_Entity_Result
 add_wall(Game_State *game_state, u32 tile_x, u32 tile_y, u32 tile_z) {
@@ -503,6 +502,39 @@ make_empty_bitmap(Arena *arena, u32 width, u32 height, b32 clear = true) {
     return(result);
 }
 
+internal void
+make_sphere_normal_map(Bitmap *bitmap, f32 roughness) {
+    f32 inv_width = 1.0f/(1.0f - (f32)bitmap->width);
+    f32 inv_height = 1.0f/(1.0f - (f32)bitmap->height);
+
+    u8 *row = (u8 *)bitmap->memory;
+    for (s32 y = 0;
+         y < bitmap->height;
+         ++y) {
+        u32 *pixel = (u32 *)row;
+        for (s32 x = 0;
+             x < bitmap->width;
+             ++x) {
+            Vec2 inv_bitmap = make_vec2(inv_width*(f32)x, inv_height*(f32)y);
+
+            // TODO(xkazu0x): Actually generate sphere!!
+            Vec3 normal = make_vec3(2.0f*inv_bitmap.u - 1.0f, 2.0f*inv_bitmap.v - 1.0f, 0.0f);
+            normal.z = square_root(1.0f - Min(1.0f, square(normal.x) + square(normal.y)));
+
+            Vec4 color = make_vec4(255.0f*(0.5f*(normal.x + 1.0f)),
+                                   255.0f*(0.5f*(normal.y + 1.0f)),
+                                   127.0f*normal.z,
+                                   255.0f*roughness);
+            
+            *pixel++ = (((u32)(color.a + 0.5f) << 24) |
+                        ((u32)(color.r + 0.5f) << 16) |
+                        ((u32)(color.g + 0.5f) << 8) |
+                        ((u32)(color.b + 0.5f) << 0));
+        }
+        row += bitmap->pitch;
+    }
+}
+
 shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
     Assert(sizeof(Game_State) <= memory->permanent_storage_size);
     Game_State *game_state = (Game_State *)memory->permanent_storage;
@@ -626,7 +658,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 door_top = true;
             }
 
-            add_standard_room(game_state,
+            add_standard_room(game_state, 
                               screen_x*tile_count_x + tile_count_x/2,
                               screen_y*tile_count_y + tile_count_y/2,
                               abs_tile_z);
@@ -800,7 +832,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
     draw_buffer->pitch  = framebuffer->pitch;
     draw_buffer->memory = framebuffer->memory;
 
-    render_clear(render_group, make_vec4(1.0f, 0.0f, 1.0f, 0.0f));
+    render_clear(render_group, make_vec4(0.5f, 0.5f, 0.5f, 1.0f));
 
 #if 0
     for (u32 y = 0; y < 12; ++y) {
@@ -1095,6 +1127,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
     f32 axis_scale = 64.0f;
     f32 angle = game_state->time;
     //f32 disp = 50.0f*cos_f32(angle);
+    angle = 0.0f;
 
     // TODO(xkazu0x): Add a perpendicular operator!
     Vec2 origin = screen_center;
@@ -1105,7 +1138,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
     Vec2 axis_x = axis_scale*make_vec2(1.0f, 0.0f);
     Vec2 axis_y = axis_scale*make_vec2(0.0f, 1.0f);
 #endif
-#if 1
+#if 0
     Vec4 color = make_vec4(0.5f + 0.5f*sin_f32(angle),
                            0.5f + 0.5f*cos_f32(3.0f*angle),
                            0.5f + 0.5f*sin_f32(6.0f*angle),
@@ -1118,7 +1151,8 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
                              axis_x,
                              axis_y,
                              color,
-                             &game_state->player_sprites[2]);
+                             &game_state->player_sprites[2],
+                             0, 0, 0, 0);
     
     render_group_draw(render_group, draw_buffer);
     

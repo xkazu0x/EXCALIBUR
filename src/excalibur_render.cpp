@@ -61,9 +61,26 @@ draw_rect(Bitmap *buffer, Vec2 min, Vec2 max, Vec4 color) {
     }
 }
 
+internal inline Vec4
+unpack4x8(u32 packed) {
+    Vec4 result = make_vec4((f32)((packed >> 16) & 0xFF),
+                            (f32)((packed >>  8) & 0xFF),
+                            (f32)((packed >>  0) & 0xFF),
+                            (f32)((packed >> 24) & 0xFF));
+    return(result);
+}
+
+internal inline Vec3
+sample_environment_map(Vec2 screen_space, Vec3 normal, f32 roughness, Environment_Map *map) {
+    Vec3 result = normal;
+    return(result);
+}
+
 internal void
-draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 axis_x, Vec2 axis_y,
-                 Vec4 color, Bitmap *texture) {
+draw_rect_slowly(Bitmap *buffer,
+                 Vec2 origin, Vec2 axis_x, Vec2 axis_y,
+                 Vec4 color, Bitmap *texture, Bitmap *normal_map,
+                 Environment_Map *top, Environment_Map *middle,  Environment_Map *bottom) {
     // NOTE(xkazu0x): premultiply color up front
     color.rgb *= color.a;
     
@@ -79,6 +96,10 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 axis_x, Vec2 axis_y,
 
     s32 width_max = (buffer->width - 1);
     s32 height_max = (buffer->height - 1);
+
+    // TODO(xkazu0x): this is wrong, it should be -> 1.0f/(1.0f - (f32)width//height_max)
+    f32 inv_width_max = 1.0f/(f32)width_max;
+    f32 inv_height_max = 1.0f/(f32)height_max;
     
     s32 min_x = width_max;
     s32 max_x = 0;
@@ -135,6 +156,8 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 axis_x, Vec2 axis_y,
                 (edge1 < 0) &&
                 (edge2 < 0) &&
                 (edge3 < 0)) {
+                Vec2 screen_space = make_vec2(inv_width_max*(f32)x, inv_height_max*(f32)y);
+                
                 f32 u = inv_x_axis_length_squared*dot_product(d, axis_x);
                 f32 v = inv_y_axis_length_squared*dot_product(d, axis_y);
 
@@ -161,26 +184,10 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 axis_x, Vec2 axis_y,
                 u32 texel_ptr_c = *(u32 *)(texel_ptr + texture->pitch);
                 u32 texel_ptr_d = *(u32 *)(texel_ptr + texture->pitch + BYTES_PER_PIXEL);
 
-                // TODO(xkazu0x): color.a
-                Vec4 texel_a = make_vec4((f32)((texel_ptr_a >> 16) & 0xFF),
-                                         (f32)((texel_ptr_a >> 8) & 0xFF),
-                                         (f32)((texel_ptr_a >> 0) & 0xFF),
-                                         (f32)((texel_ptr_a >> 24) & 0xFF));
-                
-                Vec4 texel_b = make_vec4((f32)((texel_ptr_b >> 16) & 0xFF),
-                                         (f32)((texel_ptr_b >> 8) & 0xFF),
-                                         (f32)((texel_ptr_b >> 0) & 0xFF),
-                                         (f32)((texel_ptr_b >> 24) & 0xFF));
-                
-                Vec4 texel_c = make_vec4((f32)((texel_ptr_c >> 16) & 0xFF),
-                                         (f32)((texel_ptr_c >> 8) & 0xFF),
-                                         (f32)((texel_ptr_c >> 0) & 0xFF),
-                                         (f32)((texel_ptr_c >> 24) & 0xFF));
-                
-                Vec4 texel_d = make_vec4((f32)((texel_ptr_d >> 16) & 0xFF),
-                                         (f32)((texel_ptr_d >> 8) & 0xFF),
-                                         (f32)((texel_ptr_d >> 0) & 0xFF),
-                                         (f32)((texel_ptr_d >> 24) & 0xFF));
+                Vec4 texel_a = unpack4x8(texel_ptr_a);
+                Vec4 texel_b = unpack4x8(texel_ptr_b);
+                Vec4 texel_c = unpack4x8(texel_ptr_c);
+                Vec4 texel_d = unpack4x8(texel_ptr_d);
 
                 // NOTE(xkazu0x): Go from sRGB to "linear" brightness space
                 texel_a = srgb255_to_linear1(texel_a);
@@ -188,19 +195,54 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 axis_x, Vec2 axis_y,
                 texel_c = srgb255_to_linear1(texel_c);
                 texel_d = srgb255_to_linear1(texel_d);
                 
-#if 1
                 Vec4 texel = lerp(lerp(texel_a, f32_texture_rel_x, texel_b),
                                   f32_texture_rel_y,
                                   lerp(texel_c, f32_texture_rel_x, texel_d));
-#else
-                Vec4 texel = texel_a;
-#endif
+
+                if (normal_map) {
+                    u8 *normal_ptr = ((u8 *)texture->memory) + s32_texture_x*BYTES_PER_PIXEL + s32_texture_y*texture->pitch;
+                    u32 normal_ptr_a = *(u32 *)(normal_ptr);
+                    u32 normal_ptr_b = *(u32 *)(normal_ptr + BYTES_PER_PIXEL);
+                    u32 normal_ptr_c = *(u32 *)(normal_ptr + texture->pitch);
+                    u32 normal_ptr_d = *(u32 *)(normal_ptr + texture->pitch + BYTES_PER_PIXEL);
+                    
+                    Vec4 normal_a = unpack4x8(normal_ptr_a);
+                    Vec4 normal_b = unpack4x8(normal_ptr_b);
+                    Vec4 normal_c = unpack4x8(normal_ptr_c);
+                    Vec4 normal_d = unpack4x8(normal_ptr_d);
+                
+                    Vec4 normal = lerp(lerp(normal_a, f32_texture_rel_x, normal_b),
+                                       f32_texture_rel_y,
+                                       lerp(normal_c, f32_texture_rel_x, normal_d));
+
+                    Environment_Map *far_map = 0;
+                    f32 t_env_map = normal.z;
+                    f32 t_far_map = 0.0f;
+                
+                    if (t_env_map < 0.25f) {
+                        far_map = bottom;
+                        t_far_map = 1.0f - (t_env_map/0.25f);
+                    } else if (t_env_map > 0.75f) {
+                        far_map = top;
+                        t_far_map = (1.0f - t_env_map)/0.25f;
+                    }
+
+                    Vec3 light_color = sample_environment_map(screen_space, normal.xyz, normal.w, middle);
+                    if (far_map) {
+                        Vec3 far_map_color = sample_environment_map(screen_space, normal.xyz, normal.w, middle);
+                        light_color = lerp(light_color, t_far_map, far_map_color);
+                    }
+
+                    texel.rgb = hadamard(texel.rgb, light_color);
+                }
+                
                 texel = hadamard(texel, color);
                 
                 Vec4 dest = make_vec4((f32)((*pixel >> 16) & 0xFF),
                                       (f32)((*pixel >> 8) & 0xFF),
                                       (f32)((*pixel >> 0) & 0xFF),
                                       (f32)((*pixel >> 24) & 0xFF));
+                
                 // NOTE(xkazu0x): Go from sRGB to "linear" brightness space
                 dest = srgb255_to_linear1(dest);
                 
@@ -393,8 +435,10 @@ render_bitmap(Render_Group *group, Bitmap *bitmap, Vec3 offset, Vec2 align, f32 
 }
 
 internal void
-render_coordinate_system(Render_Group *group, Vec2 origin, Vec2 axis_x, Vec2 axis_y,
-                         Vec4 color, Bitmap *texture) {
+render_coordinate_system(Render_Group *group,
+                         Vec2 origin, Vec2 axis_x, Vec2 axis_y,
+                         Vec4 color, Bitmap *texture, Bitmap *normal_map,
+                         Environment_Map *top, Environment_Map *middle, Environment_Map *bottom) {
     Render_Entry_Coordinate_System *entry = render_push(group, Render_Entry_Coordinate_System);
     if (entry) {
         entry->origin = origin;
@@ -402,6 +446,10 @@ render_coordinate_system(Render_Group *group, Vec2 origin, Vec2 axis_x, Vec2 axi
         entry->axis_y = axis_y;
         entry->color = color;
         entry->texture = texture;
+        entry->normal_map = normal_map;
+        entry->top = top;
+        entry->middle = middle;
+        entry->bottom = bottom;
     }
 }
 
@@ -453,11 +501,13 @@ render_group_draw(Render_Group *group, Bitmap *output_target) {
                 
             case RenderEntryType_Render_Entry_Bitmap: {
                 Render_Entry_Bitmap *entry = (Render_Entry_Bitmap *)data;
+#if 0
                 {
                     Assert(entry->bitmap);
                     Vec2 point = get_render_entity_basis_point(group, &entry->entity_basis, screen_center);
                     draw_bitmap(output_target, entry->bitmap, point, entry->color.a);
                 }
+#endif
                 base_address += sizeof(*entry);
             } break;
                 
@@ -469,7 +519,11 @@ render_group_draw(Render_Group *group, Bitmap *output_target) {
                                      entry->axis_x,
                                      entry->axis_y,
                                      entry->color,
-                                     entry->texture);
+                                     entry->texture,
+                                     entry->normal_map,
+                                     entry->top,
+                                     entry->middle,
+                                     entry->bottom);
                     
                     Vec4 point_color = make_vec4(1.0f, 0.0f, 0.0f, 1.0f);
                         
