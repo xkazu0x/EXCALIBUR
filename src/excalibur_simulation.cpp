@@ -393,13 +393,11 @@ move_entity(Game_State *state, Sim_Region *region, Sim_Entity *entity, f32 delta
         dd_pos += make_vec3(0.0f, 0.0f, -9.8f); // NOTE(xkazu0x): gravity
     }
     
-    //vec2 old_player_pos = entity->pos;
     Vec3 player_delta = (0.5f*dd_pos*square(delta) + entity->d_pos*delta);
     entity->d_pos = dd_pos*delta + entity->d_pos;
     // TODO(xkazu0x): upgrade physical motion routines to handle capping the
     // maximum velocity?
     Assert(length_squared(entity->d_pos) <= square(region->max_entity_velocity));
-    //Vec2 new_player_pos = old_player_pos + player_delta;
 
     f32 distance_remaining = entity->distance_limit;
     if (distance_remaining == 0.0f) {

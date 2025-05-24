@@ -4,8 +4,9 @@
 #include "excalibur_world.h"
 #include "excalibur_simulation.h"
 #include "excalibur_entity.h"
+
 #include "excalibur_game.h"
-#include "excalibur_render.h"
+
 
 #include "base/excalibur_base.cpp"
 #include "excalibur_world.cpp"
@@ -492,8 +493,8 @@ make_empty_bitmap(Arena *arena, u32 width, u32 height, b32 clear = true) {
     Bitmap result = {};
     result.width = width;
     result.height = height;
-    result.pitch = result.width*BYTES_PER_PIXEL;
-    s32 bitmap_size = width*height*BYTES_PER_PIXEL;
+    result.pitch = result.width*BITMAP_BYTES_PER_PIXEL;
+    s32 bitmap_size = width*height*BITMAP_BYTES_PER_PIXEL;
     result.memory = push_size(arena, bitmap_size);
     if (clear) {
         clear_bitmap(&result);
@@ -773,8 +774,29 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
             ground_buffer->position = null_position();
         }
 
-        game_state->player_normal = make_empty_bitmap(&tran_state->arena, game_state->player_sprites[2].width, game_state->player_sprites[2].height, false);
-        make_sphere_normal_map(&game_state->player_normal, 0.0f);
+        game_state->test_diffuse = make_empty_bitmap(&tran_state->arena, 256, 256, false);
+        draw_rect(&game_state->test_diffuse, make_vec2(0.0f), make_vec2((f32)game_state->test_diffuse.width, (f32)game_state->test_diffuse.height), make_vec4(0.5f, 0.5f, 0.5f, 1.0f));
+        
+        game_state->test_normal = make_empty_bitmap(&tran_state->arena, game_state->test_diffuse.width, game_state->test_diffuse.height, false);
+        make_sphere_normal_map(&game_state->test_normal, 0.0f);
+
+        tran_state->env_map_width = 256;
+        tran_state->env_map_height = 128;
+        for (u32 map_index = 0;
+             map_index < ArrayCount(tran_state->env_maps);
+             ++map_index) {
+            Environment_Map *map = tran_state->env_maps + map_index;
+            u32 width = tran_state->env_map_width;
+            u32 height = tran_state->env_map_height;
+            for (u32 lod_index = 0;
+                 lod_index < ArrayCount(map->lod);
+                 ++lod_index) {
+                
+                map->lod[lod_index] = make_empty_bitmap(&tran_state->arena, width, height, false);
+                width >>= 1;
+                height >>= 1;
+            }
+        }
         
         tran_state->initialized = true;
     }
@@ -843,7 +865,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
     draw_buffer->pitch  = framebuffer->pitch;
     draw_buffer->memory = framebuffer->memory;
 
-    render_clear(render_group, make_vec4(0.5f, 0.5f, 0.5f, 1.0f));
+    render_clear(render_group, make_vec4(0.2f, 0.3f, 0.3f, 1.0f));
 
 #if 0
     for (u32 y = 0; y < 12; ++y) {
@@ -1139,9 +1161,10 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
     f32 angle = game_state->time;
     //f32 disp = 50.0f*cos_f32(angle);
     angle = 0.0f;
-
+    
     // TODO(xkazu0x): Add a perpendicular operator!
     Vec2 origin = screen_center;
+    
 #if 1
     Vec2 axis_x = axis_scale*make_vec2(cos_f32(angle), sin_f32(angle));
     Vec2 axis_y = perp(axis_x);
@@ -1149,6 +1172,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
     Vec2 axis_x = axis_scale*make_vec2(1.0f, 0.0f);
     Vec2 axis_y = axis_scale*make_vec2(0.0f, 1.0f);
 #endif
+    
 #if 0
     Vec4 color = make_vec4(0.5f + 0.5f*sin_f32(angle),
                            0.5f + 0.5f*cos_f32(3.0f*angle),
@@ -1157,14 +1181,60 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
 #else
     Vec4 color = make_vec4(1.0f);
 #endif
+    
     render_coordinate_system(render_group,
-                             origin - 0.5f*axis_x - 0.5f*axis_y,
-                             axis_x,
-                             axis_y,
-                             color,
-                             &game_state->player_sprites[2],
-                             &game_state->player_normal,
-                             0, 0, 0);
+                             origin - 0.5f*axis_x - 0.5f*axis_y, axis_x, axis_y, color,
+                             &game_state->test_diffuse,
+                             &game_state->test_normal,
+                             tran_state->env_maps + 2,
+                             tran_state->env_maps + 1,
+                             tran_state->env_maps + 0);
+
+    Vec3 map_color[] = {
+        make_vec3(1.0f, 0.0f, 0.0f),
+        make_vec3(0.0f, 1.0f, 0.0f),
+        make_vec3(0.0f, 0.0f, 1.0f),
+    };
+    for (u32 map_index = 0;
+         map_index < ArrayCount(tran_state->env_maps);
+         ++map_index) {
+        Environment_Map *map = tran_state->env_maps + map_index;
+        Bitmap *lod = map->lod + 0;
+
+        s32 checker_width = 16;
+        s32 checker_height = 16;
+        
+        b32 row_checker_on = false;
+        for (s32 y = 0;
+             y < lod->height;
+             y += checker_height) {
+            b32 checker_on = row_checker_on;
+            for (s32 x = 0;
+                 x < lod->width;
+                 x += checker_width) {
+                Vec4 color = checker_on ? make_vec4(map_color[map_index], 1.0f) : make_vec4(0.0f, 0.0f, 0.0f, 1.0f);
+                Vec2 min = make_vec2((f32)x, (f32)y);
+                Vec2 max = min + make_vec2((f32)checker_width, (f32)checker_height);
+                draw_rect(lod, min, max, color);
+                checker_on = !checker_on;
+            }
+            row_checker_on = !row_checker_on;
+        }
+    }    
+        
+    Vec2 map_pos = make_vec2(0.0f);
+    for (u32 map_index = 0;
+         map_index < ArrayCount(tran_state->env_maps);
+         ++map_index) {
+        Environment_Map *map = tran_state->env_maps + map_index;
+        Bitmap *lod = map->lod + 0;
+        
+        axis_x = 0.25f*make_vec2((f32)lod->width, 0.0f);
+        axis_y = 0.25f*make_vec2(0.0f, (f32)lod->height);
+        
+        render_coordinate_system(render_group, map_pos, axis_x, axis_y, make_vec4(1.0f), lod, 0, 0, 0, 0);
+        map_pos += axis_y + make_vec2(0.0f, 4.0f);
+    }
     
     render_group_draw(render_group, draw_buffer);
     

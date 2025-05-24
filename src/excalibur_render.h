@@ -1,8 +1,16 @@
 #ifndef EXCALIBUR_RENDER_H
 #define EXCALIBUR_RENDER_H
 
+#define BITMAP_BYTES_PER_PIXEL 4
+struct Bitmap {
+    s32 width;
+    s32 height;
+    s32 pitch;
+    void *memory;
+};
+
 struct Environment_Map {
-    Bitmap *LOD[4]; // NOTE(xkazu0x): levels of detail
+    Bitmap lod[4]; // NOTE(xkazu0x): levels of detail
 };
 
 struct Render_Basis {

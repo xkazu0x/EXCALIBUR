@@ -61,10 +61,10 @@ draw_rect(Bitmap *buffer, Vec2 min, Vec2 max, Vec4 color) {
     if (max_x > buffer->width) max_x = buffer->width;
     if (max_y > buffer->height) max_y = buffer->height;
 
-    u32 out_color = ((round_f32_to_u32(color.a*255.0f) << 24) |
-                     (round_f32_to_u32(color.r*255.0f) << 16) |
-                     (round_f32_to_u32(color.g*255.0f) << 8) |
-                     (round_f32_to_u32(color.b*255.0f) << 0));
+    u32 color32 = ((round_f32_to_u32(color.a*255.0f) << 24) |
+                   (round_f32_to_u32(color.r*255.0f) << 16) |
+                   (round_f32_to_u32(color.g*255.0f) << 8) |
+                   (round_f32_to_u32(color.b*255.0f) << 0));
     
     u8 *row = ((u8 *)buffer->memory +
                (min_x*BYTES_PER_PIXEL) +
@@ -76,7 +76,7 @@ draw_rect(Bitmap *buffer, Vec2 min, Vec2 max, Vec4 color) {
         for (s32 x = min_x;
              x < max_x;
              ++x) {
-            *pixel++ = out_color;
+            *pixel++ = color32;
         }
         row += buffer->pitch;
     }
@@ -123,17 +123,14 @@ srgb_bilinear_blend(Bilinear_Sample texel_sample, f32 fx, f32 fy) {
 
 internal inline Vec3
 sample_environment_map(Vec2 screen_space, Vec3 normal, f32 roughness, Environment_Map *map) {
-    u32 lod_index = (u32)(roughness*(f32)(ArrayCount(map->LOD) - 1) + 0.5f);
-    Assert(lod_index < ArrayCount(map->LOD));
+    u32 lod_index = (u32)(roughness*(f32)(ArrayCount(map->lod) - 1) + 0.5f);
+    Assert(lod_index < ArrayCount(map->lod));
 
-    Bitmap *lod = map->LOD[lod_index];
-    
-    //f32 tx = ((u*(f32)(texture->width - 2)));
-    //f32 ty = ((v*(f32)(texture->height - 2)));
+    Bitmap *lod = map->lod + lod_index;
 
     // TODO(xkazu0x): Do intersection math to determine where we should be!
-    f32 tx = 0.0f;
-    f32 ty = 0.0f;
+    f32 tx = lod->width/2 + normal.x*(f32)(lod->width/2);
+    f32 ty = lod->height/2 + normal.y*(f32)(lod->height/2);
                 
     s32 x = (s32)tx;
     s32 y = (s32)ty;
@@ -277,7 +274,7 @@ draw_rect_slowly(Bitmap *buffer,
                 
                     if (t_env_map < -0.5f) {
                         far_map = bottom;
-                        t_far_map = 2.0f*(t_env_map + 1.0f);
+                        t_far_map = -1.0f - 2.0f*t_env_map;
                     } else if (t_env_map > 0.5f) {
                         far_map = top;
                         t_far_map = 2.0f*(t_env_map - 0.5f);
@@ -588,7 +585,7 @@ render_group_draw(Render_Group *group, Bitmap *output_target) {
                                      entry->middle,
                                      entry->bottom);
                     
-                    Vec4 point_color = make_vec4(1.0f, 0.0f, 0.0f, 1.0f);
+                    Vec4 point_color = make_vec4(1.0f, 0.5f, 0.3f, 1.0f);
                         
                     Vec2 dim = make_vec2(1.0f);
                     Vec2 point = entry->origin;

@@ -138,8 +138,7 @@ make_vec4(f32 x, f32 y, f32 z, f32 w) {
 internal inline Vec3
 make_vec3(Vec2 xy, f32 z) {
     Vec3 result;
-    result.x = xy.x;
-    result.y = xy.y;
+    result.xy = xy;
     result.z = z;
     return(result);
 }
@@ -147,8 +146,7 @@ make_vec3(Vec2 xy, f32 z) {
 internal inline Vec4
 make_vec4(Vec2 xy, f32 z, f32 w) {
     Vec4 result;
-    result.x = xy.x;
-    result.y = xy.y;
+    result.xy = xy;
     result.z = z;
     result.w = w;
     return(result);
@@ -157,9 +155,7 @@ make_vec4(Vec2 xy, f32 z, f32 w) {
 internal inline Vec4
 make_vec4(Vec3 xyz, f32 w) {
     Vec4 result;
-    result.x = xyz.x;
-    result.y = xyz.y;
-    result.z = xyz.z;
+    result.xyz = xyz;
     result.w = w;
     return(result);
 }
@@ -511,19 +507,19 @@ length(Vec4 v) {
 
 internal inline Vec2
 normalize(Vec2 v) {
-    Vec2 result = v * (1.0f/length(v));
+    Vec2 result = v*(1.0f/length(v));
     return(result);
 }
 
 internal inline Vec3
 normalize(Vec3 v) {
-    Vec3 result = v * (1.0f/length(v));
+    Vec3 result = v*(1.0f/length(v));
     return(result);
 }
 
 internal inline Vec4
 normalize(Vec4 v) {
-    Vec4 result = v * (1.0f/length(v));
+    Vec4 result = v*(1.0f/length(v));
     return(result);
 }
 

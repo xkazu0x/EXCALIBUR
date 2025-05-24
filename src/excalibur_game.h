@@ -1,34 +1,6 @@
 #ifndef EXCALIBUR_GAME_H
 #define EXCALIBUR_GAME_H
 
-/*
-  TODO(xkazu0x):
-  ARCHITECTURE EXPLORATION
-  - Debug code
-    - logging
-    - diagramming
-    - a little GUI
-    
-  - Asset streaming
-  
-  - Audio
-    - sound effect triggers
-    - ambient sounds
-    - music
-
-  - AI
-    - Rudimentary monster behavior example
-    - Pathfinding
-    - AI "storage"
-  
-  - Animation
-    - Skeletal animation
-    - Particle system
-
-  RENDERING
-  - draw centered bitmap??
-*/
-
 // NOTE(xkazu0x):
 // EXCALIBUR_INTERNAL:
 // > 0 - build for public release
@@ -106,13 +78,7 @@ zero_size(memi size, void *ptr) {
 }
 #define zero_struct(instance) zero_size(sizeof(instance), &(instance))
 
-#define BITMAP_BYTES_PER_PIXEL 4
-struct Bitmap {
-    s32 width;
-    s32 height;
-    s32 pitch;
-    void *memory;
-};
+#include "excalibur_render.h"
 
 struct Low_Entity {
     // TODO(xkazu0x): it's kind of busted that pos's can be invalid here,
@@ -175,9 +141,7 @@ struct Game_State {
     Bitmap shadow_sprite;
     Bitmap player_sprites[4];
     Bitmap bat_sprite;
-    Bitmap sword_sprite;
-    
-    Bitmap player_normal;
+    Bitmap sword_sprite;   
     
     // TODO(xkazu0x): must be power of two
     Pairwise_Collision_Rule *collision_rule_hash[256];
@@ -193,6 +157,9 @@ struct Game_State {
     Sim_Entity_Collision_Volume_Group *familiar_collision;
 
     f32 time;
+
+    Bitmap test_diffuse;
+    Bitmap test_normal;
 };
 
 struct Transient_State {
@@ -201,6 +168,11 @@ struct Transient_State {
 
     u32 ground_buffer_count;
     Ground_Buffer *ground_buffers;
+
+    u32 env_map_width;
+    u32 env_map_height;
+    // NOTE(xkazu0x): 0 is bottom, 1 is middle, 2 is top
+    Environment_Map env_maps[3];
 };
 
 internal Low_Entity *
