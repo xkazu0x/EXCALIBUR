@@ -24,22 +24,22 @@
 // NOTE(xkazu0x): Helper macros
 
 #if COMPILER_MSVC
-# define Trap() __debugbreak()
+# define trap() __debugbreak()
 #elif COMPILER_CLANG || COMPILER_GCC
-# define Trap() __builtin_trap()
+# define trap() __builtin_trap()
 #else
 # error Unknown trap intrinsic for this compiler.
 #endif
 
-#define AssertAlways(x) do {if (!(x)) {Trap();}} while(0)
+#define assert_always(x) do {if (!(x)) {trap();}} while(0)
 #if EXCALIBUR_DEBUG
-# define Assert(x) AssertAlways(x)
+# define assert(x) assert_always(x)
 #else
-# define Assert(x) (void)(x)
+# define assert(x) (void)(x)
 #endif
 
-#define InvalidPath        Assert(!"Invalid Path!")
-#define InvalidDefaultCase default: {InvalidPath;} break;
+#define invalid_path         assert(!"Invalid Path!")
+#define invalid_default_case default: {invalid_path;} break;
 
 #define KB(x) (((u64)(x)) << 10)
 #define MB(x) (((u64)(x)) << 20)
@@ -49,10 +49,10 @@
 #define Million(x)  ((x)*1000000)
 #define Billion(x)  ((x)*1000000000)
 
-#define Min(a, b) ((a)<(b)?(a):(b))
-#define Max(a, b) ((a)>(b)?(a):(b))
+#define min(a, b) ((a)<(b)?(a):(b))
+#define max(a, b) ((a)>(b)?(a):(b))
 
-#define ArrayCount(x) (sizeof(x)/sizeof((x)[0]))
+#define array_count(x) (sizeof(x)/sizeof((x)[0]))
 
 #define internal static
 #define global   static

@@ -46,7 +46,7 @@ get_entity_ground_point(Sim_Entity *entity) {
 
 inline f32
 get_stair_ground(Sim_Entity *entity, Vec3 at_ground_point) {
-    Assert(entity->type == EntityType_Stairwell);
+    assert(entity->type == EntityType_Stairwell);
     Rect2 region_rect = make_rect2_center_dim(entity->pos.xy, entity->walkable_dim);
     Vec2 bary = clamp01(get_barycentric(region_rect, at_ground_point.xy));
     f32 result = entity->pos.z + bary.y*entity->walkable_height;

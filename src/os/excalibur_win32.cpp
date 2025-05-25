@@ -33,7 +33,7 @@ XINPUT_SET_STATE(_xinput_set_state) {
 // TODO(xkazu0x): temp functions
 internal inline u32
 safe_truncate_u64(u64 value) {
-    Assert(value <= u32_max);
+    assert(value <= u32_max);
     u32 result = (u32)value;
     return(result);
 }
@@ -611,8 +611,8 @@ WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
         
         // NOTE(xkazu0x): gamepad update
         u32 max_gamepad_count = XUSER_MAX_COUNT;
-        if (max_gamepad_count > ArrayCount(input.gamepads)) {
-            max_gamepad_count = ArrayCount(input.gamepads);
+        if (max_gamepad_count > array_count(input.gamepads)) {
+            max_gamepad_count = array_count(input.gamepads);
         }
         
         for (u32 gamepad_index = 0;

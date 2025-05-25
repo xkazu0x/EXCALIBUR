@@ -525,14 +525,14 @@ struct random_series_t {
 internal inline random_series_t
 random_seed(u32 value) {
     random_series_t series;
-    series.index = (value % ArrayCount(random_number_table));
+    series.index = (value % array_count(random_number_table));
     return(series);
 }
 
 internal inline u32
 next_random_u32(random_series_t *series) {
     u32 result = random_number_table[series->index++];
-    if (series->index >= ArrayCount(random_number_table)) {
+    if (series->index >= array_count(random_number_table)) {
         series->index = 0;
     }
     return(result);

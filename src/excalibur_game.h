@@ -29,7 +29,7 @@ make_arena(memi reserve_size, void *base_memory) {
 
 internal void *
 arena_push_(Arena *arena, memi size) {
-    Assert((arena->used + size) <= arena->reserve_size);
+    assert((arena->used + size) <= arena->reserve_size);
     void *result = arena->base_memory + arena->used;
     arena->used += size;
     return(result);
@@ -57,16 +57,16 @@ internal void
 end_temporary_memory(Temporary_Memory *temp_mem) {
     Arena *arena = temp_mem->arena;
     
-    Assert(arena->used >= temp_mem->used);
+    assert(arena->used >= temp_mem->used);
     arena->used = temp_mem->used;
 
-    Assert(arena->temp_count > 0);
+    assert(arena->temp_count > 0);
     --arena->temp_count;
 }
 
 internal void
 check_arena(Arena *arena) {
-    Assert(arena->temp_count == 0);
+    assert(arena->temp_count == 0);
 }
 
 internal inline void

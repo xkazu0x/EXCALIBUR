@@ -122,24 +122,35 @@ srgb_bilinear_blend(Bilinear_Sample texel_sample, f32 fx, f32 fy) {
 }
 
 internal inline Vec3
-sample_environment_map(Vec2 screen_space, Vec3 normal, f32 roughness, Environment_Map *map) {
-    u32 lod_index = (u32)(roughness*(f32)(ArrayCount(map->lod) - 1) + 0.5f);
-    Assert(lod_index < ArrayCount(map->lod));
+sample_environment_map(Vec2 screen_space, Vec3 sample_direction, f32 roughness, Environment_Map *map) {
+    u32 lod_index = (u32)(roughness*(f32)(array_count(map->lod) - 1) + 0.5f);
+    assert(lod_index < array_count(map->lod));
 
     Bitmap *lod = map->lod + lod_index;
 
-    // TODO(xkazu0x): Do intersection math to determine where we should be!
-    f32 tx = lod->width/2 + normal.x*(f32)(lod->width/2);
-    f32 ty = lod->height/2 + normal.y*(f32)(lod->height/2);
-                
+    assert(sample_direction.y > 0.0f);
+    f32 distance_from_map_z = 1.0f;
+    f32 uvs_per_meter = 0.1f;
+    f32 coefficient = (uvs_per_meter*distance_from_map_z)/sample_direction.y;
+    
+    // TODO(xkazu0x): Make sure we know what direction Z should go in Y
+    Vec2 offset = coefficient*make_vec2(sample_direction.x, sample_direction.z);
+    Vec2 texture_coord = screen_space + offset;
+    
+    texture_coord.u = clamp01(texture_coord.u);
+    texture_coord.v = clamp01(texture_coord.v);
+    
+    f32 tx = ((texture_coord.u*(f32)(lod->width - 2)));
+    f32 ty = ((texture_coord.v*(f32)(lod->height - 2)));
+    
     s32 x = (s32)tx;
     s32 y = (s32)ty;
 
     f32 fx = tx - (f32)x;
     f32 fy = ty - (f32)y;
 
-    Assert((x >= 0) && (x < lod->width));
-    Assert((y >= 0) && (y < lod->height));
+    assert((x >= 0) && (x < lod->width));
+    assert((y >= 0) && (y < lod->height));
 
     Bilinear_Sample sample = bilinear_sample(lod, x, y);
     Vec3 result = srgb_bilinear_blend(sample, fx, fy).xyz;
@@ -178,7 +189,7 @@ draw_rect_slowly(Bitmap *buffer,
     s32 max_y = 0;
 
     for (s32 point_index = 0;
-         point_index < ArrayCount(points);
+         point_index < array_count(points);
          ++point_index) {
         Vec2 test_point = points[point_index];
         
@@ -211,16 +222,15 @@ draw_rect_slowly(Bitmap *buffer,
         for (s32 x = min_x;
              x <= max_x;
              ++x) {
-#if 1
             Vec2 pixel_point = make_vec2((f32)x, (f32)y);
-            Vec2 d = pixel_point - origin;
+            Vec2 pixel_delta = pixel_point - origin;
 
             // TODO(xkazu0x): perp_dot()
             // TODO(xkazu0x): Simpler origin
-            f32 edge0 = dot_product(d, -perp(axis_x));
-            f32 edge1 = dot_product(d - axis_x, -perp(axis_y));
-            f32 edge2 = dot_product(d - axis_x - axis_y, perp(axis_x));
-            f32 edge3 = dot_product(d - axis_y, perp(axis_y));
+            f32 edge0 = dot_product(pixel_delta, -perp(axis_x));
+            f32 edge1 = dot_product(pixel_delta - axis_x, -perp(axis_y));
+            f32 edge2 = dot_product(pixel_delta - axis_x - axis_y, perp(axis_x));
+            f32 edge3 = dot_product(pixel_delta - axis_y, perp(axis_y));
            
             if ((edge0 < 0) &&
                 (edge1 < 0) &&
@@ -228,12 +238,12 @@ draw_rect_slowly(Bitmap *buffer,
                 (edge3 < 0)) {
                 Vec2 screen_space = make_vec2(inv_width_max*(f32)x, inv_height_max*(f32)y);
                 
-                f32 u = inv_x_axis_length_squared*dot_product(d, axis_x);
-                f32 v = inv_y_axis_length_squared*dot_product(d, axis_y);
+                f32 u = inv_x_axis_length_squared*dot_product(pixel_delta, axis_x);
+                f32 v = inv_y_axis_length_squared*dot_product(pixel_delta, axis_y);
 
                 // TODO(xkazu0x):  SSE clamping
-                //Assert((u >= 0.0f) && (u <= 1.0f));
-                //Assert((v >= 0.0f) && (v <= 1.0f));
+                //assert((u >= 0.0f) && (u <= 1.0f));
+                //assert((v >= 0.0f) && (v <= 1.0f));
 
                 // TODO(xkazu0x): formalize texture boundaries
                 f32 tx = ((u*(f32)(texture->width - 2)));
@@ -245,8 +255,8 @@ draw_rect_slowly(Bitmap *buffer,
                 f32 fx = tx - (f32)texture_x;
                 f32 fy = ty - (f32)texture_y;
 
-                Assert((texture_x >= 0) && (texture_x < texture->width));
-                Assert((texture_y >= 0) && (texture_y < texture->height));
+                assert((texture_x >= 0) && (texture_x < texture->width));
+                assert((texture_y >= 0) && (texture_y < texture->height));
 
                 Bilinear_Sample texel_sample = bilinear_sample(texture, texture_x, texture_y);
                 Vec4 texel = srgb_bilinear_blend(texel_sample, fx, fy);
@@ -267,22 +277,27 @@ draw_rect_slowly(Bitmap *buffer,
                     // TODO(xkazu0x): Do we really need to do this?
                     normal.xyz = normalize(normal.xyz);
 
+                    // NOTE(xkazu0x): The eye vector is always assumed to be [0, 0, 1]
+                    // This is just the simplified version of the reflection -e + 2e^T N N 
+                    Vec3 bounce_direction = 2.0f*normal.z*normal.xyz;
+                    bounce_direction.z -= 1.0f;
+                    
 #if 1
                     Environment_Map *far_map = 0;
-                    f32 t_env_map = normal.y;
+                    f32 t_env_map = bounce_direction.y;
                     f32 t_far_map = 0.0f;
-                
                     if (t_env_map < -0.5f) {
                         far_map = bottom;
                         t_far_map = -1.0f - 2.0f*t_env_map;
+                        bounce_direction.y = -bounce_direction.y;
                     } else if (t_env_map > 0.5f) {
                         far_map = top;
                         t_far_map = 2.0f*(t_env_map - 0.5f);
                     }
 
-                    Vec3 light_color = make_vec3(0.0f); // sample_environment_map(screen_space, normal.xyz, normal.w, middle);
+                    Vec3 light_color = make_vec3(0.0f); // TODO(xkazu0x): How do we sample from the middle map?
                     if (far_map) {
-                        Vec3 far_map_color = sample_environment_map(screen_space, normal.xyz, normal.w, far_map);
+                        Vec3 far_map_color = sample_environment_map(screen_space, bounce_direction, normal.w, far_map);
                         light_color = lerp(light_color, t_far_map, far_map_color);
                     }
                     
@@ -315,9 +330,6 @@ draw_rect_slowly(Bitmap *buffer,
                           ((u32)(blended255.g + 0.5f) << 8) |
                           ((u32)(blended255.b + 0.5f) << 0));
             }
-#else
-            *pixel = out_color;
-#endif
             ++pixel;
         }
         row += buffer->pitch;
@@ -439,7 +451,7 @@ render_push_(Render_Group *group, u32 size, Render_Entry_Type type) {
         result = (u8 *)header + sizeof(*header);
         group->push_buffer_size += size;
     } else {
-        InvalidPath;
+        invalid_path;
     }
     return(result);
 }
@@ -563,7 +575,7 @@ render_group_draw(Render_Group *group, Bitmap *output_target) {
                 Render_Entry_Bitmap *entry = (Render_Entry_Bitmap *)data;
 #if 0
                 {
-                    Assert(entry->bitmap);
+                    assert(entry->bitmap);
                     Vec2 point = get_render_entity_basis_point(group, &entry->entity_basis, screen_center);
                     draw_bitmap(output_target, entry->bitmap, point, entry->color.a);
                 }
@@ -602,7 +614,7 @@ render_group_draw(Render_Group *group, Bitmap *output_target) {
                     
 #if 0
                     for (u32 point_index = 0;
-                         point_index < ArrayCount(entry->points);
+                         point_index < array_count(entry->points);
                          ++point_index) {
                         Vec2 p = entry->points[point_index];
                         p = entry->origin + p.x*entry->axis_x + p.y*entry->axis_y;
@@ -612,7 +624,9 @@ render_group_draw(Render_Group *group, Bitmap *output_target) {
                 }
                 base_address += sizeof(*entry);
             } break;
-            InvalidDefaultCase;
+            {
+                invalid_default_case;
+            }
         }
     }
 }

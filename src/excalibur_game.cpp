@@ -7,7 +7,6 @@
 
 #include "excalibur_game.h"
 
-
 #include "base/excalibur_base.cpp"
 #include "excalibur_world.cpp"
 #include "excalibur_simulation.cpp"
@@ -16,7 +15,7 @@
 
 internal Gamepad *
 get_gamepad(OS_Input *input, u32 index) {
-    Assert(index < Gamepad_Count);
+    assert(index < Gamepad_Count);
     Gamepad *result = 0;
     if (index < Gamepad_Count) {
         result = &input->gamepads[index];
@@ -61,7 +60,7 @@ debug_load_bitmap(Debug_OS_Read_File *debug_os_read_file, OS_Thread *thread, cha
         result.width = header->width;
         result.height = header->height;
 
-        Assert(header->compression == 3);
+        assert(header->compression == 3);
         
         // NOTE(xkazu0x): byte order in memory is determined bu the header itself,
         // so we have to read out the masks and convert the pixels ourselves.
@@ -75,10 +74,10 @@ debug_load_bitmap(Debug_OS_Read_File *debug_os_read_file, OS_Thread *thread, cha
         Bit_Scan blue_scan = find_least_significant_set_bit(blue_mask);
         Bit_Scan alpha_scan = find_least_significant_set_bit(alpha_mask);
 
-        Assert(red_scan.found);
-        Assert(green_scan.found);
-        Assert(blue_scan.found);
-        Assert(alpha_scan.found);
+        assert(red_scan.found);
+        assert(green_scan.found);
+        assert(blue_scan.found);
+        assert(alpha_scan.found);
 
         s32 red_shift_down   = (s32)red_scan.index;
         s32 green_shift_down = (s32)green_scan.index;
@@ -124,7 +123,7 @@ struct Add_Low_Entity_Result {
 
 internal Add_Low_Entity_Result
 add_low_entity(Game_State *game_state, Entity_Type type, World_Position pos) {
-    Assert(game_state->low_entity_count < ArrayCount(game_state->low_entities));
+    assert(game_state->low_entity_count < array_count(game_state->low_entities));
     u32 entity_index = game_state->low_entity_count++;
     
     Low_Entity *low_entity = game_state->low_entities + entity_index;
@@ -162,7 +161,7 @@ chunk_position_from_tile_position(World *world, s32 tile_x, s32 tile_y, s32 tile
     Vec3 offset = hadamard(tile_dim, make_vec3((f32)tile_x, (f32)tile_y, (f32)tile_z));
     World_Position result = map_into_chunk_space(world, base_pos, additional_offset + offset);
     
-    Assert(is_canonical(world, result.offset_));
+    assert(is_canonical(world, result.offset_));
     
     return(result);
 }
@@ -205,7 +204,7 @@ add_stair(Game_State *game_state, u32 tile_x, u32 tile_y, u32 tile_z) {
 
 internal void
 init_hit_points(Low_Entity *low_entity, u32 hit_point_count) {
-    Assert(hit_point_count < ArrayCount(low_entity->sim.hit_points));
+    assert(hit_point_count < array_count(low_entity->sim.hit_points));
     low_entity->sim.hit_point_max = hit_point_count;
     for (u32 hit_point_index = 0;
          hit_point_index < hit_point_count;
@@ -306,7 +305,7 @@ clear_collision_rules_for(Game_State *game_state, u32 storage_index) {
     // the new things on the free list, and remove the reverse of
     // those pairs.
     for (u32 hash_bucket = 0;
-         hash_bucket < ArrayCount(game_state->collision_rule_hash);
+         hash_bucket < array_count(game_state->collision_rule_hash);
          ++hash_bucket) {
         for (Pairwise_Collision_Rule **rule = &game_state->collision_rule_hash[hash_bucket];
              *rule;
@@ -336,7 +335,7 @@ add_collision_rule(Game_State *game_state, u32 storage_index_a, u32 storage_inde
 
     // TODO(xkazu0x): BETTER HASH FUCTION
     Pairwise_Collision_Rule *found = 0;
-    u32 hash_bucket = storage_index_a & (ArrayCount(game_state->collision_rule_hash) - 1);
+    u32 hash_bucket = storage_index_a & (array_count(game_state->collision_rule_hash) - 1);
     for (Pairwise_Collision_Rule *rule = game_state->collision_rule_hash[hash_bucket];
          rule;
          rule = rule->next_in_hash)
@@ -422,9 +421,9 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
                  ++ground_index) {
                 Bitmap *sprite;
                 if (random_choice(&series, 2)) {
-                    sprite = game_state->grass_sprites + random_choice(&series, ArrayCount(game_state->grass_sprites));
+                    sprite = game_state->grass_sprites + random_choice(&series, array_count(game_state->grass_sprites));
                 } else {
-                    sprite = game_state->stone_sprites + random_choice(&series, ArrayCount(game_state->stone_sprites));
+                    sprite = game_state->stone_sprites + random_choice(&series, array_count(game_state->stone_sprites));
                 }
         
                 Vec2 sprite_center = 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height);
@@ -459,9 +458,9 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
                  ++ground_index) {
                 Bitmap *sprite;
                 if (random_choice(&series, 2)) {
-                    sprite = game_state->tuft_sprites + random_choice(&series, ArrayCount(game_state->tuft_sprites));
+                    sprite = game_state->tuft_sprites + random_choice(&series, array_count(game_state->tuft_sprites));
                 } else {
-                    sprite = game_state->tuft_sprites + random_choice(&series, ArrayCount(game_state->tuft_sprites));
+                    sprite = game_state->tuft_sprites + random_choice(&series, array_count(game_state->tuft_sprites));
                 }
         
                 Vec2 sprite_center = 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height);
@@ -504,7 +503,7 @@ make_empty_bitmap(Arena *arena, u32 width, u32 height, b32 clear = true) {
 }
 
 internal void
-make_sphere_normal_map(Bitmap *bitmap, f32 roughness) {
+make_sphere_normal_map(Bitmap *bitmap, f32 roughness, f32 cx = 1.0f, f32 cy = 1.0f) {
     f32 inv_width = 1.0f/(f32)(bitmap->width - 1);
     f32 inv_height = 1.0f/(f32)(bitmap->height - 1);
 
@@ -518,12 +517,12 @@ make_sphere_normal_map(Bitmap *bitmap, f32 roughness) {
              ++x) {
             Vec2 bitmap_coord = make_vec2(inv_width*(f32)x, inv_height*(f32)y);
 
-            f32 normal_x = 2.0f*bitmap_coord.u - 1.0f;
-            f32 normal_y = 2.0f*bitmap_coord.v - 1.0f;
+            f32 normal_x = cx*(2.0f*bitmap_coord.u - 1.0f);
+            f32 normal_y = cy*(2.0f*bitmap_coord.v - 1.0f);
             
             f32 root_term = 1.0f - square(normal_x) - square(normal_y);
             f32 normal_z = 0.0f;
-            Vec3 normal = make_vec3(0.0f, 0.0f, 1.0f);
+            Vec3 normal = make_vec3(0.0f, 0.707106781188f, 0.707106781188f);
 
             if (root_term >= 0.0f) {
                 normal_z = square_root(root_term);
@@ -544,8 +543,55 @@ make_sphere_normal_map(Bitmap *bitmap, f32 roughness) {
     }
 }
 
-shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
-    Assert(sizeof(Game_State) <= memory->permanent_storage_size);
+internal void
+make_pyramid_normal_map(Bitmap *bitmap, f32 roughness) {
+    f32 inv_width = 1.0f/(f32)(bitmap->width - 1);
+    f32 inv_height = 1.0f/(f32)(bitmap->height - 1);
+
+    u8 *row = (u8 *)bitmap->memory;
+    for (s32 y = 0;
+         y < bitmap->height;
+         ++y) {
+        u32 *pixel = (u32 *)row;
+        for (s32 x = 0;
+             x < bitmap->width;
+             ++x) {
+            Vec2 bitmap_coord = make_vec2(inv_width*(f32)x, inv_height*(f32)y);
+
+            s32 inv_x = (bitmap->width - 1) - x;
+            f32 seven = 0.707106781188f;
+            Vec3 normal = make_vec3(0.0f, 0.0f, seven);
+            if (x < y) {
+                if (inv_x < y) {
+                    normal.x = -seven;
+                } else {
+                    normal.y = seven;
+                }
+            } else {
+                if (inv_x < y) {
+                    normal.y = -seven;
+                } else {
+                    normal.x = seven;
+                }
+            }
+            
+            Vec4 color = make_vec4(255.0f*(0.5f*(normal.x + 1.0f)),
+                                   255.0f*(0.5f*(normal.y + 1.0f)),
+                                   255.0f*(0.5f*(normal.z + 1.0f)),
+                                   255.0f*roughness);
+            
+            *pixel++ = (((u32)(color.a + 0.5f) << 24) |
+                        ((u32)(color.r + 0.5f) << 16) |
+                        ((u32)(color.g + 0.5f) << 8) |
+                        ((u32)(color.b + 0.5f) << 0));
+        }
+        row += bitmap->pitch;
+    }
+}
+
+shared_function
+GAME_UPDATE_AND_RENDER(game_update_and_render) {
+    assert(sizeof(Game_State) <= memory->permanent_storage_size);
     Game_State *game_state = (Game_State *)memory->permanent_storage;
     
     u32 tile_count_x = 17;
@@ -755,7 +801,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
     }
 
     // NOTE(xkazu0x): Transient State Init
-    Assert(sizeof(Transient_State) <= memory->transient_storage_size);
+    assert(sizeof(Transient_State) <= memory->transient_storage_size);
     Transient_State *tran_state = (Transient_State *)memory->transient_storage;
     if (!tran_state->initialized) {
         tran_state->arena = make_arena(memory->transient_storage_size - sizeof(Transient_State),
@@ -779,17 +825,19 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
         
         game_state->test_normal = make_empty_bitmap(&tran_state->arena, game_state->test_diffuse.width, game_state->test_diffuse.height, false);
         make_sphere_normal_map(&game_state->test_normal, 0.0f);
+        //make_sphere_normal_map(&game_state->test_normal, 0.0f, 0.0f, 1.0f);
+        //make_pyramid_normal_map(&game_state->test_normal, 0.0f);
 
         tran_state->env_map_width = 256;
         tran_state->env_map_height = 128;
         for (u32 map_index = 0;
-             map_index < ArrayCount(tran_state->env_maps);
+             map_index < array_count(tran_state->env_maps);
              ++map_index) {
             Environment_Map *map = tran_state->env_maps + map_index;
             u32 width = tran_state->env_map_width;
             u32 height = tran_state->env_map_height;
             for (u32 lod_index = 0;
-                 lod_index < ArrayCount(map->lod);
+                 lod_index < array_count(map->lod);
                  ++lod_index) {
                 
                 map->lod[lod_index] = make_empty_bitmap(&tran_state->arena, width, height, false);
@@ -817,7 +865,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
     /////////////////////////////////
     // NOTE(xkazu0x): gamepad control
     for (u32 gamepad_index = 0;
-         gamepad_index < ArrayCount(input->gamepads);
+         gamepad_index < array_count(input->gamepads);
          ++gamepad_index) {
         Gamepad *gamepad = get_gamepad(input, gamepad_index);
         Controlled_Player *controlled_player = game_state->controlled_players + gamepad_index;
@@ -1021,7 +1069,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
 
                 case EntityType_Player: {
                     for (u32 controlled_index = 0;
-                         controlled_index < ArrayCount(game_state->controlled_players);
+                         controlled_index < array_count(game_state->controlled_players);
                          ++controlled_index) {
                         Controlled_Player *controlled_player = game_state->controlled_players + controlled_index;
                         if (entity->storage_index == controlled_player->entity_index) {
@@ -1141,9 +1189,8 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     
                     draw_hit_points(render_group, entity);
                 } break;
-                    
-                default: {
-                    InvalidPath;
+                {
+                    invalid_default_case;
                 }
             }
 
@@ -1159,8 +1206,8 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
     game_state->time += clock->dt;
     f32 axis_scale = 64.0f;
     f32 angle = game_state->time;
-    //f32 disp = 50.0f*cos_f32(angle);
-    angle = 0.0f;
+    f32 disp = 50.0f*cos_f32(angle);
+    //angle = 0.0f;
     
     // TODO(xkazu0x): Add a perpendicular operator!
     Vec2 origin = screen_center;
@@ -1183,7 +1230,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
 #endif
     
     render_coordinate_system(render_group,
-                             origin - 0.5f*axis_x - 0.5f*axis_y, axis_x, axis_y, color,
+                             make_vec2(disp, 0.0f) + origin - 0.5f*axis_x - 0.5f*axis_y, axis_x, axis_y, color,
                              &game_state->test_diffuse,
                              &game_state->test_normal,
                              tran_state->env_maps + 2,
@@ -1196,7 +1243,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
         make_vec3(0.0f, 0.0f, 1.0f),
     };
     for (u32 map_index = 0;
-         map_index < ArrayCount(tran_state->env_maps);
+         map_index < array_count(tran_state->env_maps);
          ++map_index) {
         Environment_Map *map = tran_state->env_maps + map_index;
         Bitmap *lod = map->lod + 0;
@@ -1224,7 +1271,7 @@ shared_function GAME_UPDATE_AND_RENDER(game_update_and_render) {
         
     Vec2 map_pos = make_vec2(0.0f);
     for (u32 map_index = 0;
-         map_index < ArrayCount(tran_state->env_maps);
+         map_index < array_count(tran_state->env_maps);
          ++map_index) {
         Environment_Map *map = tran_state->env_maps + map_index;
         Bitmap *lod = map->lod + 0;

@@ -33,8 +33,8 @@ is_canonical(World *world, Vec3 offset) {
 
 internal b32
 are_in_same_chunk(World *world, World_Position *a, World_Position *b) {
-    Assert(is_canonical(world, a->offset_));
-    Assert(is_canonical(world, b->offset_));
+    assert(is_canonical(world, a->offset_));
+    assert(is_canonical(world, b->offset_));
     
     b32 result = ((a->chunk_x == b->chunk_x) &&
                   (a->chunk_y == b->chunk_y) &&
@@ -46,17 +46,17 @@ are_in_same_chunk(World *world, World_Position *a, World_Position *b) {
 inline World_Chunk *
 get_world_chunk(World *world, s32 chunk_x, s32 chunk_y, s32 chunk_z,
                 Arena *arena = 0) {
-    Assert(chunk_x > -WORLD_CHUNK_SAFE_MARGIN);
-    Assert(chunk_y > -WORLD_CHUNK_SAFE_MARGIN);
-    Assert(chunk_z > -WORLD_CHUNK_SAFE_MARGIN);
-    Assert(chunk_x < WORLD_CHUNK_SAFE_MARGIN);
-    Assert(chunk_y < WORLD_CHUNK_SAFE_MARGIN);
-    Assert(chunk_z < WORLD_CHUNK_SAFE_MARGIN);
+    assert(chunk_x > -WORLD_CHUNK_SAFE_MARGIN);
+    assert(chunk_y > -WORLD_CHUNK_SAFE_MARGIN);
+    assert(chunk_z > -WORLD_CHUNK_SAFE_MARGIN);
+    assert(chunk_x < WORLD_CHUNK_SAFE_MARGIN);
+    assert(chunk_y < WORLD_CHUNK_SAFE_MARGIN);
+    assert(chunk_z < WORLD_CHUNK_SAFE_MARGIN);
     
     // TODO(xkazu0x): BETTER HASH FUNCTION!!!!
     u32 hash_value = 19*chunk_x + 7*chunk_y + 3*chunk_z;
-    u32 hash_slot = hash_value & (ArrayCount(world->chunk_hash) - 1);
-    Assert(hash_slot < ArrayCount(world->chunk_hash));
+    u32 hash_slot = hash_value & (array_count(world->chunk_hash) - 1);
+    assert(hash_slot < array_count(world->chunk_hash));
     
     World_Chunk *chunk = world->chunk_hash + hash_slot;
     do {
@@ -92,7 +92,7 @@ initialize_world(World *world, Vec3 chunk_dim_in_meters) {
     world->chunk_dim_in_meters = chunk_dim_in_meters;
     world->first_free = 0;
     for (u32 chunk_index = 0;
-         chunk_index < ArrayCount(world->chunk_hash);
+         chunk_index < array_count(world->chunk_hash);
          ++chunk_index) {
         world->chunk_hash[chunk_index].chunk_x = WORLD_CHUNK_UNINITIALIZED;
         world->chunk_hash[chunk_index].entity_block.entity_count = 0;
@@ -109,7 +109,7 @@ recanonicalize_coord(f32 chunk_dim, s32 *tile, f32 *tile_rel) {
     *tile += offset;
     *tile_rel -= offset*chunk_dim;
 
-    Assert(is_canonical(chunk_dim, *tile_rel));
+    assert(is_canonical(chunk_dim, *tile_rel));
 }
 
 inline World_Position
@@ -153,8 +153,8 @@ centered_chunk_point(World_Chunk *chunk) {
 inline void
 change_entity_location_raw(Arena *arena, World *world, u32 low_entity_index,
                            World_Position *old_pos, World_Position *new_pos) {
-    Assert(!old_pos || is_valid(*old_pos));
-    Assert(!new_pos || is_valid(*new_pos));
+    assert(!old_pos || is_valid(*old_pos));
+    assert(!new_pos || is_valid(*new_pos));
     
     if (old_pos && new_pos && are_in_same_chunk(world, old_pos, new_pos)) {
         // NOTE(xkazu0x): leave entity where it is
@@ -162,7 +162,7 @@ change_entity_location_raw(Arena *arena, World *world, u32 low_entity_index,
         if (old_pos) {
             // NOTE(xkazu0x): pull the entity out of its old entity block
             World_Chunk *chunk = get_world_chunk(world, old_pos->chunk_x, old_pos->chunk_y, old_pos->chunk_z);
-            Assert(chunk);
+            assert(chunk);
             if (chunk) {
                 b32 not_found = true;
                 World_Entity_Block *first_block = &chunk->entity_block;
@@ -173,7 +173,7 @@ change_entity_location_raw(Arena *arena, World *world, u32 low_entity_index,
                          (index < block->entity_count) && not_found;
                          index++) {
                         if (block->low_entity_index[index] == low_entity_index) {
-                            Assert(first_block->entity_count > 0);
+                            assert(first_block->entity_count > 0);
                             block->low_entity_index[index] =
                                 first_block->low_entity_index[--first_block->entity_count];
                             if (first_block->entity_count == 0) {
@@ -195,10 +195,10 @@ change_entity_location_raw(Arena *arena, World *world, u32 low_entity_index,
         if (new_pos) {
             // NOTE(xkazu0x): insert the entity into its new entity block
             World_Chunk *chunk = get_world_chunk(world, new_pos->chunk_x, new_pos->chunk_y, new_pos->chunk_z, arena);
-            Assert(chunk);
+            assert(chunk);
         
             World_Entity_Block *block = &chunk->entity_block;
-            if (block->entity_count == ArrayCount(block->low_entity_index)) {
+            if (block->entity_count == array_count(block->low_entity_index)) {
                 // NOTE(xkazu0x): we're out of room, get a new block
                 World_Entity_Block *old_block = world->first_free;
                 if (old_block) {
@@ -212,7 +212,7 @@ change_entity_location_raw(Arena *arena, World *world, u32 low_entity_index,
                 block->entity_count = 0;
             }
 
-            Assert(block->entity_count < ArrayCount(block->low_entity_index));
+            assert(block->entity_count < array_count(block->low_entity_index));
             block->low_entity_index[block->entity_count++] = low_entity_index;
         }
     }

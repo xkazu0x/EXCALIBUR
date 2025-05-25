@@ -1,10 +1,12 @@
 #ifndef EXCALIBUR_WIN32_H
 #define EXCALIBUR_WIN32_H
 
+#define NO_MIN_MAX
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <timeapi.h>
 #include <xinput.h>
+
 #pragma comment(lib, "user32")
 #pragma comment(lib, "gdi32")
 #pragma comment(lib, "winmm")

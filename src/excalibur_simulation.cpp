@@ -1,13 +1,13 @@
 internal Sim_Entity_Hash *
 get_hash_from_storage_index(Sim_Region *region, u32 storage_index) {
-    Assert(storage_index);
+    assert(storage_index);
     Sim_Entity_Hash *result = 0;
     
     u32 hash_value = storage_index;
     for (u32 offset = 0;
-         offset < ArrayCount(region->hash);
+         offset < array_count(region->hash);
          ++offset) {
-        u32 hash_mask = (ArrayCount(region->hash) - 1);
+        u32 hash_mask = (array_count(region->hash) - 1);
         u32 hash_index = ((hash_value + offset) & (hash_mask));
         Sim_Entity_Hash *entry = region->hash + hash_index;
         if (entry->index == 0 || entry->index == storage_index) {
@@ -66,7 +66,7 @@ store_entity_reference(Entity_Reference *reference) {
 internal Sim_Entity *
 add_sim_entity_raw(Game_State *state, Sim_Region *region,
                    u32 storage_index, Low_Entity *stored) {
-    Assert(storage_index);
+    assert(storage_index);
     Sim_Entity *entity = 0;
     
     Sim_Entity_Hash *entry = get_hash_from_storage_index(region, storage_index);
@@ -83,14 +83,14 @@ add_sim_entity_raw(Game_State *state, Sim_Region *region,
                 *entity = stored->sim;
                 load_entity_reference(state, region, &entity->sword);
 
-                Assert(!is_entity_flag_set(&stored->sim, EntityFlag_Simming));
+                assert(!is_entity_flag_set(&stored->sim, EntityFlag_Simming));
                 add_entity_flags(&stored->sim, EntityFlag_Simming);
             }
         
             entity->storage_index = storage_index;
             entity->updatable = false;
         } else {
-            InvalidPath;
+            invalid_path;
         }
     }
 
@@ -197,9 +197,9 @@ end_sim(Sim_Region *region, Game_State *state) {
     {
         Low_Entity *stored = state->low_entities + entity->storage_index;
 
-        Assert(is_entity_flag_set(&stored->sim, EntityFlag_Simming));
+        assert(is_entity_flag_set(&stored->sim, EntityFlag_Simming));
         stored->sim = *entity;
-        Assert(!is_entity_flag_set(&stored->sim, EntityFlag_Simming));
+        assert(!is_entity_flag_set(&stored->sim, EntityFlag_Simming));
         
         store_entity_reference(&stored->sim.sword);
         
@@ -267,7 +267,7 @@ can_collide(Game_State *state, Sim_Entity *a, Sim_Entity *b) {
         }
 
         // TODO(xkazu0x): BETTER HASH FUCTION
-        u32 hash_bucket = a->storage_index & (ArrayCount(state->collision_rule_hash) - 1);
+        u32 hash_bucket = a->storage_index & (array_count(state->collision_rule_hash) - 1);
         for (Pairwise_Collision_Rule *rule = state->collision_rule_hash[hash_bucket];
              rule;
              rule = rule->next_in_hash)
@@ -374,7 +374,7 @@ entities_overlap(Sim_Entity *entity, Sim_Entity *test_entity, Vec3 epsilon = mak
 internal void
 move_entity(Game_State *state, Sim_Region *region, Sim_Entity *entity, f32 delta,
             Move_Spec *move_spec, Vec3 dd_pos) {
-    Assert(!is_entity_flag_set(entity, EntityFlag_NonSpatial));
+    assert(!is_entity_flag_set(entity, EntityFlag_NonSpatial));
     
     if (move_spec->unit_max_accel_vector) {
         f32 dd_pos_length = length_squared(dd_pos);
@@ -397,7 +397,7 @@ move_entity(Game_State *state, Sim_Region *region, Sim_Entity *entity, f32 delta
     entity->d_pos = dd_pos*delta + entity->d_pos;
     // TODO(xkazu0x): upgrade physical motion routines to handle capping the
     // maximum velocity?
-    Assert(length_squared(entity->d_pos) <= square(region->max_entity_velocity));
+    assert(length_squared(entity->d_pos) <= square(region->max_entity_velocity));
 
     f32 distance_remaining = entity->distance_limit;
     if (distance_remaining == 0.0f) {
@@ -478,7 +478,7 @@ move_entity(Game_State *state, Sim_Region *region, Sim_Entity *entity, f32 delta
                                         b32 hit_this = false;
                                             
                                         for (u32 wall_index = 0;
-                                             wall_index < ArrayCount(walls);
+                                             wall_index < array_count(walls);
                                              ++wall_index)
                                         {
                                             test_wall_t *wall = walls + wall_index;
@@ -493,7 +493,7 @@ move_entity(Game_State *state, Sim_Region *region, Sim_Entity *entity, f32 delta
                                                 {
                                                     if (y >= wall->min_y && (y <= wall->max_y))
                                                     {
-                                                        t_max_test = Max(0.0f, t_result - t_epsilon);
+                                                        t_max_test = max(0.0f, t_result - t_epsilon);
                                                         test_wall_normal = wall->normal;
                                                         hit_this = true;
                                                     }
@@ -513,7 +513,7 @@ move_entity(Game_State *state, Sim_Region *region, Sim_Entity *entity, f32 delta
                                         Vec3 test_wall_normal = make_vec3(0.0f);
                                         
                                         for (u32 wall_index = 0;
-                                             wall_index < ArrayCount(walls);
+                                             wall_index < array_count(walls);
                                              ++wall_index) {
                                             test_wall_t *wall = walls + wall_index;
                                             
@@ -523,7 +523,7 @@ move_entity(Game_State *state, Sim_Region *region, Sim_Entity *entity, f32 delta
                                                 f32 y = wall->rel_y + t_result*wall->delta_y;
                                                 if ((t_result >= 0.0f) && (t_min_test > t_result)) {
                                                     if (y >= wall->min_y && (y <= wall->max_y)) {
-                                                        t_min_test = Max(0.0f, t_result - t_epsilon);
+                                                        t_min_test = max(0.0f, t_result - t_epsilon);
                                                         test_wall_normal = wall->normal;
                                                         hit_this = true;
                                                     }
