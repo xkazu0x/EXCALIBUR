@@ -5,6 +5,77 @@
 #include "excalibur_simulation.h"
 #include "excalibur_entity.h"
 
+struct Arena {
+    memi reserve_size;
+    memi used;
+    u8 *base_memory;
+
+    s32 temp_count;
+};
+
+internal Arena
+make_arena(memi reserve_size, void *base_memory) {
+    Arena result;
+    result.reserve_size = reserve_size;
+    result.used = 0;
+    result.base_memory = (u8 *)base_memory;
+    result.temp_count = 0;
+    return(result);
+}
+
+internal void *
+arena_push_(Arena *arena, memi size) {
+    assert((arena->used + size) <= arena->reserve_size);
+    void *result = arena->base_memory + arena->used;
+    arena->used += size;
+    return(result);
+}
+
+#define push_size(arena, size) arena_push_(arena, size)
+#define push_struct(arena, type) (type *)arena_push_(arena, sizeof(type))
+#define push_array(arena, type, count) (type *)arena_push_(arena, sizeof(type)*(count))
+
+struct Temp_Memory {
+    Arena *arena;
+    memi used;
+};
+
+internal Temp_Memory
+begin_temp_memory(Arena *arena) {
+    Temp_Memory result;
+    result.arena = arena;
+    result.used = arena->used;
+    ++arena->temp_count;
+    return(result);
+}
+
+internal void
+end_temp_memory(Temp_Memory *temp) {
+    Arena *arena = temp->arena;
+    
+    assert(arena->used >= temp->used);
+    arena->used = temp->used;
+
+    assert(arena->temp_count > 0);
+    --arena->temp_count;
+}
+
+internal void
+check_arena(Arena *arena) {
+    assert(arena->temp_count == 0);
+}
+
+internal inline void
+zero_size(memi size, void *ptr) {
+    u8 *byte = (u8 *)ptr;
+    while (size--) {
+        *byte++ = 0;
+    }
+}
+
+#define zero_struct(instance) zero_size(sizeof(instance), &(instance))
+
+#include "excalibur_render.h"
 #include "excalibur_game.h"
 
 #include "base/excalibur_base.cpp"
@@ -392,7 +463,7 @@ make_null_collision(Game_State *game_state) {
 
 internal void
 fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Buffer *ground_buffer, World_Position *position) {
-    Temporary_Memory render_memory = begin_temporary_memory(&tran_state->arena);
+    Temp_Memory render_memory = begin_temp_memory(&tran_state->arena);
     Render_Group *render_group = render_group_alloc(&tran_state->arena, MB(4), 1.0f);
 
     Bitmap *output_target = &ground_buffer->bitmap;
@@ -476,7 +547,7 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
     }
 
     render_group_draw(render_group, output_target);
-    end_temporary_memory(&render_memory);
+    end_temp_memory(&render_memory);
 }
 
 internal void
@@ -519,9 +590,9 @@ make_sphere_normal_map(Bitmap *bitmap, f32 roughness, f32 cx = 1.0f, f32 cy = 1.
 
             f32 normal_x = cx*(2.0f*bitmap_coord.u - 1.0f);
             f32 normal_y = cy*(2.0f*bitmap_coord.v - 1.0f);
+            f32 normal_z = 0.0f;
             
             f32 root_term = 1.0f - square(normal_x) - square(normal_y);
-            f32 normal_z = 0.0f;
             Vec3 normal = make_vec3(0.0f, 0.707106781188f, 0.707106781188f);
 
             if (root_term >= 0.0f) {
@@ -902,7 +973,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     ////////////////////////////
     // NOTE(xkazu0x): Render
 
-    Temporary_Memory render_memory = begin_temporary_memory(&tran_state->arena);
+    Temp_Memory render_memory = begin_temp_memory(&tran_state->arena);
     // TODO(xkazu0x): Decide what out push buffer size is!
     Render_Group *render_group = render_group_alloc(&tran_state->arena, MB(4), game_state->meters_to_pixels);
     
@@ -1009,7 +1080,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     // TODO(xkazu0x): How big do we actually want to expand here?
     Vec3 sim_bounds_expansion = make_vec3(12.0f);
     Rect3 sim_bounds = rect_add_radius(camera_bounds_in_meters, sim_bounds_expansion);
-    Temporary_Memory sim_memory = begin_temporary_memory(&tran_state->arena);
+    Temp_Memory sim_memory = begin_temp_memory(&tran_state->arena);
     Sim_Region *sim_region = begin_sim(&tran_state->arena, game_state, world,
                                          game_state->camera_pos, sim_bounds, clock->dt);
     
@@ -1206,7 +1277,8 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     game_state->time += clock->dt;
     f32 axis_scale = 64.0f;
     f32 angle = game_state->time;
-    f32 disp = 50.0f*cos_f32(angle);
+    Vec2 disp = make_vec2(50.0f*cos_f32(angle),
+                          50.0f*sin_f32(angle));
     //angle = 0.0f;
     
     // TODO(xkazu0x): Add a perpendicular operator!
@@ -1230,7 +1302,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
 #endif
     
     render_coordinate_system(render_group,
-                             make_vec2(disp, 0.0f) + origin - 0.5f*axis_x - 0.5f*axis_y, axis_x, axis_y, color,
+                             disp + origin - 0.5f*axis_x - 0.5f*axis_y, axis_x, axis_y, color,
                              &game_state->test_diffuse,
                              &game_state->test_normal,
                              tran_state->env_maps + 2,
@@ -1284,10 +1356,10 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     }
     
     render_group_draw(render_group, draw_buffer);
-    
     end_sim(sim_region, game_state);
-    end_temporary_memory(&sim_memory);
-    end_temporary_memory(&render_memory);
+    
+    end_temp_memory(&sim_memory);
+    end_temp_memory(&render_memory);
     
     check_arena(&game_state->world_arena);
     check_arena(&tran_state->arena);

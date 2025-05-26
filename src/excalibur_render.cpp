@@ -122,24 +122,39 @@ srgb_bilinear_blend(Bilinear_Sample texel_sample, f32 fx, f32 fy) {
 }
 
 internal inline Vec3
-sample_environment_map(Vec2 screen_space, Vec3 sample_direction, f32 roughness, Environment_Map *map) {
+sample_environment_map(Vec2 screen_space, Vec3 sample_direction, f32 roughness, Environment_Map *map,
+                       f32 distance_from_map_z) {
+    // screen_space tells us where the ray is being cast
+    // _from_ in normalized screen coodinates.
+    
+    // sample_direction tells us what direction the cast is going
+    // - it doest not have to be normalized.
+    
+    // roughness says which LODs of map we sample from.
+
+    // distance_from_map_z says how far the map if from the sample point in Z,
+    // given in meters.
+    
+    // NOTE(xkazu0x): Pick which LOD to sample from.
     u32 lod_index = (u32)(roughness*(f32)(array_count(map->lod) - 1) + 0.5f);
     assert(lod_index < array_count(map->lod));
 
     Bitmap *lod = map->lod + lod_index;
 
-    assert(sample_direction.y > 0.0f);
-    f32 distance_from_map_z = 1.0f;
-    f32 uvs_per_meter = 0.1f;
-    f32 coefficient = (uvs_per_meter*distance_from_map_z)/sample_direction.y;
-    
-    // TODO(xkazu0x): Make sure we know what direction Z should go in Y
+    // NOTE(xkazu0x): Compute distance to the map
+    f32 uvs_per_meter = 0.01f; // TODO(xkazu0x): This needs to be a parameter.
+    f32 coefficient = (uvs_per_meter*distance_from_map_z) / sample_direction.y;
     Vec2 offset = coefficient*make_vec2(sample_direction.x, sample_direction.z);
+
+    // NOTE(xkazu0x): Find the intersection point
     Vec2 texture_coord = screen_space + offset;
-    
+
+    // NOTE(xkazu0x): Clamp to the valid range
     texture_coord.u = clamp01(texture_coord.u);
     texture_coord.v = clamp01(texture_coord.v);
-    
+
+    // NOTE(xkazu0x): Bilinear sample
+    // TODO(xkazu0x): Formalize texture boundaries!!
     f32 tx = ((texture_coord.u*(f32)(lod->width - 2)));
     f32 ty = ((texture_coord.v*(f32)(lod->height - 2)));
     
@@ -152,6 +167,9 @@ sample_environment_map(Vec2 screen_space, Vec3 sample_direction, f32 roughness, 
     assert((x >= 0) && (x < lod->width));
     assert((y >= 0) && (y < lod->height));
 
+    u8 *texel_ptr = ((u8 *)lod->memory) + y*lod->pitch + x*sizeof(u32);
+    *(u32 *)texel_ptr = 0xFFFFFFFF;
+    
     Bilinear_Sample sample = bilinear_sample(lod, x, y);
     Vec3 result = srgb_bilinear_blend(sample, fx, fy).xyz;
     
@@ -160,20 +178,30 @@ sample_environment_map(Vec2 screen_space, Vec3 sample_direction, f32 roughness, 
 
 internal void
 draw_rect_slowly(Bitmap *buffer,
-                 Vec2 origin, Vec2 axis_x, Vec2 axis_y,
+                 Vec2 origin, Vec2 x_axis, Vec2 y_axis,
                  Vec4 color, Bitmap *texture, Bitmap *normal_map,
                  Environment_Map *top, Environment_Map *middle,  Environment_Map *bottom) {
     // NOTE(xkazu0x): premultiply color up front
     color.rgb *= color.a;
+
+    f32 x_axis_length = length(x_axis);
+    f32 y_axis_length = length(y_axis);
+
+    Vec2 normal_x_axis = (y_axis_length / x_axis_length) * x_axis;
+    Vec2 normal_y_axis = (x_axis_length / y_axis_length) * y_axis;
+    // NOTE(xkazu0x): normal_z_scale could be a parameter if we want people to
+    // have control over the amount of scaling in the Z direction
+    // that the normals appear to have.
+    f32 normal_z_scale = 0.5f*(x_axis_length + y_axis_length);
     
-    f32 inv_x_axis_length_squared = 1.0f/length_squared(axis_x);
-    f32 inv_y_axis_length_squared = 1.0f/length_squared(axis_y);
+    f32 inv_x_axis_length_squared = 1.0f/length_squared(x_axis);
+    f32 inv_y_axis_length_squared = 1.0f/length_squared(y_axis);
 
     Vec2 points[4] = {
         origin,
-        origin + axis_x,
-        origin + axis_x + axis_y,
-        origin + axis_y,
+        origin + x_axis,
+        origin + x_axis + y_axis,
+        origin + y_axis,
     };
 
     s32 width_max = (buffer->width - 1);
@@ -224,13 +252,13 @@ draw_rect_slowly(Bitmap *buffer,
              ++x) {
             Vec2 pixel_point = make_vec2((f32)x, (f32)y);
             Vec2 pixel_delta = pixel_point - origin;
-
+            
             // TODO(xkazu0x): perp_dot()
             // TODO(xkazu0x): Simpler origin
-            f32 edge0 = dot_product(pixel_delta, -perp(axis_x));
-            f32 edge1 = dot_product(pixel_delta - axis_x, -perp(axis_y));
-            f32 edge2 = dot_product(pixel_delta - axis_x - axis_y, perp(axis_x));
-            f32 edge3 = dot_product(pixel_delta - axis_y, perp(axis_y));
+            f32 edge0 = dot_product(pixel_delta, -perp(x_axis));
+            f32 edge1 = dot_product(pixel_delta - x_axis, -perp(y_axis));
+            f32 edge2 = dot_product(pixel_delta - x_axis - y_axis, perp(x_axis));
+            f32 edge3 = dot_product(pixel_delta - y_axis, perp(y_axis));
            
             if ((edge0 < 0) &&
                 (edge1 < 0) &&
@@ -238,8 +266,8 @@ draw_rect_slowly(Bitmap *buffer,
                 (edge3 < 0)) {
                 Vec2 screen_space = make_vec2(inv_width_max*(f32)x, inv_height_max*(f32)y);
                 
-                f32 u = inv_x_axis_length_squared*dot_product(pixel_delta, axis_x);
-                f32 v = inv_y_axis_length_squared*dot_product(pixel_delta, axis_y);
+                f32 u = inv_x_axis_length_squared*dot_product(pixel_delta, x_axis);
+                f32 v = inv_y_axis_length_squared*dot_product(pixel_delta, y_axis);
 
                 // TODO(xkazu0x):  SSE clamping
                 //assert((u >= 0.0f) && (u <= 1.0f));
@@ -272,24 +300,33 @@ draw_rect_slowly(Bitmap *buffer,
                     Vec4 normal = lerp(lerp(normal_a, fx, normal_b),
                                        fy,
                                        lerp(normal_c, fx, normal_d));
-
                     normal = unscale_and_bias_normal(normal);
-                    // TODO(xkazu0x): Do we really need to do this?
+                    
+                    normal.xy = normal.x*normal_x_axis + normal.y*normal_y_axis;
+                    normal.z *= normal_z_scale;
                     normal.xyz = normalize(normal.xyz);
 
                     // NOTE(xkazu0x): The eye vector is always assumed to be [0, 0, 1]
                     // This is just the simplified version of the reflection -e + 2e^T N N 
                     Vec3 bounce_direction = 2.0f*normal.z*normal.xyz;
                     bounce_direction.z -= 1.0f;
+
+                    // TODO(xkazu0x): Eventually we need to support two mappings,
+                    // one for top-down view (which we don't do now) and one
+                    // for sideways, which is what's happening here.
+                    bounce_direction.z = -bounce_direction.z;
                     
 #if 1
                     Environment_Map *far_map = 0;
+                    f32 distance_from_map_z = 4.0f;
                     f32 t_env_map = bounce_direction.y;
                     f32 t_far_map = 0.0f;
+
                     if (t_env_map < -0.5f) {
+                        // TODO(xkazu0x): This path seems PARTICALARLY broken.
                         far_map = bottom;
                         t_far_map = -1.0f - 2.0f*t_env_map;
-                        bounce_direction.y = -bounce_direction.y;
+                        distance_from_map_z = -distance_from_map_z;
                     } else if (t_env_map > 0.5f) {
                         far_map = top;
                         t_far_map = 2.0f*(t_env_map - 0.5f);
@@ -297,15 +334,32 @@ draw_rect_slowly(Bitmap *buffer,
 
                     Vec3 light_color = make_vec3(0.0f); // TODO(xkazu0x): How do we sample from the middle map?
                     if (far_map) {
-                        Vec3 far_map_color = sample_environment_map(screen_space, bounce_direction, normal.w, far_map);
+                        Vec3 far_map_color = sample_environment_map(screen_space, bounce_direction, normal.w, far_map, distance_from_map_z);
                         light_color = lerp(light_color, t_far_map, far_map_color);
                     }
                     
                     texel.rgb = texel.rgb + texel.a*light_color;
-#else
-                    texel.rgb = make_vec3(0.5f) + 0.5f*normal.rgb;
-                    texel.a = 1.0f;
+#else                    
+                    //texel.rgb = make_vec3(0.5f) + 0.5f*bounce_direction;
+                    //texel.r = 0.0f;
+                    //texel.g = 0.0f;
+                    //texel.b = 0.0f;
+                    //texel.a = 1.0f;
+
+                    f32 iso_line = -0.5f;
+                    
+                    if ((bounce_direction.y >= (iso_line-0.1f)) &&
+                        (bounce_direction.y <= (iso_line+0.1f))) {
+                        texel.rgb = make_vec3(1.0f);
+                    } else {
+                        texel.rgb = make_vec3(0.0f);
+                    }
+                    
+                    //texel.rgb = make_vec3(0.5f) + 0.5f*normal.rgb;
+                    //texel.a = 1.0f;
 #endif
+
+                    
                 }
                 
                 texel = hadamard(texel, color);
@@ -508,14 +562,14 @@ render_bitmap(Render_Group *group, Bitmap *bitmap, Vec3 offset, Vec2 align, f32 
 
 internal void
 render_coordinate_system(Render_Group *group,
-                         Vec2 origin, Vec2 axis_x, Vec2 axis_y,
+                         Vec2 origin, Vec2 x_axis, Vec2 y_axis,
                          Vec4 color, Bitmap *texture, Bitmap *normal_map,
                          Environment_Map *top, Environment_Map *middle, Environment_Map *bottom) {
     Render_Entry_Coordinate_System *entry = render_push(group, Render_Entry_Coordinate_System);
     if (entry) {
         entry->origin = origin;
-        entry->axis_x = axis_x;
-        entry->axis_y = axis_y;
+        entry->x_axis = x_axis;
+        entry->y_axis = y_axis;
         entry->color = color;
         entry->texture = texture;
         entry->normal_map = normal_map;
@@ -588,8 +642,8 @@ render_group_draw(Render_Group *group, Bitmap *output_target) {
                 {
                     draw_rect_slowly(output_target,
                                      entry->origin,
-                                     entry->axis_x,
-                                     entry->axis_y,
+                                     entry->x_axis,
+                                     entry->y_axis,
                                      entry->color,
                                      entry->texture,
                                      entry->normal_map,
@@ -603,13 +657,13 @@ render_group_draw(Render_Group *group, Bitmap *output_target) {
                     Vec2 point = entry->origin;
                     draw_rect(output_target, point - dim, point + dim, point_color);
                     
-                    point = entry->origin + entry->axis_x;
+                    point = entry->origin + entry->x_axis;
                     draw_rect(output_target, point - dim, point + dim, point_color);
                     
-                    point = entry->origin + entry->axis_y;
+                    point = entry->origin + entry->y_axis;
                     draw_rect(output_target, point - dim, point + dim, point_color);
 
-                    Vec2 max = entry->origin + entry->axis_x + entry->axis_y;
+                    Vec2 max = entry->origin + entry->x_axis + entry->y_axis;
                     draw_rect(output_target, max - dim, max + dim, point_color);
                     
 #if 0
@@ -617,7 +671,7 @@ render_group_draw(Render_Group *group, Bitmap *output_target) {
                          point_index < array_count(entry->points);
                          ++point_index) {
                         Vec2 p = entry->points[point_index];
-                        p = entry->origin + p.x*entry->axis_x + p.y*entry->axis_y;
+                        p = entry->origin + p.x*entry->x_axis + p.y*entry->y_axis;
                         draw_rect(output_target, p - dim, p + dim, entry->color.rgb);
                     }
 #endif

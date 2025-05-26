@@ -45,9 +45,9 @@
 #define MB(x) (((u64)(x)) << 20)
 #define GB(x) (((u64)(x)) << 30)
 #define TB(x) (((u64)(x)) << 40)
-#define Thousand(x) ((x)*1000)
-#define Million(x)  ((x)*1000000)
-#define Billion(x)  ((x)*1000000000)
+#define thousand(x) ((x)*1000)
+#define million(x)  ((x)*1000000)
+#define billion(x)  ((x)*1000000000)
 
 #define min(a, b) ((a)<(b)?(a):(b))
 #define max(a, b) ((a)>(b)?(a):(b))

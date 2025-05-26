@@ -52,8 +52,8 @@ struct Render_Entry_Bitmap {
 
 struct Render_Entry_Coordinate_System {
     Vec2 origin;
-    Vec2 axis_x;
-    Vec2 axis_y;
+    Vec2 x_axis;
+    Vec2 y_axis;
     Vec4 color;
     Bitmap *texture;
     Bitmap *normal_map;
