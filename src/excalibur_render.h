@@ -11,6 +11,7 @@ struct Bitmap {
 
 struct Environment_Map {
     Bitmap lod[4]; // NOTE(xkazu0x): levels of detail
+    f32 pos_z;
 };
 
 struct Render_Basis {

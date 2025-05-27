@@ -142,7 +142,7 @@ sample_environment_map(Vec2 screen_space, Vec3 sample_direction, f32 roughness, 
     Bitmap *lod = map->lod + lod_index;
 
     // NOTE(xkazu0x): Compute distance to the map
-    f32 uvs_per_meter = 0.01f; // TODO(xkazu0x): This needs to be a parameter.
+    f32 uvs_per_meter = 0.1f; // TODO(xkazu0x): This needs to be a parameter.
     f32 coefficient = (uvs_per_meter*distance_from_map_z) / sample_direction.y;
     Vec2 offset = coefficient*make_vec2(sample_direction.x, sample_direction.z);
 
@@ -167,8 +167,10 @@ sample_environment_map(Vec2 screen_space, Vec3 sample_direction, f32 roughness, 
     assert((x >= 0) && (x < lod->width));
     assert((y >= 0) && (y < lod->height));
 
+#if 0
     u8 *texel_ptr = ((u8 *)lod->memory) + y*lod->pitch + x*sizeof(u32);
     *(u32 *)texel_ptr = 0xFFFFFFFF;
+#endif
     
     Bilinear_Sample sample = bilinear_sample(lod, x, y);
     Vec3 result = srgb_bilinear_blend(sample, fx, fy).xyz;
@@ -180,10 +182,11 @@ internal void
 draw_rect_slowly(Bitmap *buffer,
                  Vec2 origin, Vec2 x_axis, Vec2 y_axis,
                  Vec4 color, Bitmap *texture, Bitmap *normal_map,
-                 Environment_Map *top, Environment_Map *middle,  Environment_Map *bottom) {
+                 Environment_Map *top, Environment_Map *middle,  Environment_Map *bottom,
+                 f32 pixels_to_meters) {
     // NOTE(xkazu0x): premultiply color up front
     color.rgb *= color.a;
-
+    
     f32 x_axis_length = length(x_axis);
     f32 y_axis_length = length(y_axis);
 
@@ -209,6 +212,11 @@ draw_rect_slowly(Bitmap *buffer,
 
     f32 inv_width_max = 1.0f/(f32)width_max;
     f32 inv_height_max = 1.0f/(f32)height_max;
+
+    // TODO(xkazu0x): This will need to be specified separately!!
+    f32 origin_z = 0.0f;
+    f32 origin_y = (origin + 0.5f*x_axis + 0.5f*y_axis).y;
+    f32 fixed_cast_y = inv_height_max*origin_y;
     
     s32 min_x = width_max;
     s32 max_x = 0;
@@ -264,7 +272,9 @@ draw_rect_slowly(Bitmap *buffer,
                 (edge1 < 0) &&
                 (edge2 < 0) &&
                 (edge3 < 0)) {
-                Vec2 screen_space = make_vec2(inv_width_max*(f32)x, inv_height_max*(f32)y);
+                Vec2 screen_space = make_vec2(inv_width_max*(f32)x, fixed_cast_y);
+
+                f32 z_diff = pixels_to_meters*((f32)y - origin_y);
                 
                 f32 u = inv_x_axis_length_squared*dot_product(pixel_delta, x_axis);
                 f32 v = inv_y_axis_length_squared*dot_product(pixel_delta, y_axis);
@@ -318,27 +328,36 @@ draw_rect_slowly(Bitmap *buffer,
                     
 #if 1
                     Environment_Map *far_map = 0;
-                    f32 distance_from_map_z = 4.0f;
+                    f32 pos_z = origin_z + z_diff;
+                    //f32 map_z = 2.0f;
                     f32 t_env_map = bounce_direction.y;
                     f32 t_far_map = 0.0f;
-
                     if (t_env_map < -0.5f) {
                         // TODO(xkazu0x): This path seems PARTICALARLY broken.
                         far_map = bottom;
                         t_far_map = -1.0f - 2.0f*t_env_map;
-                        distance_from_map_z = -distance_from_map_z;
                     } else if (t_env_map > 0.5f) {
                         far_map = top;
                         t_far_map = 2.0f*(t_env_map - 0.5f);
                     }
 
+                    t_far_map *= t_far_map;
+                    t_far_map *= t_far_map;
+                    
                     Vec3 light_color = make_vec3(0.0f); // TODO(xkazu0x): How do we sample from the middle map?
                     if (far_map) {
+                        f32 distance_from_map_z = far_map->pos_z - pos_z;
                         Vec3 far_map_color = sample_environment_map(screen_space, bounce_direction, normal.w, far_map, distance_from_map_z);
                         light_color = lerp(light_color, t_far_map, far_map_color);
                     }
                     
                     texel.rgb = texel.rgb + texel.a*light_color;
+
+#if 0
+                    // NOTE(xkazu0x): Draws the bounce direction
+                    texel.rgb = make_vec3(0.5f) + 0.5f*bounce_direction;
+                    texel.rgb *= texel.a;
+#endif
 #else                    
                     //texel.rgb = make_vec3(0.5f) + 0.5f*bounce_direction;
                     //texel.r = 0.0f;
@@ -358,8 +377,6 @@ draw_rect_slowly(Bitmap *buffer,
                     //texel.rgb = make_vec3(0.5f) + 0.5f*normal.rgb;
                     //texel.a = 1.0f;
 #endif
-
-                    
                 }
                 
                 texel = hadamard(texel, color);
@@ -649,7 +666,8 @@ render_group_draw(Render_Group *group, Bitmap *output_target) {
                                      entry->normal_map,
                                      entry->top,
                                      entry->middle,
-                                     entry->bottom);
+                                     entry->bottom,
+                                     1.0f / group->meters_to_pixels);
                     
                     Vec4 point_color = make_vec4(1.0f, 0.5f, 0.3f, 1.0f);
                         

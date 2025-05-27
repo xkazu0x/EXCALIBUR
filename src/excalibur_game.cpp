@@ -615,6 +615,48 @@ make_sphere_normal_map(Bitmap *bitmap, f32 roughness, f32 cx = 1.0f, f32 cy = 1.
 }
 
 internal void
+make_sphere_diffuse_map(Bitmap *bitmap, f32 cx = 1.0f, f32 cy = 1.0f) {
+    f32 inv_width = 1.0f/(f32)(bitmap->width - 1);
+    f32 inv_height = 1.0f/(f32)(bitmap->height - 1);
+
+    u8 *row = (u8 *)bitmap->memory;
+    for (s32 y = 0;
+         y < bitmap->height;
+         ++y) {
+        u32 *pixel = (u32 *)row;
+        for (s32 x = 0;
+             x < bitmap->width;
+             ++x) {
+            Vec2 bitmap_coord = make_vec2(inv_width*(f32)x, inv_height*(f32)y);
+
+            f32 normal_x = cx*(2.0f*bitmap_coord.u - 1.0f);
+            f32 normal_y = cy*(2.0f*bitmap_coord.v - 1.0f);
+
+            f32 root_term = 1.0f - square(normal_x) - square(normal_y);
+            f32 alpha = 0.0f;
+            
+            if (root_term >= 0.0f) {
+                alpha = 1.0f;
+            }
+
+            Vec3 base_color = make_vec3(0.0f);
+            alpha *= 255.0f;
+            
+            Vec4 color = make_vec4(alpha*base_color.x,
+                                   alpha*base_color.y,
+                                   alpha*base_color.z,
+                                   alpha);
+            
+            *pixel++ = (((u32)(color.a + 0.5f) << 24) |
+                        ((u32)(color.r + 0.5f) << 16) |
+                        ((u32)(color.g + 0.5f) << 8) |
+                        ((u32)(color.b + 0.5f) << 0));
+        }
+        row += bitmap->pitch;
+    }
+}
+
+internal void
 make_pyramid_normal_map(Bitmap *bitmap, f32 roughness) {
     f32 inv_width = 1.0f/(f32)(bitmap->width - 1);
     f32 inv_height = 1.0f/(f32)(bitmap->height - 1);
@@ -896,11 +938,12 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
         
         game_state->test_normal = make_empty_bitmap(&tran_state->arena, game_state->test_diffuse.width, game_state->test_diffuse.height, false);
         make_sphere_normal_map(&game_state->test_normal, 0.0f);
+        make_sphere_diffuse_map(&game_state->test_diffuse);
         //make_sphere_normal_map(&game_state->test_normal, 0.0f, 0.0f, 1.0f);
         //make_pyramid_normal_map(&game_state->test_normal, 0.0f);
 
-        tran_state->env_map_width = 256;
-        tran_state->env_map_height = 128;
+        tran_state->env_map_width = 512;
+        tran_state->env_map_height = 256;
         for (u32 map_index = 0;
              map_index < array_count(tran_state->env_maps);
              ++map_index) {
@@ -1275,17 +1318,20 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     }
 
     game_state->time += clock->dt;
-    f32 axis_scale = 64.0f;
+    f32 axis_scale = 50.0f;
     f32 angle = game_state->time;
-    Vec2 disp = make_vec2(50.0f*cos_f32(angle),
-                          50.0f*sin_f32(angle));
-    //angle = 0.0f;
+    
+#if 1
+    Vec2 disp = make_vec2(50.0f*cos_f32(angle), 50.0f*sin_f32(angle));
+#else
+    Vec2 disp = make_vec2(0.0f);
+#endif
     
     // TODO(xkazu0x): Add a perpendicular operator!
     Vec2 origin = screen_center;
     
 #if 1
-    Vec2 axis_x = axis_scale*make_vec2(cos_f32(angle), sin_f32(angle));
+    Vec2 axis_x = axis_scale*make_vec2(cos_f32(5.0f*angle), sin_f32(5.0f*angle));
     Vec2 axis_y = perp(axis_x);
 #else
     Vec2 axis_x = axis_scale*make_vec2(1.0f, 0.0f);
@@ -1340,7 +1386,10 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
             row_checker_on = !row_checker_on;
         }
     }    
-        
+    tran_state->env_maps[0].pos_z = -2.5f;
+    tran_state->env_maps[1].pos_z = 0.0f;
+    tran_state->env_maps[2].pos_z = 2.5f;
+    
     Vec2 map_pos = make_vec2(0.0f);
     for (u32 map_index = 0;
          map_index < array_count(tran_state->env_maps);
@@ -1348,8 +1397,8 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
         Environment_Map *map = tran_state->env_maps + map_index;
         Bitmap *lod = map->lod + 0;
         
-        axis_x = 0.25f*make_vec2((f32)lod->width, 0.0f);
-        axis_y = 0.25f*make_vec2(0.0f, (f32)lod->height);
+        axis_x = 0.2f*make_vec2((f32)lod->width, 0.0f);
+        axis_y = 0.2f*make_vec2(0.0f, (f32)lod->height);
         
         render_coordinate_system(render_group, map_pos, axis_x, axis_y, make_vec4(1.0f), lod, 0, 0, 0, 0);
         map_pos += axis_y + make_vec2(0.0f, 4.0f);
