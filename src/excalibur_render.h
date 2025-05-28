@@ -1,6 +1,26 @@
 #ifndef EXCALIBUR_RENDER_H
 #define EXCALIBUR_RENDER_H
 
+//
+// NOTE(xkazu0x):
+// 1. Everywhere outsided the renderer, Y _always_ goes upward, X to the right.
+// 
+// 2. All bitmaps including the render target are assumed to be bottom-up
+//    (meaning that the first row pointer points to the bottom-most row
+//     when viewed on screen).
+// 
+// 3. Unless otherwise specified, all inputs to the renderer are in world
+//    coordinate ("meters"), NOT pixels. Anything that is in pixel value
+//    will be explicited marked as such.
+//
+// 4. Z is a special coordinate because it is broken up into discrete slices.
+//    And the renderer actually understands these slices (potentially).
+//
+// ? 5. When drawing bitmap, it's assumed that the align parameter is in pixel value.
+//
+// TODO(xkazu0x): ZHANDLING
+//
+
 #define BITMAP_BYTES_PER_PIXEL 4
 struct Bitmap {
     s32 width;
@@ -51,6 +71,8 @@ struct Render_Entry_Bitmap {
     Vec4 color;
 };
 
+// NOTE(xkazu0x): This is only for test
+// {
 struct Render_Entry_Coordinate_System {
     Vec2 origin;
     Vec2 x_axis;
@@ -62,6 +84,7 @@ struct Render_Entry_Coordinate_System {
     Environment_Map *middle;
     Environment_Map *bottom;
 };
+// }
 
 struct Render_Group {
     Render_Basis *default_basis;
@@ -73,6 +96,7 @@ struct Render_Group {
 };
 
 internal Render_Group *render_group_alloc(Arena *arena, u32 max_push_buffer_size, f32 meters_to_pixels);
+internal void render_group_draw(Render_Group *group, Bitmap *output_target);
 
 internal void *render_push_(Render_Group *group, u32 size, Render_Entry_Type type);
 #define render_push(group, type) (type *)render_push_(group, sizeof(type), RenderEntryType_##type)
@@ -82,7 +106,5 @@ internal void render_rect(Render_Group *group, Vec3 offset, Vec2 dim, Vec4 color
 internal void render_rect_outline(Render_Group *group, Vec3 offset, Vec2 dim, Vec4 color, f32 entity_zc = 1.0f);
 internal void render_bitmap(Render_Group *group, Bitmap *bitmap, Vec3 offset, Vec2 align, f32 alpha = 1.0f, f32 entity_zc = 1.0f);
 //internal void render_coordinate_system(Render_Group *group, Vec2 origin, Vec2 axis_x, Vec2 axis_y, Vec4 color, Bitmap *texture, Bitmap *normal_map);
-
-internal void render_group_draw(Render_Group *group, Bitmap *output_target);
 
 #endif // EXCALIBUR_RENDER_H

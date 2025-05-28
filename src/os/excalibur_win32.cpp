@@ -202,27 +202,6 @@ win32_get_delta_seconds(LARGE_INTEGER start, LARGE_INTEGER end) {
     return(result);
 }
 
-internal void
-win32_resize_framebuffer(OS_Framebuffer *framebuffer, s32 width, s32 height) {
-    if (framebuffer->memory) {
-        VirtualFree(framebuffer->memory, 0, MEM_RELEASE);
-    }
-
-    framebuffer->width = width;
-    framebuffer->height = height;
-    framebuffer->pitch = framebuffer->width * BYTES_PER_PIXEL;
-    
-    win32_state.bitmap_info.bmiHeader.biSize = sizeof(win32_state.bitmap_info.bmiHeader);
-    win32_state.bitmap_info.bmiHeader.biWidth = framebuffer->width;
-    win32_state.bitmap_info.bmiHeader.biHeight = -framebuffer->height;
-    win32_state.bitmap_info.bmiHeader.biPlanes = 1;
-    win32_state.bitmap_info.bmiHeader.biBitCount = 8*BYTES_PER_PIXEL;
-    win32_state.bitmap_info.bmiHeader.biCompression = BI_RGB;
-
-    s32 framebuffer_memory_size = (framebuffer->width*framebuffer->height)*BYTES_PER_PIXEL;
-    framebuffer->memory = VirtualAlloc(0, framebuffer_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-}
-
 internal Win32_Window_Size
 win32_get_window_size(HWND window) {
     RECT client_rectangle;
@@ -233,6 +212,51 @@ win32_get_window_size(HWND window) {
     result.y = client_rectangle.bottom - client_rectangle.top;
     
     return(result);
+}
+
+internal void
+win32_resize_framebuffer(OS_Framebuffer *framebuffer, s32 width, s32 height) {
+    if (framebuffer->memory) {
+        VirtualFree(framebuffer->memory, 0, MEM_RELEASE);
+    }
+
+    framebuffer->width = width;
+    framebuffer->height = height;
+    framebuffer->pitch = framebuffer->width*BYTES_PER_PIXEL;
+    
+    win32_state.bitmap_info.bmiHeader.biSize = sizeof(win32_state.bitmap_info.bmiHeader);
+    win32_state.bitmap_info.bmiHeader.biWidth = framebuffer->width;
+    win32_state.bitmap_info.bmiHeader.biHeight = framebuffer->height;
+    win32_state.bitmap_info.bmiHeader.biPlanes = 1;
+    win32_state.bitmap_info.bmiHeader.biBitCount = 8*BYTES_PER_PIXEL;
+    win32_state.bitmap_info.bmiHeader.biCompression = BI_RGB;
+
+    s32 framebuffer_memory_size = (framebuffer->width*framebuffer->height)*BYTES_PER_PIXEL;
+    framebuffer->memory = VirtualAlloc(0, framebuffer_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+}
+
+internal void
+win32_display_framebuffer(OS_Framebuffer framebuffer, HWND window_handle, s32 window_width, s32 window_height) {
+    //s32 display_width = ((f32)framebuffer.width/(f32)framebuffer.height)*window_height;
+    //s32 display_height = window_height;
+    
+    // TODO(xkazu0x): remove scale. It was just for testing.
+    s32 scale = 3;
+    s32 display_width = framebuffer.width*scale;
+    s32 display_height = framebuffer.height*scale;
+
+    s32 offset = 16;
+    s32 display_x = offset;
+    s32 display_y = offset;
+        
+    HDC window_device = GetDC(window_handle);
+    StretchDIBits(window_device,
+                  display_x, display_y, display_width, display_height,
+                  0, 0, framebuffer.width, framebuffer.height,
+                  framebuffer.memory,
+                  &win32_state.bitmap_info,
+                  DIB_RGB_COLORS, SRCCOPY);
+    ReleaseDC(window_handle, window_device);
 }
 
 internal void
@@ -257,28 +281,6 @@ win32_window_toggle_fullscreen(HWND window, WINDOWPLACEMENT *placement) {
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
                      SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
     }
-}
-
-internal void
-win32_display_framebuffer(OS_Framebuffer framebuffer, HWND window_handle, s32 window_width, s32 window_height) {
-    //s32 display_width = ((f32)framebuffer.width/(f32)framebuffer.height)*window_height;
-    //s32 display_height = window_height;
-    s32 scale = 3;
-    s32 display_width = framebuffer.width*scale;
-    s32 display_height = framebuffer.height*scale;
-
-    s32 offset = 16;
-    s32 display_x = offset;
-    s32 display_y = offset;
-        
-    HDC window_device = GetDC(window_handle);
-    StretchDIBits(window_device,
-                  display_x, display_y, display_width, display_height,
-                  0, 0, framebuffer.width, framebuffer.height,
-                  framebuffer.memory,
-                  &win32_state.bitmap_info,
-                  DIB_RGB_COLORS, SRCCOPY);
-    ReleaseDC(window_handle, window_device);
 }
 
 internal LRESULT CALLBACK
