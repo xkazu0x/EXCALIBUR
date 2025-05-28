@@ -131,7 +131,8 @@ debug_load_bitmap(Debug_OS_Read_File *debug_os_read_file, OS_Thread *thread, cha
         result.memory = pixels;
         result.width = header->width;
         result.height = header->height;
-
+        result.align = make_vec2(0.0f);
+        
         assert(result.height >= 0);
         assert(header->compression == 3);
         
@@ -363,7 +364,7 @@ draw_hit_points(Render_Group *piece_group, Sim_Entity *entity) {
                 color = make_rgba(164.0f, 157.0f, 164.0f, 255.0f);
             }
             
-            render_rect(piece_group, make_vec3(hit_pos, 0.0f), health_dim, color, 0.0f);
+            render_rect(piece_group, make_vec3(hit_pos, 0.0f), health_dim, color);
             hit_pos += hit_dpos;
         }
     }
@@ -507,7 +508,7 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
                 Vec2 sprite_center = 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height);
                 Vec2 sprite_offset = chunk_center + output_offset - sprite_center;
         
-                render_bitmap(render_group, sprite, make_vec3(sprite_offset, 0.0f), make_vec2(0.0f));
+                render_bitmap(render_group, sprite, make_vec3(sprite_offset, 0.0f));
             }
         }
     }
@@ -540,7 +541,7 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
                 Vec2 sprite_center = 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height);
                 Vec2 sprite_offset = chunk_center + output_offset - sprite_center;
         
-                render_bitmap(render_group, sprite, make_vec3(sprite_offset, 0.0f), make_vec2(0.0f));
+                render_bitmap(render_group, sprite, make_vec3(sprite_offset, 0.0f));
             }
         }
     }
@@ -706,6 +707,12 @@ top_down_align(Bitmap *bitmap, Vec2 align) {
     //align.y = (f32)(bitmap->height - 1) - align.y;
     align.y = (f32)bitmap->height - align.y;
     return(align);
+}
+
+internal void
+set_bitmap_align(Bitmap *bitmap, Vec2 align) {
+    align = top_down_align(bitmap, align);
+    bitmap->align = align;
 }
 
 shared_function
@@ -1078,11 +1085,10 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
         Ground_Buffer *ground_buffer = tran_state->ground_buffers + ground_buffer_index;
         if (is_valid(ground_buffer->position)) {
             Bitmap *bitmap = &ground_buffer->bitmap;
+            set_bitmap_align(bitmap, 0.5f*make_vec2((f32)bitmap->width, (f32)bitmap->height));
             
             Vec3 delta = subtract(game_state->world, &ground_buffer->position, &game_state->camera_pos);
-            Vec2 align = top_down_align(bitmap, 0.5f*make_vec2((f32)bitmap->width, (f32)bitmap->height));
-            
-            render_bitmap(render_group, bitmap, delta, align);
+            render_bitmap(render_group, bitmap, delta);
         }
     }
     
@@ -1131,7 +1137,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                         fill_ground_chunk(tran_state, game_state, furthest_ground_buffer, &chunk_center_pos);
                     }
 
-#if 0
+#if 1
                     render_rect_outline(render_group,
                                         make_vec3(chunk_rel_pos.xy, 0.0f),
                                         world->chunk_dim_in_meters.xy,
@@ -1157,7 +1163,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
          ++entity_index) {
         Sim_Entity *entity = sim_region->entities + entity_index;
         if (entity->updatable) {
-            f32 delta = clock->dt;
+            f32 dt = clock->dt;
 
             f32 shadow_alpha = 1.0f - 0.5f*entity->pos.z;
             if (shadow_alpha < 0.0f) shadow_alpha = 0.0f;
@@ -1170,15 +1176,12 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
             
             switch (entity->type) {
                 case EntityType_Space: {
-#if 0
+#if 1
                     for (u32 volume_index = 0;
                          volume_index < entity->collision->volume_count;
                          ++volume_index) {
                         Sim_Entity_Collision_Volume *volume = entity->collision->volumes + volume_index;
-                        render_rect_outline(render_group,
-                                            make_vec3(volume->offset.xy, 0.0f),
-                                            volume->dim.xy,
-                                            make_vec4(0.0f, 1.0f, 1.0f, 1.0f));
+                        render_rect_outline(render_group, volume->offset - make_vec3(0.0f, 0.0f, 0.5f*volume->dim.z), volume->dim.xy, make_vec4(0.0f, 1.0f, 1.0f, 1.0f));
                     }
 #endif
                 } break;
@@ -1187,9 +1190,9 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.5f, 0.2f, 1.0f));
                     
                     Bitmap *sprite = &game_state->wall_sprite;
-                    Vec2 align = top_down_align(sprite, 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height));
+                    set_bitmap_align(sprite, 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height));
                     
-                    render_bitmap(render_group, sprite, make_vec3(0.0f), align);
+                    render_bitmap(render_group, sprite, make_vec3(0.0f));
                 } break;
                     
                 case EntityType_Stairwell: {
@@ -1197,10 +1200,10 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     render_rect(render_group, make_vec3(0.0f, entity->walkable_height, 0.0f), entity->walkable_dim, make_vec4(0.0f, 1.0f, 1.0f, 1.0f));
                     
                     Bitmap *sprite = &game_state->stairwell_sprite;
-                    Vec2 align = top_down_align(sprite, 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height));
+                    set_bitmap_align(sprite, 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height));
                     
-                    render_bitmap(render_group, sprite, make_vec3(0.0f), align);
-                    render_bitmap(render_group, sprite, make_vec3(0.0f, 0.0f, entity->walkable_height), align);
+                    render_bitmap(render_group, sprite, make_vec3(0.0f));
+                    render_bitmap(render_group, sprite, make_vec3(0.0f, 0.0f, entity->walkable_height));
                 } break;
 
                 case EntityType_Player: {
@@ -1231,11 +1234,14 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     
                     render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.5f, 0.3f, 1.0f));
 
-                    Bitmap *sprite = &game_state->player_sprites[entity->direction];
-                    Vec2 align = top_down_align(sprite, 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height));
+                    Bitmap *shadow_sprite = &game_state->shadow_sprite;
+                    Bitmap *player_sprite = &game_state->player_sprites[entity->direction];
+
+                    set_bitmap_align(shadow_sprite, 0.5f*make_vec2((f32)shadow_sprite->width, (f32)shadow_sprite->height));
+                    set_bitmap_align(player_sprite, 0.5f*make_vec2((f32)player_sprite->width, (f32)player_sprite->height));
                     
-                    render_bitmap(render_group, &game_state->shadow_sprite, make_vec3(0.0f), align, shadow_alpha, 0.0f);
-                    render_bitmap(render_group, sprite, make_vec3(0.0f), align);
+                    render_bitmap(render_group, shadow_sprite, make_vec3(0.0f), make_vec4(1.0f, 1.0f, 1.0f, shadow_alpha));
+                    render_bitmap(render_group, player_sprite, make_vec3(0.0f));
                     
                     draw_hit_points(render_group, entity);
                 } break;
@@ -1260,9 +1266,9 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(0.0f, 1.0f, 0.0f, 1.0f));
 
                     Bitmap *sprite = &game_state->sword_sprite;
-                    Vec2 align = top_down_align(sprite, 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height));
+                    set_bitmap_align(sprite, 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height));
                     
-                    render_bitmap(render_group, sprite, make_vec3(0.0f), align);
+                    render_bitmap(render_group, sprite, make_vec3(0.0f));
                 } break;
                     
                 case EntityType_Familiar: {
@@ -1299,30 +1305,36 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                         entity->direction = 2;
                     }
                 
-                    entity->t_bob += delta;
+                    entity->t_bob += dt;
                     if (entity->t_bob > (2.0f*pi32)) {
                         entity->t_bob -= (2.0f*pi32);
                     }
-
-                    render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(0.0f, 1.0f, 0.0f, 1.0f));
-                                        
-                    Bitmap *sprite = &game_state->bat_sprite;
-                    Vec2 align = top_down_align(sprite, 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height));
                     
-                    f32 bob_sin = sin_f32(5.0f*entity->t_bob);
+                    f32 bob_sin = 0.3f*sin_f32(5.0f*entity->t_bob);
+                    
+                    render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(0.0f, 1.0f, 0.0f, 1.0f));
 
-                    render_bitmap(render_group, &game_state->shadow_sprite, make_vec3(0.0f), align, (0.5f*shadow_alpha) + 0.2f*bob_sin, 0.0f);
-                    render_bitmap(render_group, sprite, make_vec3(0.0f, 0.0f, 0.2f*bob_sin - 0.6f), align);
+                    Bitmap *shadow_sprite = &game_state->shadow_sprite;
+                    Bitmap *bat_sprite = &game_state->bat_sprite;
+
+                    set_bitmap_align(shadow_sprite, 0.5f*make_vec2((f32)shadow_sprite->width, (f32)shadow_sprite->height));
+                    set_bitmap_align(bat_sprite, 0.5f*make_vec2((f32)bat_sprite->width, (f32)bat_sprite->height));
+
+                    render_bitmap(render_group, shadow_sprite, make_vec3(0.0f), make_vec4(1.0f, 1.0f, 1.0f, (0.5f*shadow_alpha) - bob_sin));
+                    render_bitmap(render_group, bat_sprite, make_vec3(0.0f, 0.0f, bob_sin + 0.4f));
                 } break;
                     
                 case EntityType_Monster: {
                     render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.0f, 0.0f, 1.0f));
                     
-                    Bitmap *sprite = &game_state->player_sprites[2];
-                    Vec2 align = top_down_align(sprite, 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height));
+                    Bitmap *shadow_sprite = &game_state->shadow_sprite;
+                    Bitmap *monster_sprite = &game_state->player_sprites[2];
+
+                    set_bitmap_align(shadow_sprite, 0.5f*make_vec2((f32)shadow_sprite->width, (f32)shadow_sprite->height));
+                    set_bitmap_align(monster_sprite, 0.5f*make_vec2((f32)monster_sprite->width, (f32)monster_sprite->height));
                     
-                    render_bitmap(render_group, &game_state->shadow_sprite, make_vec3(0.0f), align, shadow_alpha, 0.0f);
-                    render_bitmap(render_group, sprite, make_vec3(0.0f), align);
+                    render_bitmap(render_group, shadow_sprite, make_vec3(0.0f), make_vec4(1.0f, 1.0f, 1.0f, shadow_alpha));
+                    render_bitmap(render_group, monster_sprite, make_vec3(0.0f));
                     
                     draw_hit_points(render_group, entity);
                 } break;
