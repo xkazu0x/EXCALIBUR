@@ -14,7 +14,9 @@
 //    will be explicited marked as such.
 //
 // 4. Z is a special coordinate because it is broken up into discrete slices.
-//    And the renderer actually understands these slices (potentially).
+//    And the renderer actually understands these slices. Z slices are what
+//    control the scale of things, whereas Z offsets inside a slice are
+//    what control Y offsetting.
 //
 // 5. All color values specified to the renderer as Vec4's are in
 //    NON-premultiplied alpha.
@@ -86,6 +88,8 @@ struct Render_Entry_Coordinate_System {
 // }
 
 struct Render_Group {
+    f32 global_alpha;
+    
     Render_Basis *default_basis;
     f32 meters_to_pixels;
     
@@ -94,7 +98,9 @@ struct Render_Group {
     u8 *push_buffer_base;
 };
 
+////////////////////////////////
 // NOTE(xkazu0x): Renderer API
+
 internal Render_Group *render_group_alloc(Arena *arena, u32 max_push_buffer_size, f32 meters_to_pixels);
 internal void render_group_draw(Render_Group *group, Bitmap *output_target);
 

@@ -146,8 +146,7 @@ sample_environment_map(Vec2 screen_space, Vec3 sample_direction, f32 roughness, 
 }
 
 internal void
-draw_rect_slowly(Bitmap *buffer,
-                 Vec2 origin, Vec2 x_axis, Vec2 y_axis,
+draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
                  Vec4 color, Bitmap *texture, Bitmap *normal_map,
                  Environment_Map *top, Environment_Map *middle,  Environment_Map *bottom,
                  f32 pixels_to_meters) {
@@ -509,23 +508,37 @@ render_group_alloc(Arena *arena, u32 max_push_buffer_size, f32 meters_to_pixels)
     
     result->max_push_buffer_size = max_push_buffer_size;
     result->push_buffer_size = 0;
+
+    result->global_alpha = 1.0f;
     
     return(result);
 }
 
-internal Vec2
+struct Entity_Basis_Point {
+    Vec2 point;
+    f32 scale;
+};
+
+internal Entity_Basis_Point
 get_render_entity_basis_point(Render_Group *group, Render_Entity_Basis *entity_basis, Vec2 screen_center) {
+    Entity_Basis_Point result;
+    
     Vec3 entity_base_pos = group->meters_to_pixels*entity_basis->basis->pos;
-    f32 z_fudge = 1.0f + 0.1f*entity_base_pos.z;
-    Vec2 entity_ground_point = screen_center + z_fudge*entity_base_pos.xy + entity_basis->offset.xy;
-    Vec2 result = entity_ground_point + make_vec2(0.0f, entity_base_pos.z + entity_basis->offset.z);
+    f32 z_fudge = 1.0f + 0.01f*entity_base_pos.z;
+    Vec2 entity_ground_point = screen_center + z_fudge*(entity_base_pos.xy + entity_basis->offset.xy);
+    Vec2 point = entity_ground_point + make_vec2(0.0f, entity_base_pos.z + entity_basis->offset.z);
+    
+    result.point = point;
+    result.scale = z_fudge;
+    
     return(result);
 }
 
 internal void
 render_group_draw(Render_Group *group, Bitmap *output_target) {
     Vec2 screen_center = 0.5f*make_vec2((f32)output_target->width, (f32)output_target->height);
-        
+    f32 pixels_to_meters = 1.0f / group->meters_to_pixels;
+    
     for (u32 base_address = 0;
          base_address < group->push_buffer_size;
          ) {
@@ -548,8 +561,8 @@ render_group_draw(Render_Group *group, Bitmap *output_target) {
             case RenderEntryType_Render_Entry_Rect: {
                 Render_Entry_Rect *entry = (Render_Entry_Rect *)data;
                 {
-                    Vec2 point = get_render_entity_basis_point(group, &entry->entity_basis, screen_center);
-                    draw_rect(output_target, point, point + entry->dim, entry->color);
+                    Entity_Basis_Point basis = get_render_entity_basis_point(group, &entry->entity_basis, screen_center);
+                    draw_rect(output_target, basis.point, basis.point + basis.scale*entry->dim, entry->color);
                 }
                 base_address += sizeof(*entry);
             } break;
@@ -558,8 +571,15 @@ render_group_draw(Render_Group *group, Bitmap *output_target) {
                 Render_Entry_Bitmap *entry = (Render_Entry_Bitmap *)data;
                 {
                     assert(entry->bitmap);
-                    Vec2 point = get_render_entity_basis_point(group, &entry->entity_basis, screen_center);
-                    draw_bitmap(output_target, entry->bitmap, point, entry->color.a);
+                    Entity_Basis_Point basis = get_render_entity_basis_point(group, &entry->entity_basis, screen_center);
+#if 0
+                    draw_bitmap(output_target, entry->bitmap, basis.point, entry->color.a);
+#else
+                    draw_rect_slowly(output_target, basis.point,
+                                     basis.scale*make_vec2((f32)entry->bitmap->width, 0.0f),
+                                     basis.scale*make_vec2(0.0f, (f32)entry->bitmap->height),
+                                     entry->color, entry->bitmap, 0, 0, 0, 0, pixels_to_meters);
+#endif
                 }
                 base_address += sizeof(*entry);
             } break;
@@ -577,7 +597,7 @@ render_group_draw(Render_Group *group, Bitmap *output_target) {
                                      entry->top,
                                      entry->middle,
                                      entry->bottom,
-                                     1.0f / group->meters_to_pixels);
+                                     pixels_to_meters);
                     
                     Vec4 point_color = make_vec4(1.0f, 0.5f, 0.3f, 1.0f);
                         
@@ -667,7 +687,7 @@ render_bitmap(Render_Group *group, Bitmap *bitmap, Vec3 offset, Vec4 color) {
         entry->entity_basis.basis = group->default_basis;
         entry->entity_basis.offset = group->meters_to_pixels*offset - make_vec3(bitmap->align, 0.0f);
         entry->bitmap = bitmap;
-        entry->color = color;
+        entry->color = group->global_alpha*color;
     }
 }
 

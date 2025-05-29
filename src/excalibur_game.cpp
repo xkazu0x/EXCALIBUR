@@ -825,8 +825,11 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
              screen_index < 10;
              ++screen_index)
         {
-            //u32 door_direction = random_choice(&series, (door_up || door_down) ? 2 : 3);
+#if 1
+            u32 door_direction = random_choice(&series, (door_up || door_down) ? 2 : 3);
+#else
             u32 door_direction = random_choice(&series, 2);
+#endif
             
             b32 created_z_door = false;
             if (door_direction == 2) {
@@ -1024,11 +1027,18 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 if (input->keyboard[Key_A].down) controlled_player->dd_pos.x = -1.0f;
                 if (input->keyboard[Key_D].down) controlled_player->dd_pos.x = 1.0f;
                 if (input->keyboard[Key_Space].pressed) controlled_player->d_z = 3.0f;
-                
+
+#if 0
                 if (input->keyboard[Key_Up].pressed) controlled_player->d_sword = make_vec2(0.0f, 1.0f);
                 if (input->keyboard[Key_Down].pressed) controlled_player->d_sword = make_vec2(0.0f, -1.0f);
                 if (input->keyboard[Key_Left].pressed) controlled_player->d_sword = make_vec2(-1.0f, 0.0f);
                 if (input->keyboard[Key_Right].pressed) controlled_player->d_sword = make_vec2(1.0f, 0.0f);
+#else
+                f32 zoom_rate = 0.0f;
+                if (input->keyboard[Key_Up].down) zoom_rate = 1.0f;
+                if (input->keyboard[Key_Down].down) zoom_rate = -1.0f;
+                game_state->camera_offset_z += zoom_rate*clock->dt;
+#endif
             }
         }
     }
@@ -1041,6 +1051,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     Temp_Memory render_memory = begin_temp_memory(&tran_state->arena);
     // TODO(xkazu0x): Decide what out push buffer size is!
     Render_Group *render_group = render_group_alloc(&tran_state->arena, MB(4), game_state->meters_to_pixels);
+    render_group->global_alpha = 1.0f; // clamp01(1.0f - game_state->camera_offset_z);
     
     Bitmap _draw_buffer = {};
     Bitmap *draw_buffer = &_draw_buffer;
@@ -1077,7 +1088,8 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                                                           make_vec3(screen_width_in_meters,
                                                                     screen_height_in_meters,
                                                                     0.0f));
-    
+
+#if 0
     // NOTE(xkazu0x): render ground buffers    
     for (u32 ground_buffer_index = 0;
          ground_buffer_index < tran_state->ground_buffer_count;
@@ -1088,7 +1100,12 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
             set_bitmap_align(bitmap, 0.5f*make_vec2((f32)bitmap->width, (f32)bitmap->height));
             
             Vec3 delta = subtract(game_state->world, &ground_buffer->position, &game_state->camera_pos);
-            render_bitmap(render_group, bitmap, delta);
+            
+            Render_Basis *basis = push_struct(&tran_state->arena, Render_Basis);
+            render_group->default_basis = basis;
+            basis->pos = delta + make_vec3(0.0f, 0.0f, game_state->camera_offset_z);
+
+            render_bitmap(render_group, bitmap, make_vec3(0.0f));
         }
     }
     
@@ -1137,7 +1154,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                         fill_ground_chunk(tran_state, game_state, furthest_ground_buffer, &chunk_center_pos);
                     }
 
-#if 1
+#if 0
                     render_rect_outline(render_group,
                                         make_vec3(chunk_rel_pos.xy, 0.0f),
                                         world->chunk_dim_in_meters.xy,
@@ -1147,7 +1164,8 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
             }
         }
     }
-
+#endif
+    
     // NOTE(xkazu0x): initialize simulation memory
     // TODO(xkazu0x): How big do we actually want to expand here?
     Vec3 sim_bounds_expansion = make_vec3(12.0f);
@@ -1176,7 +1194,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
             
             switch (entity->type) {
                 case EntityType_Space: {
-#if 1
+#if 0
                     for (u32 volume_index = 0;
                          volume_index < entity->collision->volume_count;
                          ++volume_index) {
@@ -1232,7 +1250,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                         }
                     }
                     
-                    render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.5f, 0.3f, 1.0f));
+                    render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.5f, 0.2f, 1.0f));
 
                     Bitmap *shadow_sprite = &game_state->shadow_sprite;
                     Bitmap *player_sprite = &game_state->player_sprites[entity->direction];
@@ -1348,11 +1366,11 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 move_entity(game_state, sim_region, entity, clock->dt, &move_spec, dd_pos);
             }
 
-            basis->pos = get_entity_ground_point(entity);
+            basis->pos = get_entity_ground_point(entity) + make_vec3(0.0f, 0.0f, game_state->camera_offset_z);
         }
     }
 
-#if 1
+#if 0
     game_state->time += clock->dt;
     f32 axis_scale = 50.0f;
     f32 angle = game_state->time;

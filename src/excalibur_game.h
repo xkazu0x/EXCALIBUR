@@ -89,6 +89,8 @@ struct Game_State {
 
     Bitmap test_diffuse;
     Bitmap test_normal;
+
+    f32 camera_offset_z;
 };
 
 struct Transient_State {
