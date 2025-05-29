@@ -10,26 +10,22 @@ unpack4x8(u32 packed) {
 internal Vec4
 srgb255_to_linear1(Vec4 color) {
     Vec4 result;
-    {
-        f32 inv255 = 1.0f/255.0f;
-        result.r = square(inv255*color.r);
-        result.g = square(inv255*color.g);
-        result.b = square(inv255*color.b);
-        result.a = inv255*color.a;
-    }    
+    f32 inv255 = 1.0f/255.0f;
+    result.r = square(inv255*color.r);
+    result.g = square(inv255*color.g);
+    result.b = square(inv255*color.b);
+    result.a = inv255*color.a;
     return(result);
 }
 
 internal Vec4
 linear1_to_srgb255(Vec4 color) {
     Vec4 result;
-    {
-        f32 one255 = 255.0f;
-        result.r = one255*square_root(color.r);
-        result.g = one255*square_root(color.g);
-        result.b = one255*square_root(color.b);
-        result.a = one255*color.a;
-    }    
+    f32 one255 = 255.0f;
+    result.r = one255*square_root(color.r);
+    result.g = one255*square_root(color.g);
+    result.b = one255*square_root(color.b);
+    result.a = one255*color.a;
     return(result);
 }
 
@@ -524,7 +520,7 @@ get_render_entity_basis_point(Render_Group *group, Render_Entity_Basis *entity_b
     Entity_Basis_Point result;
     
     Vec3 entity_base_pos = group->meters_to_pixels*entity_basis->basis->pos;
-    f32 z_fudge = 1.0f + 0.01f*entity_base_pos.z;
+    f32 z_fudge = 1.0f + 0.002f*entity_base_pos.z;
     Vec2 entity_ground_point = screen_center + z_fudge*(entity_base_pos.xy + entity_basis->offset.xy);
     Vec2 point = entity_ground_point + make_vec2(0.0f, entity_base_pos.z + entity_basis->offset.z);
     

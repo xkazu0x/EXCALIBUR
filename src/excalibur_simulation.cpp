@@ -121,22 +121,21 @@ add_sim_entity(Game_State *state, Sim_Region *region, u32 storage_index, Low_Ent
 }
 
 internal Sim_Region *
-begin_sim(Arena *sim_arena, Game_State *state, World *world,
-          World_Position origin, Rect3 bounds, f32 delta_time) {
+begin_sim(Arena *sim_arena, Game_State *state, World *world, World_Position origin, Rect3 bounds, f32 dt) {
     // TODO(xkazu0x): if entities were stored in the world, we wouldn't need the game state here
     
     Sim_Region *region = push_struct(sim_arena, Sim_Region);
     zero_struct(region->hash);
-
+    
     // TODO(xkazu0x): try to make these get enforced more rigoriously
     region->max_entity_radius = 5.0f;
     region->max_entity_velocity = 30.0f;
-    f32 update_safety_margin = region->max_entity_radius + delta_time*region->max_entity_velocity;
+    f32 update_safety_margin = region->max_entity_radius + dt*region->max_entity_velocity;
     f32 update_safety_margin_z = 1.0f;
     
     region->world = world;
     region->origin = origin;
-    region->updatable_bounds = rect_add_radius(bounds, make_vec3(region->max_entity_radius));
+    region->updatable_bounds = rect_add_radius(bounds, make_vec3(region->max_entity_radius, region->max_entity_radius, 0.0f));
     region->bounds = rect_add_radius(region->updatable_bounds, make_vec3(update_safety_margin, update_safety_margin, update_safety_margin_z));
     
     // TODO(xkazu0x): need to be more specific about entity counts
@@ -229,9 +228,9 @@ end_sim(Sim_Region *region, Game_State *state) {
                 new_camera_pos.tile_y -= 9;
             }
 #else
-            f32 camera_offset_z = new_camera_pos.offset_.z;
+            //f32 camera_offset_z = new_camera_pos.offset_.z;
             new_camera_pos = stored->pos;
-            new_camera_pos.offset_.z = camera_offset_z;
+            //new_camera_pos.offset_.z = camera_offset_z;
 #endif
             state->camera_pos = new_camera_pos;
         }

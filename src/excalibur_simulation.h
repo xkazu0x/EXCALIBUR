@@ -99,7 +99,7 @@ struct Sim_Region {
     World *world;
     f32 max_entity_radius;
     f32 max_entity_velocity;
-    
+
     World_Position origin;
     Rect3 bounds;
     Rect3 updatable_bounds;

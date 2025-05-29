@@ -822,23 +822,29 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
         b32 door_down = false;
         
         for (u32 screen_index = 0;
-             screen_index < 10;
+             screen_index < 100;
              ++screen_index)
         {
 #if 1
-            u32 door_direction = random_choice(&series, (door_up || door_down) ? 2 : 3);
+            u32 door_direction = random_choice(&series, (door_up || door_down) ? 2 : 4);
 #else
             u32 door_direction = random_choice(&series, 2);
 #endif
+
+            door_direction = 3;
             
             b32 created_z_door = false;
-            if (door_direction == 2) {
+            if (door_direction == 3) {
                 created_z_door = true;
-                if (abs_tile_z == screen_base_z) {
-                    door_up = true;
-                } else {
-                    door_down = true;
-                }
+                door_down = true;
+            } else if (door_direction == 2) {
+                created_z_door = true;
+                door_up = true;
+                // if (abs_tile_z == screen_base_z) {
+                //     door_up = true;
+                // } else {
+                //     door_down = true;
+                // }
             } else if (door_direction == 1) {
                 door_right = true;
             } else {
@@ -896,12 +902,15 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
             door_right = false;
             door_top = false;
 
-            if (door_direction == 2) {
-                if (abs_tile_z == screen_base_z) {
-                    abs_tile_z = screen_base_z + 1;
-                } else {
-                    abs_tile_z = screen_base_z;
-                }
+            if (door_direction == 3) {
+                abs_tile_z -= 1;
+            } else if (door_direction == 2) {
+                abs_tile_z += 1;
+                // if (abs_tile_z == screen_base_z) {
+                //     abs_tile_z = screen_base_z + 1;
+                // } else {
+                //     abs_tile_z = screen_base_z;
+                // }
             } else if (door_direction == 1) {
                 screen_x += 1;
             } else {
@@ -917,7 +926,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
         new_camera_pos = chunk_position_from_tile_position(game_state->world, camera_tile_x, camera_tile_y, camera_tile_z);
         game_state->camera_pos = new_camera_pos;
         
-        add_monster(game_state, camera_tile_x + 2, camera_tile_y + 2, camera_tile_z);
+        add_monster(game_state, camera_tile_x - 4, camera_tile_y + 2, camera_tile_z);
         for (u32 familiar_index = 0;
              familiar_index < 1;
              ++familiar_index) {
@@ -925,7 +934,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
             s32 familiar_offset_y = random_between(&series, -3, 3);
             if ((familiar_offset_x != 0) ||
                 (familiar_offset_y != 0)) {
-                add_familiar(game_state, camera_tile_x + familiar_offset_x, camera_tile_y + familiar_offset_y, camera_tile_z);
+                //add_familiar(game_state, camera_tile_x + familiar_offset_x, camera_tile_y + familiar_offset_y, camera_tile_z);
             }
         }
             
@@ -1028,17 +1037,10 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 if (input->keyboard[Key_D].down) controlled_player->dd_pos.x = 1.0f;
                 if (input->keyboard[Key_Space].pressed) controlled_player->d_z = 3.0f;
 
-#if 0
                 if (input->keyboard[Key_Up].pressed) controlled_player->d_sword = make_vec2(0.0f, 1.0f);
                 if (input->keyboard[Key_Down].pressed) controlled_player->d_sword = make_vec2(0.0f, -1.0f);
                 if (input->keyboard[Key_Left].pressed) controlled_player->d_sword = make_vec2(-1.0f, 0.0f);
                 if (input->keyboard[Key_Right].pressed) controlled_player->d_sword = make_vec2(1.0f, 0.0f);
-#else
-                f32 zoom_rate = 0.0f;
-                if (input->keyboard[Key_Up].down) zoom_rate = 1.0f;
-                if (input->keyboard[Key_Down].down) zoom_rate = -1.0f;
-                game_state->camera_offset_z += zoom_rate*clock->dt;
-#endif
             }
         }
     }
@@ -1051,7 +1053,6 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     Temp_Memory render_memory = begin_temp_memory(&tran_state->arena);
     // TODO(xkazu0x): Decide what out push buffer size is!
     Render_Group *render_group = render_group_alloc(&tran_state->arena, MB(4), game_state->meters_to_pixels);
-    render_group->global_alpha = 1.0f; // clamp01(1.0f - game_state->camera_offset_z);
     
     Bitmap _draw_buffer = {};
     Bitmap *draw_buffer = &_draw_buffer;
@@ -1089,6 +1090,9 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                                                                     screen_height_in_meters,
                                                                     0.0f));
 
+    camera_bounds_in_meters.min.z = -3.0f*game_state->typical_floor_height;
+    camera_bounds_in_meters.max.z = 2.0f*game_state->typical_floor_height;
+    
 #if 0
     // NOTE(xkazu0x): render ground buffers    
     for (u32 ground_buffer_index = 0;
@@ -1103,7 +1107,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
             
             Render_Basis *basis = push_struct(&tran_state->arena, Render_Basis);
             render_group->default_basis = basis;
-            basis->pos = delta + make_vec3(0.0f, 0.0f, game_state->camera_offset_z);
+            basis->pos = delta;
 
             render_bitmap(render_group, bitmap, make_vec3(0.0f));
         }
@@ -1168,12 +1172,15 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     
     // NOTE(xkazu0x): initialize simulation memory
     // TODO(xkazu0x): How big do we actually want to expand here?
-    Vec3 sim_bounds_expansion = make_vec3(12.0f);
+    // TODO(xkazu0x): Do we want to simulate upper floors?
+    Vec3 sim_bounds_expansion = make_vec3(15.0f, 15.0f, 0.0f);
     Rect3 sim_bounds = rect_add_radius(camera_bounds_in_meters, sim_bounds_expansion);
     Temp_Memory sim_memory = begin_temp_memory(&tran_state->arena);
-    Sim_Region *sim_region = begin_sim(&tran_state->arena, game_state, world,
-                                         game_state->camera_pos, sim_bounds, clock->dt);
+    World_Position sim_center_pos = game_state->camera_pos;
+    Sim_Region *sim_region = begin_sim(&tran_state->arena, game_state, world, sim_center_pos, sim_bounds, clock->dt);
 
+    Vec3 camera_pos = subtract(world, &game_state->camera_pos, &sim_center_pos);
+    
     // NOTE(xkazu0x): entity type handling
     // TODO(xkazu0x): move this out into excalibur_entity.cpp
     for (u32 entity_index = 0;
@@ -1191,10 +1198,23 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
 
             Render_Basis *basis = push_struct(&tran_state->arena, Render_Basis);
             render_group->default_basis = basis;
+
+            f32 fade_top_end_z = 0.75f*game_state->typical_floor_height;
+            f32 fade_top_start_z = 0.5f*game_state->typical_floor_height;
+            f32 fade_bottom_start_z = -2.0f*game_state->typical_floor_height;
+            f32 fade_bottom_end_z = -2.25f*game_state->typical_floor_height;
+
+            render_group->global_alpha = 1.0f;
+            Vec3 camera_relative_ground_point = get_entity_ground_point(entity) - camera_pos;
+            if (camera_relative_ground_point.z > fade_top_start_z) {
+                render_group->global_alpha = clamp01_map_to_range(fade_top_end_z, camera_relative_ground_point.z, fade_top_start_z);
+            } else if (camera_relative_ground_point.z < fade_bottom_start_z) {
+                render_group->global_alpha = clamp01_map_to_range(fade_bottom_end_z, camera_relative_ground_point.z, fade_bottom_start_z);
+            }
             
             switch (entity->type) {
                 case EntityType_Space: {
-#if 0
+#if 1
                     for (u32 volume_index = 0;
                          volume_index < entity->collision->volume_count;
                          ++volume_index) {
@@ -1217,11 +1237,11 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     render_rect(render_group, make_vec3(0.0f), entity->walkable_dim, make_vec4(1.0f, 0.0f, 1.0f, 1.0f));
                     render_rect(render_group, make_vec3(0.0f, entity->walkable_height, 0.0f), entity->walkable_dim, make_vec4(0.0f, 1.0f, 1.0f, 1.0f));
                     
-                    Bitmap *sprite = &game_state->stairwell_sprite;
-                    set_bitmap_align(sprite, 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height));
+                    //Bitmap *sprite = &game_state->stairwell_sprite;
+                    //set_bitmap_align(sprite, 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height));
                     
-                    render_bitmap(render_group, sprite, make_vec3(0.0f));
-                    render_bitmap(render_group, sprite, make_vec3(0.0f, 0.0f, entity->walkable_height));
+                    //render_bitmap(render_group, sprite, make_vec3(0.0f));
+                    //render_bitmap(render_group, sprite, make_vec3(0.0f, 0.0f, entity->walkable_height));
                 } break;
 
                 case EntityType_Player: {
@@ -1366,7 +1386,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 move_entity(game_state, sim_region, entity, clock->dt, &move_spec, dd_pos);
             }
 
-            basis->pos = get_entity_ground_point(entity) + make_vec3(0.0f, 0.0f, game_state->camera_offset_z);
+            basis->pos = get_entity_ground_point(entity);
         }
     }
 

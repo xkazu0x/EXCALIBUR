@@ -745,6 +745,15 @@ clamp01(Vec3 value) {
     return(result);
 }
 
+// TODO(xkazu0x): Put function in the header
+internal inline f32
+clamp01_map_to_range(f32 min, f32 t, f32 max) {
+    f32 result = 0;
+    f32 range = max - min;
+    if (range != 0.0f) result = clamp01((t - min) / range);
+    return(result);
+}
+
 internal inline f32
 safe_ratio(f32 numerator, f32 divisor, f32 n) {
     f32 result = n;
