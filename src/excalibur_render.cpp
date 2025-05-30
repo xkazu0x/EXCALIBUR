@@ -513,19 +513,28 @@ render_group_alloc(Arena *arena, u32 max_push_buffer_size, f32 meters_to_pixels)
 struct Entity_Basis_Point {
     Vec2 point;
     f32 scale;
+    b32 valid;
 };
 
 internal Entity_Basis_Point
 get_render_entity_basis_point(Render_Group *group, Render_Entity_Basis *entity_basis, Vec2 screen_center) {
-    Entity_Basis_Point result;
+    Entity_Basis_Point result = {};
+
+    Vec3 entity_base_point = group->meters_to_pixels*entity_basis->basis->pos;
+    Vec3 raw_point = make_vec3(entity_base_point.xy + entity_basis->offset.xy, 1.0f);
     
-    Vec3 entity_base_pos = group->meters_to_pixels*entity_basis->basis->pos;
-    f32 z_fudge = 1.0f + 0.002f*entity_base_pos.z;
-    Vec2 entity_ground_point = screen_center + z_fudge*(entity_base_pos.xy + entity_basis->offset.xy);
-    Vec2 point = entity_ground_point + make_vec2(0.0f, entity_base_pos.z + entity_basis->offset.z);
+    f32 camera_distance_from_plane = group->meters_to_pixels*20.0f;
+    f32 distance_to_point = camera_distance_from_plane - entity_base_point.z;
     
-    result.point = point;
-    result.scale = z_fudge;
+    f32 focal_length = group->meters_to_pixels*20.0f;
+    f32 near_clip_plane = group->meters_to_pixels*0.2f;
+    
+    if (distance_to_point > near_clip_plane) {
+        Vec3 projected_point = (1.0f / distance_to_point)*focal_length*raw_point;
+        result.point = screen_center + projected_point.xy;
+        result.scale = projected_point.z;
+        result.valid = true;
+    }
     
     return(result);
 }
