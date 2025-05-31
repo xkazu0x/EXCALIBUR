@@ -240,10 +240,8 @@ win32_display_framebuffer(OS_Framebuffer framebuffer, HWND window_handle, s32 wi
     //s32 display_width = ((f32)framebuffer.width/(f32)framebuffer.height)*window_height;
     //s32 display_height = window_height;
     
-    // TODO(xkazu0x): remove scale. It was just for testing.
-    s32 scale = 3;
-    s32 display_width = framebuffer.width*scale;
-    s32 display_height = framebuffer.height*scale;
+    s32 display_width = framebuffer.width;
+    s32 display_height = framebuffer.height;
 
     s32 offset = 16;
     s32 display_x = offset;
@@ -342,16 +340,15 @@ WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
     
     //////////////////////////////////
     // NOTE(xkazu0x): framebuffer init
-    s32 scale = 4;
-    
     OS_Framebuffer framebuffer = {};
-    win32_resize_framebuffer(&framebuffer, 320, 180);
+    //win32_resize_framebuffer(&framebuffer, 320, 180);
+    win32_resize_framebuffer(&framebuffer, 960, 540);
     log_info("framebuffer size: %dx%d", framebuffer.width, framebuffer.height);
     
     /////////////////////////////
     // NOTE(xkazu0x): window init
-    s32 window_width = framebuffer.width*scale;
-    s32 window_height = framebuffer.height*scale;
+    s32 window_width = 1280;
+    s32 window_height = 720;
     s32 window_x = (monitor_width - window_width)/2;
     s32 window_y = (monitor_height - window_height)/2;
     log_info("window size: %dx%d", window_width, window_height);

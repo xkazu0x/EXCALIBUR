@@ -59,9 +59,6 @@ struct Game_State {
     u32 low_entity_count;
     Low_Entity low_entities[100000];
 
-    f32 meters_to_pixels;
-    f32 pixels_to_meters;
-
     Bitmap wall_sprite;
     Bitmap stairwell_sprite;
     Bitmap grass_sprites[2];

@@ -242,8 +242,10 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
                 f32 v = inv_y_axis_length_squared*dot_product(pixel_delta, y_axis);
 
                 // TODO(xkazu0x):  SSE clamping
-                //assert((u >= 0.0f) && (u <= 1.0f));
-                //assert((v >= 0.0f) && (v <= 1.0f));
+#if 0
+                assert((u >= 0.0f) && (u <= 1.0f));
+                assert((v >= 0.0f) && (v <= 1.0f));
+#endif
 
                 // TODO(xkazu0x): formalize texture boundaries
                 f32 tx = ((u*(f32)(texture->width - 2)));
@@ -494,13 +496,12 @@ draw_bitmap(Bitmap *buffer, Bitmap *bitmap, Vec2 offset, f32 c_alpha) {
 }
 
 internal Render_Group *
-render_group_alloc(Arena *arena, u32 max_push_buffer_size, f32 meters_to_pixels) {
+render_group_alloc(Arena *arena, u32 max_push_buffer_size) {
     Render_Group *result = push_struct(arena, Render_Group);
     result->push_buffer_base = (u8 *)push_size(arena, max_push_buffer_size);
     
     result->default_basis = push_struct(arena, Render_Basis);
     result->default_basis->pos = make_vec3(0.0f);
-    result->meters_to_pixels = meters_to_pixels;
     
     result->max_push_buffer_size = max_push_buffer_size;
     result->push_buffer_size = 0;
@@ -517,22 +518,24 @@ struct Entity_Basis_Point {
 };
 
 internal Entity_Basis_Point
-get_render_entity_basis_point(Render_Group *group, Render_Entity_Basis *entity_basis, Vec2 screen_center) {
+get_render_entity_basis_point(Render_Group *group, Render_Entity_Basis *entity_basis, Vec2 screen_dim, f32 meters_to_pixels) {
     Entity_Basis_Point result = {};
 
-    Vec3 entity_base_point = group->meters_to_pixels*entity_basis->basis->pos;
+    Vec2 screen_center = 0.5f*screen_dim;
+    
+    Vec3 entity_base_point = entity_basis->basis->pos;
+    
+    f32 near_clip_plane = 0.2f;
+    f32 focal_length = 5.0f;
+    f32 camera_distance_above_target = 10.0f;
+    f32 distance_to_point = camera_distance_above_target - entity_base_point.z;
+    
     Vec3 raw_point = make_vec3(entity_base_point.xy + entity_basis->offset.xy, 1.0f);
-    
-    f32 camera_distance_from_plane = group->meters_to_pixels*20.0f;
-    f32 distance_to_point = camera_distance_from_plane - entity_base_point.z;
-    
-    f32 focal_length = group->meters_to_pixels*20.0f;
-    f32 near_clip_plane = group->meters_to_pixels*0.2f;
     
     if (distance_to_point > near_clip_plane) {
         Vec3 projected_point = (1.0f / distance_to_point)*focal_length*raw_point;
-        result.point = screen_center + projected_point.xy;
-        result.scale = projected_point.z;
+        result.point = screen_center + meters_to_pixels*projected_point.xy;
+        result.scale = meters_to_pixels*projected_point.z;
         result.valid = true;
     }
     
@@ -541,9 +544,12 @@ get_render_entity_basis_point(Render_Group *group, Render_Entity_Basis *entity_b
 
 internal void
 render_group_draw(Render_Group *group, Bitmap *output_target) {
-    Vec2 screen_center = 0.5f*make_vec2((f32)output_target->width, (f32)output_target->height);
-    f32 pixels_to_meters = 1.0f / group->meters_to_pixels;
+    Vec2 screen_dim = make_vec2((f32)output_target->width, (f32)output_target->height);
     
+    //f32 meters_to_pixels = 11.4285714286f;
+    f32 meters_to_pixels = screen_dim.x / 16.0f;
+    f32 pixels_to_meters = 1.0f / meters_to_pixels; // tile_size_in_pixels/1.4f (tile_size_in_meters);
+
     for (u32 base_address = 0;
          base_address < group->push_buffer_size;
          ) {
@@ -566,7 +572,7 @@ render_group_draw(Render_Group *group, Bitmap *output_target) {
             case RenderEntryType_Render_Entry_Rect: {
                 Render_Entry_Rect *entry = (Render_Entry_Rect *)data;
                 {
-                    Entity_Basis_Point basis = get_render_entity_basis_point(group, &entry->entity_basis, screen_center);
+                    Entity_Basis_Point basis = get_render_entity_basis_point(group, &entry->entity_basis, screen_dim, meters_to_pixels);
                     draw_rect(output_target, basis.point, basis.point + basis.scale*entry->dim, entry->color);
                 }
                 base_address += sizeof(*entry);
@@ -576,13 +582,13 @@ render_group_draw(Render_Group *group, Bitmap *output_target) {
                 Render_Entry_Bitmap *entry = (Render_Entry_Bitmap *)data;
                 {
                     assert(entry->bitmap);
-                    Entity_Basis_Point basis = get_render_entity_basis_point(group, &entry->entity_basis, screen_center);
+                    Entity_Basis_Point basis = get_render_entity_basis_point(group, &entry->entity_basis, screen_dim, meters_to_pixels);
 #if 0
                     draw_bitmap(output_target, entry->bitmap, basis.point, entry->color.a);
 #else
                     draw_rect_slowly(output_target, basis.point,
-                                     basis.scale*make_vec2((f32)entry->bitmap->width, 0.0f),
-                                     basis.scale*make_vec2(0.0f, (f32)entry->bitmap->height),
+                                     basis.scale*make_vec2(entry->size.x, 0.0f),
+                                     basis.scale*make_vec2(0.0f, entry->size.y),
                                      entry->color, entry->bitmap, 0, 0, 0, 0, pixels_to_meters);
 #endif
                 }
@@ -666,8 +672,8 @@ render_rect(Render_Group *group, Vec3 offset, Vec2 dim, Vec4 color) {
     Render_Entry_Rect *entry = render_push(group, Render_Entry_Rect);
     if (entry) {
         entry->entity_basis.basis = group->default_basis;
-        entry->entity_basis.offset = group->meters_to_pixels*(offset - make_vec3(0.5f*dim, 0.0f));
-        entry->dim = group->meters_to_pixels*dim;
+        entry->entity_basis.offset = offset - make_vec3(0.5f*dim, 0.0f);
+        entry->dim = dim;
         entry->color = color;
     }
 }
@@ -686,12 +692,18 @@ render_rect_outline(Render_Group *group, Vec3 offset, Vec2 dim, Vec4 color) {
 }
 
 internal void
-render_bitmap(Render_Group *group, Bitmap *bitmap, Vec3 offset, Vec4 color) {
+render_bitmap(Render_Group *group, Bitmap *bitmap, Vec3 offset, f32 height, Vec4 color) {
     Render_Entry_Bitmap *entry = render_push(group, Render_Entry_Bitmap);
     if (entry) {
         entry->entity_basis.basis = group->default_basis;
-        entry->entity_basis.offset = group->meters_to_pixels*offset - make_vec3(bitmap->align, 0.0f);
+
+        Vec2 size = make_vec2(height*bitmap->width_over_height, height);
+        Vec2 pixel_align = hadamard(bitmap->align_percentage, size);
+        
+        entry->entity_basis.offset = offset - make_vec3(pixel_align, 0.0f);
+        
         entry->bitmap = bitmap;
+        entry->size = size;
         entry->color = group->global_alpha*color;
     }
 }

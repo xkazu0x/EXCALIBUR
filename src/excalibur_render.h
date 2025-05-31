@@ -9,9 +9,10 @@
 //    (meaning that the first row pointer points to the bottom-most row
 //     when viewed on screen).
 // 
-// 3. Unless otherwise specified, all inputs to the renderer are in world
-//    coordinate ("meters"), NOT pixels. Anything that is in pixel value
-//    will be explicited marked as such.
+// 3. It is mandatory that all inputs to the renderer are in world
+//    coordinate ("meters"), NOT pixels. If for some reason something
+//    absolutely has to be specified in pixels, that will be explicitly
+//    marked in the API, but this should occur exceedingly sparingly.
 //
 // 4. Z is a special coordinate because it is broken up into discrete slices.
 //    And the renderer actually understands these slices. Z slices are what
@@ -24,7 +25,9 @@
 
 #define BITMAP_BYTES_PER_PIXEL 4
 struct Bitmap {
-    Vec2 align;
+    Vec2 align_percentage;
+    f32 width_over_height;
+    
     s32 width;
     s32 height;
     s32 pitch;
@@ -69,6 +72,7 @@ struct Render_Entry_Rect {
 struct Render_Entry_Bitmap {
     Render_Entity_Basis entity_basis;
     Bitmap *bitmap;
+    Vec2 size;
     Vec4 color;
 };
 
@@ -91,7 +95,6 @@ struct Render_Group {
     f32 global_alpha;
     
     Render_Basis *default_basis;
-    f32 meters_to_pixels;
     
     u32 max_push_buffer_size;
     u32 push_buffer_size;
@@ -101,7 +104,7 @@ struct Render_Group {
 ////////////////////////////////
 // NOTE(xkazu0x): Renderer API
 
-internal Render_Group *render_group_alloc(Arena *arena, u32 max_push_buffer_size, f32 meters_to_pixels);
+internal Render_Group *render_group_alloc(Arena *arena, u32 max_push_buffer_size);
 internal void render_group_draw(Render_Group *group, Bitmap *output_target);
 
 internal void *render_push_(Render_Group *group, u32 size, Render_Entry_Type type);
@@ -110,6 +113,6 @@ internal void *render_push_(Render_Group *group, u32 size, Render_Entry_Type typ
 internal void render_clear(Render_Group *group, Vec4 color);
 internal void render_rect(Render_Group *group, Vec3 offset, Vec2 dim, Vec4 color = make_vec4(1.0f));
 internal void render_rect_outline(Render_Group *group, Vec3 offset, Vec2 dim, Vec4 color = make_vec4(1.0f));
-internal void render_bitmap(Render_Group *group, Bitmap *bitmap, Vec3 offset, Vec4 color = make_vec4(1.0f));
+internal void render_bitmap(Render_Group *group, Bitmap *bitmap, Vec3 offset, f32 height, Vec4 color = make_vec4(1.0f));
 
 #endif // EXCALIBUR_RENDER_H
