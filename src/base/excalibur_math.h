@@ -58,12 +58,19 @@ union Vec3 {
         f32 x, y, z;
     };
     struct {
+        f32 u, v, w;
+    };
+    struct {
         f32 r, g, b;
     };
     
     struct {
         Vec2 xy;
         f32 _z0;
+    };
+    struct {
+        Vec2 uv;
+        f32 _w0;
     };
     struct {
         Vec2 rg;
@@ -216,6 +223,9 @@ internal inline Vec3 get_rect_min(Rect3 rect);
 
 internal inline Vec2 get_rect_max(Rect2 rect);
 internal inline Vec3 get_rect_max(Rect3 rect);
+
+internal inline Vec2 get_rect_dim(Rect2 rect);
+internal inline Vec3 get_rect_dim(Rect3 rect);
 
 internal inline Vec2 get_rect_center(Rect2 rect);
 internal inline Vec3 get_rect_center(Rect3 rect);

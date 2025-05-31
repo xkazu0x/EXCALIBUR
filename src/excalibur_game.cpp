@@ -489,7 +489,8 @@ make_null_collision(Game_State *game_state) {
 internal void
 fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Buffer *ground_buffer, World_Position *position) {
     Temp_Memory render_memory = begin_temp_memory(&tran_state->arena);
-    Render_Group *render_group = render_group_alloc(&tran_state->arena, MB(4));
+    // TODO(xkazu0x): How do we want to control our ground chunk resolution?
+    Render_Group *render_group = render_group_alloc(&tran_state->arena, MB(4), 1920, 1080);
 
     Bitmap *output_target = &ground_buffer->bitmap;
     ground_buffer->position = *position;
@@ -727,7 +728,6 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     
     u32 tile_count_x = 17;
     u32 tile_count_y = 9;
-    //s32 tile_size_in_pixels = 16;
 
     f32 tile_side_in_meters = 1.4f;
     f32 tile_depth_in_meters = 3.0f;
@@ -735,15 +735,15 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     u32 ground_buffer_width = 64;
     u32 ground_buffer_height = 64;
 
-    // TODO(xkazu0x): Remove this!
-    f32 pixels_to_meters = 1.0f / 11.4285714286f; // tile_size_in_pixels/1.4f (tile_size_in_meters);
-
     //
     // NOTE(xkazu0x): initialize game state
     //
     if (!memory->initialized) {
         game_state->typical_floor_height = 3.0f;
-        
+
+        // TODO(xkazu0x): Remove this!
+        //f32 pixels_to_meters = 1.0f / 11.4285714286f; // tile_size_in_pixels/1.4f (tile_size_in_meters);
+        f32 pixels_to_meters = 1.0f / 42.0f;
         Vec3 world_chunk_dim_in_meters = make_vec3(pixels_to_meters*(f32)ground_buffer_width,
                                                    pixels_to_meters*(f32)ground_buffer_height,
                                                    game_state->typical_floor_height);
@@ -837,7 +837,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
             u32 door_direction = random_choice(&series, 2);
 #endif
 
-            door_direction = 3;
+            //door_direction = 3;
             
             b32 created_z_door = false;
             if (door_direction == 3) {
@@ -1050,20 +1050,19 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     }
 
     //
-    // NOTE(xkazu0x): update and render
+    // NOTE(xkazu0x): Update and Render
     //
-    
-    // NOTE(xkazu0x): initialize renderer memory
-    Temp_Memory render_memory = begin_temp_memory(&tran_state->arena);
-    // TODO(xkazu0x): Decide what out push buffer size is!
-    Render_Group *render_group = render_group_alloc(&tran_state->arena, MB(4));
-    
     Bitmap _draw_buffer = {};
     Bitmap *draw_buffer = &_draw_buffer;
     draw_buffer->width  = framebuffer->width;
     draw_buffer->height = framebuffer->height;
     draw_buffer->pitch  = framebuffer->pitch;
     draw_buffer->memory = framebuffer->memory;
+    
+    // NOTE(xkazu0x): initialize renderer memory
+    Temp_Memory render_memory = begin_temp_memory(&tran_state->arena);
+    // TODO(xkazu0x): Decide what out push buffer size is!
+    Render_Group *render_group = render_group_alloc(&tran_state->arena, MB(4), draw_buffer->width, draw_buffer->height);
 
     render_clear(render_group, make_vec4(0.2f, 0.3f, 0.3f, 1.0f));
 
@@ -1084,16 +1083,10 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     }
 #endif
 
-    Vec2 screen_center = make_vec2(0.5f*(f32)draw_buffer->width,
-                                   0.5f*(f32)draw_buffer->height);
-    
-    f32 screen_width_in_meters = draw_buffer->width*pixels_to_meters;
-    f32 screen_height_in_meters = draw_buffer->height*pixels_to_meters;
-    Rect3 camera_bounds_in_meters = make_rect3_center_dim(make_vec3(0.0f),
-                                                          make_vec3(screen_width_in_meters,
-                                                                    screen_height_in_meters,
-                                                                    0.0f));
-
+    Vec2 screen_center = make_vec2(0.5f*(f32)draw_buffer->width, 0.5f*(f32)draw_buffer->height);
+    Rect2 screen_bounds = get_camera_rect_at_target(render_group);
+    Rect3 camera_bounds_in_meters = make_rect3_min_max(make_vec3(screen_bounds.min, 0.0f),
+                                                       make_vec3(screen_bounds.max, 0.0f));
     camera_bounds_in_meters.min.z = -3.0f*game_state->typical_floor_height;
     camera_bounds_in_meters.max.z = 2.0f*game_state->typical_floor_height;
     
@@ -1182,6 +1175,11 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     Temp_Memory sim_memory = begin_temp_memory(&tran_state->arena);
     World_Position sim_center_pos = game_state->camera_pos;
     Sim_Region *sim_region = begin_sim(&tran_state->arena, game_state, world, sim_center_pos, sim_bounds, clock->dt);
+
+    render_rect_outline(render_group, make_vec3(0.0f), get_rect_dim(screen_bounds), make_vec4(0.0f, 1.0f, 0.0f, 1.0f));
+    //render_rect_outline(render_group, make_vec3(0.0f), get_rect_dim(camera_bounds_in_meters).xy, make_vec4(1.0f, 0.0f, 0.0f, 1.0f));
+    render_rect_outline(render_group, make_vec3(0.0f), get_rect_dim(sim_bounds).xy, make_vec4(0.0f, 0.0f, 1.0f, 1.0f));
+    render_rect_outline(render_group, make_vec3(0.0f), get_rect_dim(sim_region->bounds).xy, make_vec4(1.0f, 1.0f, 1.0f, 1.0f));
 
     Vec3 camera_pos = subtract(world, &game_state->camera_pos, &sim_center_pos);
     

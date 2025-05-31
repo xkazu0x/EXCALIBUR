@@ -496,7 +496,7 @@ draw_bitmap(Bitmap *buffer, Bitmap *bitmap, Vec2 offset, f32 c_alpha) {
 }
 
 internal Render_Group *
-render_group_alloc(Arena *arena, u32 max_push_buffer_size) {
+render_group_alloc(Arena *arena, u32 max_push_buffer_size, u32 resolution_pixels_x, u32 resolution_pixels_y) {
     Render_Group *result = push_struct(arena, Render_Group);
     result->push_buffer_base = (u8 *)push_size(arena, max_push_buffer_size);
     
@@ -506,7 +506,22 @@ render_group_alloc(Arena *arena, u32 max_push_buffer_size) {
     result->max_push_buffer_size = max_push_buffer_size;
     result->push_buffer_size = 0;
 
+    result->game_camera.focal_length = 0.6f; // NOTE(xkazu0x): Meters the person is sitting from the monitor
+    result->game_camera.distance_above_target = 9.0f;
+    result->game_camera.near_clip_plane = 0.2f;
+
+    result->render_camera = result->game_camera;
+    result->render_camera.distance_above_target = 30.0f;
+    
     result->global_alpha = 1.0f;
+
+    // TODO(xkazu0x): Need to adjust this based on the buffer size
+    f32 width_of_monitor = 0.635f; // NOTE(xkazu0x): Horizontal measurement of monitor in meters
+    result->meters_to_pixels = (f32)resolution_pixels_x*width_of_monitor;
+
+    f32 pixels_to_meters = 1.0f / result->meters_to_pixels;
+    result->monitor_half_dim_in_meters = make_vec2(0.5f*resolution_pixels_x*pixels_to_meters,
+                                                   0.5f*resolution_pixels_y*pixels_to_meters);
     
     return(result);
 }
@@ -518,24 +533,21 @@ struct Entity_Basis_Point {
 };
 
 internal Entity_Basis_Point
-get_render_entity_basis_point(Render_Group *group, Render_Entity_Basis *entity_basis, Vec2 screen_dim, f32 meters_to_pixels) {
+get_render_entity_basis_point(Render_Group *group, Render_Entity_Basis *entity_basis, Vec2 screen_dim) {
     Entity_Basis_Point result = {};
 
     Vec2 screen_center = 0.5f*screen_dim;
     
     Vec3 entity_base_point = entity_basis->basis->pos;
     
-    f32 near_clip_plane = 0.2f;
-    f32 focal_length = 5.0f;
-    f32 camera_distance_above_target = 10.0f;
-    f32 distance_to_point = camera_distance_above_target - entity_base_point.z;
+    f32 distance_to_point = group->render_camera.distance_above_target - entity_base_point.z;
     
     Vec3 raw_point = make_vec3(entity_base_point.xy + entity_basis->offset.xy, 1.0f);
     
-    if (distance_to_point > near_clip_plane) {
-        Vec3 projected_point = (1.0f / distance_to_point)*focal_length*raw_point;
-        result.point = screen_center + meters_to_pixels*projected_point.xy;
-        result.scale = meters_to_pixels*projected_point.z;
+    if (distance_to_point > group->render_camera.near_clip_plane) {
+        Vec3 projected_point = (1.0f / distance_to_point)*group->render_camera.focal_length*raw_point;
+        result.point = screen_center + group->meters_to_pixels*projected_point.xy;
+        result.scale = group->meters_to_pixels*projected_point.z;
         result.valid = true;
     }
     
@@ -546,9 +558,7 @@ internal void
 render_group_draw(Render_Group *group, Bitmap *output_target) {
     Vec2 screen_dim = make_vec2((f32)output_target->width, (f32)output_target->height);
     
-    //f32 meters_to_pixels = 11.4285714286f;
-    f32 meters_to_pixels = screen_dim.x / 16.0f;
-    f32 pixels_to_meters = 1.0f / meters_to_pixels; // tile_size_in_pixels/1.4f (tile_size_in_meters);
+    f32 pixels_to_meters = 1.0f / group->meters_to_pixels;
 
     for (u32 base_address = 0;
          base_address < group->push_buffer_size;
@@ -572,7 +582,7 @@ render_group_draw(Render_Group *group, Bitmap *output_target) {
             case RenderEntryType_Render_Entry_Rect: {
                 Render_Entry_Rect *entry = (Render_Entry_Rect *)data;
                 {
-                    Entity_Basis_Point basis = get_render_entity_basis_point(group, &entry->entity_basis, screen_dim, meters_to_pixels);
+                    Entity_Basis_Point basis = get_render_entity_basis_point(group, &entry->entity_basis, screen_dim);
                     draw_rect(output_target, basis.point, basis.point + basis.scale*entry->dim, entry->color);
                 }
                 base_address += sizeof(*entry);
@@ -582,7 +592,7 @@ render_group_draw(Render_Group *group, Bitmap *output_target) {
                 Render_Entry_Bitmap *entry = (Render_Entry_Bitmap *)data;
                 {
                     assert(entry->bitmap);
-                    Entity_Basis_Point basis = get_render_entity_basis_point(group, &entry->entity_basis, screen_dim, meters_to_pixels);
+                    Entity_Basis_Point basis = get_render_entity_basis_point(group, &entry->entity_basis, screen_dim);
 #if 0
                     draw_bitmap(output_target, entry->bitmap, basis.point, entry->color.a);
 #else
@@ -729,3 +739,22 @@ render_coordinate_system(Render_Group *group,
     }
 }
 // }
+
+internal Vec2
+unproject(Render_Group *group, Vec2 projected_point, f32 at_distance_from_camera) {
+    Vec2 result = (at_distance_from_camera / group->game_camera.focal_length)*projected_point;
+    return(result);
+}
+
+internal Rect2
+get_camera_rect_at_distance(Render_Group *group, f32 distance_from_camera) {
+    Vec2 raw_point = unproject(group, group->monitor_half_dim_in_meters, distance_from_camera);
+    Rect2 result = make_rect2_center_half_dim(make_vec2(0.0f), raw_point);
+    return(result);
+}
+
+internal Rect2
+get_camera_rect_at_target(Render_Group *group) {
+    Rect2 result = get_camera_rect_at_distance(group, group->game_camera.distance_above_target);
+    return(result);
+}

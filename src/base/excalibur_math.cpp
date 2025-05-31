@@ -617,6 +617,18 @@ get_rect_max(Rect3 rect) {
 }
 
 internal inline Vec2
+get_rect_dim(Rect2 rect) {
+    Vec2 result = rect.max - rect.min;
+    return(result);
+}
+
+internal inline Vec3
+get_rect_dim(Rect3 rect) {
+    Vec3 result = rect.max - rect.min;
+    return(result);
+}
+
+internal inline Vec2
 get_rect_center(Rect2 rect) {
     Vec2 result = 0.5f*(rect.min + rect.max);
     return(result);
