@@ -44,63 +44,31 @@ compiler_from_context(void) {
 
 internal char *
 string_from_operating_system(Operating_System os) {
-    char *result;
     switch (os) {
-        case OperatingSystem_Windows: {
-            result = "windows";
-        } break;
-        case OperatingSystem_Linux: {
-            result = "linux";
-        } break;
-        case OperatingSystem_Mac: {
-            result = "mac";
-        } break;
-        default: {
-            result = "<null>";
-        } break;
+        case OperatingSystem_Windows: return("windows");
+        case OperatingSystem_Linux:   return("linux");
+        case OperatingSystem_Mac:     return("mac");
+        default:                      return("<null>");
     }
-    return(result);
 }
 
 internal char *
 string_from_architecture(Architecture arch) {
-    char *result;
     switch (arch) {
-        case Architecture_x64: {
-            result = "x64";
-        } break;
-        case Architecture_x86: {
-            result = "x86";
-        } break;
-        case Architecture_arm64: {
-            result = "arm64";
-        } break;
-        case Architecture_arm32: {
-            result = "arm32";
-        } break;
-        default: {
-            result = "<null>";
-        } break;
+        case Architecture_x64:   return("x64");
+        case Architecture_x86:   return("x86");
+        case Architecture_arm64: return("arm64");
+        case Architecture_arm32: return("arm32");
+        default:                 return("<null>");
     }
-    return(result);
 }
 
 internal char *
 string_from_compiler(Compiler compiler) {
-    char *result;
     switch (compiler) {
-        case Compiler_msvc: {
-            result = "msvc";
-        } break;
-        case Compiler_gcc: {
-            result = "gcc";
-        } break;
-        case Compiler_clang: {
-            result = "clang";
-        } break;
-        default: {
-            result = "<null>";
-        } break;
+        case Compiler_msvc:  return("msvc");
+        case Compiler_gcc:   return("gcc");
+        case Compiler_clang: return("clang");
+        default:             return("<null>");
     }
-    return(result);
 }
