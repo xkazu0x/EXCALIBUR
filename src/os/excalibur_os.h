@@ -7,9 +7,10 @@ struct OS_Thread {
 };
 
 #if EXCALIBUR_INTERNAL
-// IMPORTANT(xkazu0x):
-// These are NOT for doing anything in the shipping game - they are
-// blocking and the write doesn't protect against lost data
+
+// IMPORTANT(xkazu0x): These are NOT for doing anything in the shipping game
+// they are blocking and the write doesn't protect against lost data
+
 typedef struct Debug_OS_File Debug_OS_File;
 struct Debug_OS_File {
     u32 size;
@@ -23,6 +24,32 @@ struct Debug_OS_File {
 typedef DEBUG_OS_FREE_FILE(Debug_OS_Free_File);
 typedef DEBUG_OS_READ_FILE(Debug_OS_Read_File);
 typedef DEBUG_OS_WRITE_FILE(Debug_OS_Write_File);
+
+enum {
+    DebugCycleCounter_game_update_and_render,
+    DebugCycleCounter_render_group_draw,
+    DebugCycleCounter_draw_rect_slowly,
+    DebugCycleCounter_test_pixel,
+    DebugCycleCounter_fill_pixel,
+    DebugCycleCounter_Count,
+};
+
+typedef struct Debug_Cycle_Counter Debug_Cycle_Counter;
+struct Debug_Cycle_Counter {
+    u64 cycle_count;
+    u32 hit_count;
+};
+
+extern struct OS_Memory *debug_global_memory;
+#if COMPILER_MSVC
+# include <intrin.h> // NOTE(xkazu0x): Include intrin.h if not already included
+# define BEGIN_TIMED_BLOCK(id) u64 start_cycle_count_##id = __rdtsc();
+# define END_TIMED_BLOCK(id) debug_global_memory->counters[DebugCycleCounter_##id].cycle_count += __rdtsc() - start_cycle_count_##id; ++debug_global_memory->counters[DebugCycleCounter_##id].hit_count;
+#else
+# define BEGIN_TIMED_BLOCK(id)
+# define END_TIMED_BLOCK(id)
+#endif
+
 #endif
 
 ///////////////////////////////////////////////////////////////////////
@@ -195,9 +222,13 @@ struct OS_Memory {
     void *permanent_storage; // NOTE(xkazu0x): required to be cleared to zero at startup
     void *transient_storage; // NOTE(xkazu0x): required to be cleared to zero at startup
 
+#if EXCALIBUR_INTERNAL
     Debug_OS_Free_File *debug_os_free_file;
     Debug_OS_Read_File *debug_os_read_file;
     Debug_OS_Write_File *debug_os_write_file;
+
+    Debug_Cycle_Counter counters[DebugCycleCounter_Count];
+#endif
 };
 
 typedef struct OS_Clock OS_Clock;

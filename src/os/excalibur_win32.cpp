@@ -202,6 +202,27 @@ win32_get_delta_seconds(LARGE_INTEGER start, LARGE_INTEGER end) {
     return(result);
 }
 
+internal void
+handle_debug_cycle_counters(OS_Memory *memory) {
+#if EXCALIBUR_INTERNAL
+    log_info("DEBUG CYCLE COUNTS:");
+    for (u32 counter_index = 0;
+         counter_index < array_count(memory->counters);
+         ++counter_index) {
+        Debug_Cycle_Counter *counter = memory->counters + counter_index;
+        if (counter->hit_count > 0) {
+            log_info("index %d: %I64ucy, %uh, %I64ucy/h",
+                     counter_index,
+                     counter->cycle_count,
+                     counter->hit_count,
+                     counter->cycle_count / counter->hit_count);
+            counter->cycle_count = 0;
+            counter->hit_count = 0;
+        }
+    }
+#endif
+}
+
 internal Win32_Window_Size
 win32_get_window_size(HWND window) {
     RECT client_rectangle;
@@ -303,8 +324,16 @@ win32_window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
     return(result);
 }
 
+// NOTE(xkazu0x): When building with WinMain, It is not possible to print in the terminal.
+// Build with the default main function if you want to print in the terminal :).
+#if 0
 int WINAPI
-WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
+WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
+#else
+int
+main(void)
+#endif
+{
     log_info("operating system: %s", string_from_operating_system(operating_system_from_context()));
     log_info("architecture: %s", string_from_architecture(architecture_from_context()));
     log_info("compiler: %s", string_from_compiler(compiler_from_context()));
@@ -369,12 +398,14 @@ WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
         fixed_window_height = window_rectangle.bottom - window_rectangle.top;
     }
 
+    HINSTANCE window_instance = GetModuleHandleA(0);
+    
     WNDCLASSA window_class = {};
     window_class.style = CS_HREDRAW | CS_VREDRAW;
     window_class.lpfnWndProc = win32_window_proc;
     window_class.cbClsExtra = 0;
     window_class.cbWndExtra = 0;
-    window_class.hInstance = instance;
+    window_class.hInstance = window_instance;
     window_class.hIcon = LoadIcon(0, IDI_APPLICATION);
     window_class.hCursor = LoadCursor(0, IDC_ARROW);
     window_class.hbrBackground = CreateSolidBrush(RGB(0, 0, 0));
@@ -391,7 +422,7 @@ WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
                                          window_title, window_style,
                                          window_x, window_y,
                                          fixed_window_width, fixed_window_height,
-                                         0, 0, instance, 0);
+                                         0, 0, window_instance, 0);
     if (!window_handle) {
         log_fatal("failed to create win32 window");
         return(1);
@@ -469,11 +500,11 @@ WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
     log_trace("transient storage size: %llu", memory.transient_storage_size);
     
     ////////////////////////////
-    // NOTE(xkazu0x): clock init
+    // NOTE(xkazu0x): init clock
     OS_Clock clock = {};
     
     f32 game_update_hz = (f32)monitor_frame_rate;
-    //f32 game_update_hz = 60.0f;
+    game_update_hz = 30.0f;
     f32 target_seconds_per_frame = 1.0f / game_update_hz;
 
     LARGE_INTEGER large_integer;
@@ -486,7 +517,7 @@ WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
     b32 sleep_is_granular = (timeBeginPeriod(desired_scheduler_ms) == TIMERR_NOERROR);
     
     LARGE_INTEGER last_counter = win32_get_time();
-    s64 last_cycle_count = __rdtsc();
+    u64 last_cycle_count = __rdtsc();
 
     ///////////////////////////////
     // NOTE(xkazu0x): engine state
@@ -656,12 +687,13 @@ WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
             clock.dt = target_seconds_per_frame;
             if (game.update_and_render) {
                 game.update_and_render(&framebuffer, &input, &memory, &clock, &thread);
+                handle_debug_cycle_counters(&memory);
             }
         }
         
         // NOTE(xkazu0x): limit frame rate
-        s64 raw_end_cycle_count = __rdtsc();
-        s64 raw_cycles_per_frame = raw_end_cycle_count - last_cycle_count;
+        u64 raw_end_cycle_count = __rdtsc();
+        u64 raw_cycles_per_frame = raw_end_cycle_count - last_cycle_count;
         f32 raw_mega_cycles_per_frame = ((f32)raw_cycles_per_frame/(1000.0f*1000.0f));
         
         LARGE_INTEGER raw_end_counter = win32_get_time();
@@ -693,8 +725,8 @@ WinMain(HINSTANCE instance, HINSTANCE, LPSTR, int) {
         }
         
         // NOTE(xkazu0x): compute time
-        s64 end_cycle_count = __rdtsc();
-        s64 cycles_per_frame = end_cycle_count - last_cycle_count;
+        u64 end_cycle_count = __rdtsc();
+        u64 cycles_per_frame = end_cycle_count - last_cycle_count;
         f32 mega_cycles_per_frame = ((f32)cycles_per_frame/(1000.0f*1000.0f));
         
         LARGE_INTEGER end_counter = win32_get_time();

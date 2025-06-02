@@ -55,7 +55,7 @@ rotate_right(u32 value, s32 amount) {
     return(result);
 }
 
-#if COMPILER_CL
+#if COMPILER_MSVC
 #include <intrin.h>
 #endif
 

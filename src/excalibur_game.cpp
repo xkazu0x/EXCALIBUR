@@ -508,6 +508,7 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
     
     ground_buffer->position = *position;
     
+#if 0
     f32 width = game_state->world->chunk_dim_in_meters.x;
     f32 height = game_state->world->chunk_dim_in_meters.y;
     Vec2 half_dim = 0.5f*make_vec2(width, height);
@@ -578,6 +579,7 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
             }
         }
     }
+#endif
     
     render_group_draw(render_group, output_target);
     end_temp_memory(&render_memory);
@@ -735,8 +737,18 @@ make_pyramid_normal_map(Bitmap *bitmap, f32 roughness) {
     }
 }
 
+#if EXCALIBUR_INTERNAL
+OS_Memory *debug_global_memory;
+#endif
+
 shared_function
 GAME_UPDATE_AND_RENDER(game_update_and_render) {
+#if EXCALIBUR_INTERNAL
+    debug_global_memory = memory;
+#endif
+
+    BEGIN_TIMED_BLOCK(game_update_and_render);
+
     assert(sizeof(Game_State) <= memory->permanent_storage_size);
     Game_State *game_state = (Game_State *)memory->permanent_storage;
     
@@ -1506,6 +1518,8 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     
     check_arena(&game_state->world_arena);
     check_arena(&tran_state->arena);
+
+    END_TIMED_BLOCK(game_update_and_render);
 }
 
 #if OS_WINDOWS

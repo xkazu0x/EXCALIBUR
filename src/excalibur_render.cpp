@@ -146,6 +146,8 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
                  Vec4 color, Bitmap *texture, Bitmap *normal_map,
                  Environment_Map *top, Environment_Map *middle,  Environment_Map *bottom,
                  f32 pixels_to_meters) {
+    BEGIN_TIMED_BLOCK(draw_rect_slowly);
+    
     // NOTE(xkazu0x): premultiply color up front
     color.rgb *= color.a;
     
@@ -220,6 +222,8 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
         for (s32 x = min_x;
              x <= max_x;
              ++x) {
+            BEGIN_TIMED_BLOCK(test_pixel);
+            
             Vec2 pixel_point = make_vec2((f32)x, (f32)y);
             Vec2 pixel_delta = pixel_point - origin;
             
@@ -234,6 +238,7 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
                 (edge1 < 0) &&
                 (edge2 < 0) &&
                 (edge3 < 0)) {
+                BEGIN_TIMED_BLOCK(fill_pixel);
                 Vec2 screen_space = make_vec2(inv_width_max*(f32)x, fixed_cast_y);
 
                 f32 z_diff = pixels_to_meters*((f32)y - origin_y);
@@ -262,7 +267,8 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
 
                 Bilinear_Sample texel_sample = bilinear_sample(texture, texture_x, texture_y);
                 Vec4 texel = srgb_bilinear_blend(texel_sample, fx, fy);
-                
+
+#if 0
                 if (normal_map) {
                     Bilinear_Sample normal_sample = bilinear_sample(normal_map, texture_x, texture_y);
                     
@@ -342,6 +348,7 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
                     //texel.a = 1.0f;
 #endif
                 }
+#endif
                 
                 texel = hadamard_product(texel, color);
                 texel.r = clamp01(texel.r);
@@ -364,11 +371,17 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
                           ((u32)(blended255.r + 0.5f) << 16) |
                           ((u32)(blended255.g + 0.5f) << 8) |
                           ((u32)(blended255.b + 0.5f) << 0));
+
+                END_TIMED_BLOCK(fill_pixel);
             }
+            
             ++pixel;
+            END_TIMED_BLOCK(test_pixel);
         }
         row += buffer->pitch;
     }
+
+    END_TIMED_BLOCK(draw_rect_slowly);
 }
 
 internal void
@@ -556,6 +569,8 @@ get_render_entity_basis_point(Render_Group *group, Render_Entity_Basis *entity_b
 
 internal void
 render_group_draw(Render_Group *group, Bitmap *output_target) {
+    BEGIN_TIMED_BLOCK(render_group_draw);
+    
     Vec2 screen_dim = make_vec2((f32)output_target->width, (f32)output_target->height);
     
     f32 pixels_to_meters = 1.0f / group->meters_to_pixels;
@@ -652,6 +667,8 @@ render_group_draw(Render_Group *group, Bitmap *output_target) {
             }
         }
     }
+    
+    END_TIMED_BLOCK(render_group_draw);
 }
 
 internal void *
