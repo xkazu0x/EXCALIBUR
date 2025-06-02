@@ -343,7 +343,7 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
 #endif
                 }
                 
-                texel = hadamard(texel, color);
+                texel = hadamard_product(texel, color);
                 texel.r = clamp01(texel.r);
                 texel.g = clamp01(texel.g);
                 texel.b = clamp01(texel.b);
@@ -511,17 +511,17 @@ render_group_alloc(Arena *arena, u32 max_push_buffer_size, u32 resolution_pixels
     result->game_camera.near_clip_plane = 0.2f;
 
     result->render_camera = result->game_camera;
-    result->render_camera.distance_above_target = 30.0f;
+    result->render_camera.distance_above_target = 9.0f;
     
     result->global_alpha = 1.0f;
 
     // TODO(xkazu0x): Need to adjust this based on the buffer size
     f32 width_of_monitor = 0.635f; // NOTE(xkazu0x): Horizontal measurement of monitor in meters
-    result->meters_to_pixels = (f32)resolution_pixels_x*width_of_monitor;
+    result->meters_to_pixels = ((f32)resolution_pixels_x)*width_of_monitor;
 
     f32 pixels_to_meters = 1.0f / result->meters_to_pixels;
-    result->monitor_half_dim_in_meters = make_vec2(0.5f*resolution_pixels_x*pixels_to_meters,
-                                                   0.5f*resolution_pixels_y*pixels_to_meters);
+    result->monitor_half_dim_in_meters = 0.5f*make_vec2(resolution_pixels_x*pixels_to_meters,
+                                                        resolution_pixels_y*pixels_to_meters);
     
     return(result);
 }
@@ -708,7 +708,7 @@ render_bitmap(Render_Group *group, Bitmap *bitmap, Vec3 offset, f32 height, Vec4
         entry->entity_basis.basis = group->default_basis;
 
         Vec2 size = make_vec2(height*bitmap->width_over_height, height);
-        Vec2 pixel_align = hadamard(bitmap->align_percentage, size);
+        Vec2 pixel_align = hadamard_product(bitmap->align_percentage, size);
         
         entry->entity_basis.offset = offset - make_vec3(pixel_align, 0.0f);
         

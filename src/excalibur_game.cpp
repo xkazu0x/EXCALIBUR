@@ -137,7 +137,7 @@ set_bitmap_align(Bitmap *bitmap, Vec2 align) {
 }
 
 internal Bitmap
-debug_load_bitmap(Debug_OS_Read_File *debug_os_read_file, OS_Thread *thread, char *filename, s32 align_x = 0, s32 align_y = 0) {
+debug_load_bitmap(Debug_OS_Read_File *debug_os_read_file, OS_Thread *thread, char *filename, s32 align_x, s32 align_y) {
     Bitmap result = {};
     
     Debug_OS_File file = debug_os_read_file(thread, filename);
@@ -212,6 +212,13 @@ debug_load_bitmap(Debug_OS_Read_File *debug_os_read_file, OS_Thread *thread, cha
     return(result);
 }
 
+internal Bitmap
+debug_load_bitmap(Debug_OS_Read_File *debug_os_read_file, OS_Thread *thread, char *filename) {
+    Bitmap result = debug_load_bitmap(debug_os_read_file, thread, filename, 0, 0);
+    result.align_percentage = make_vec2(0.5f);
+    return(result);
+}
+
 struct Add_Low_Entity_Result {
     u32 low_index;
     Low_Entity *low;
@@ -254,7 +261,7 @@ chunk_position_from_tile_position(World *world, s32 tile_x, s32 tile_y, s32 tile
     f32 tile_depth_in_meters = 3.0f;
     
     Vec3 tile_dim = make_vec3(tile_side_in_meters, tile_side_in_meters, tile_depth_in_meters);
-    Vec3 offset = hadamard(tile_dim, make_vec3((f32)tile_x, (f32)tile_y, (f32)tile_z));
+    Vec3 offset = hadamard_product(tile_dim, make_vec3((f32)tile_x, (f32)tile_y, (f32)tile_z));
     World_Position result = map_into_chunk_space(world, base_pos, additional_offset + offset);
     
     assert(is_canonical(world, result.offset_));
@@ -489,15 +496,24 @@ make_null_collision(Game_State *game_state) {
 internal void
 fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Buffer *ground_buffer, World_Position *position) {
     Temp_Memory render_memory = begin_temp_memory(&tran_state->arena);
-    // TODO(xkazu0x): How do we want to control our ground chunk resolution?
-    Render_Group *render_group = render_group_alloc(&tran_state->arena, MB(4), 1920, 1080);
 
+    // TODO(xkazu0x): Need to be able to set a orthographic display mode!!!
     Bitmap *output_target = &ground_buffer->bitmap;
+    output_target->align_percentage = make_vec2(0.5f);
+    output_target->width_over_height = 1.0f;
+    
+    Render_Group *render_group = render_group_alloc(&tran_state->arena, MB(4), output_target->width, output_target->height);
+
+    render_clear(render_group, make_vec4(1.0f, 0.0f, 1.0f, 1.0f));
+    
     ground_buffer->position = *position;
+    
+    f32 width = game_state->world->chunk_dim_in_meters.x;
+    f32 height = game_state->world->chunk_dim_in_meters.y;
+    Vec2 half_dim = 0.5f*make_vec2(width, height);
 
-    f32 width = (f32)output_target->width;
-    f32 height = (f32)output_target->height;
-
+    half_dim = 1.5f*half_dim;
+    
     for (s32 chunk_offset_y = -1;
          chunk_offset_y <= 1;
          ++chunk_offset_y) {
@@ -514,7 +530,7 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
 
             // TODO(xkazu0x): optimize to draw ground index
             for (u32 ground_index = 0;
-                 ground_index < 256;
+                 ground_index < 32;
                  ++ground_index) {
                 Bitmap *sprite;
                 if (random_choice(&series, 2)) {
@@ -523,11 +539,10 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
                     sprite = game_state->stone_sprites + random_choice(&series, array_count(game_state->stone_sprites));
                 }
 
-                Vec2 output_offset = make_vec2(width*random_unilateral(&series), height*random_unilateral(&series));
-                Vec2 sprite_center = 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height);
-                Vec2 sprite_offset = chunk_center + output_offset - sprite_center;
+                Vec2 output_offset = hadamard_product(half_dim, make_vec2(random_bilateral(&series), random_bilateral(&series)));
+                Vec2 sprite_offset = chunk_center + output_offset;
         
-                render_bitmap(render_group, sprite, make_vec3(sprite_offset, 0.0f), 1.0f);
+                render_bitmap(render_group, sprite, make_vec3(sprite_offset, 0.0f), 5.0f);
             }
         }
     }
@@ -556,15 +571,14 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
                     sprite = game_state->tuft_sprites + random_choice(&series, array_count(game_state->tuft_sprites));
                 }
         
-                Vec2 output_offset = make_vec2(width*random_unilateral(&series), height*random_unilateral(&series));
-                Vec2 sprite_center = 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height);
-                Vec2 sprite_offset = chunk_center + output_offset - sprite_center;
+                Vec2 output_offset = hadamard_product(half_dim, make_vec2(random_bilateral(&series), random_bilateral(&series)));
+                Vec2 sprite_offset = chunk_center + output_offset;
         
-                render_bitmap(render_group, sprite, make_vec3(sprite_offset, 0.0f), 1.0f);
+                render_bitmap(render_group, sprite, make_vec3(sprite_offset, 0.0f), 5.0f);
             }
         }
     }
-
+    
     render_group_draw(render_group, output_target);
     end_temp_memory(&render_memory);
 }
@@ -732,8 +746,8 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     f32 tile_side_in_meters = 1.4f;
     f32 tile_depth_in_meters = 3.0f;
     
-    u32 ground_buffer_width = 64;
-    u32 ground_buffer_height = 64;
+    u32 ground_buffer_width = 256;
+    u32 ground_buffer_height = 256;
 
     //
     // NOTE(xkazu0x): initialize game state
@@ -887,7 +901,8 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     if (should_be_door) {
                         add_wall(game_state, abs_tile_x, abs_tile_y, abs_tile_z);
                     } else if (created_z_door) {
-                        if ((tile_x == 10) && (tile_y == 5)) {
+                        if (((abs_tile_z % 2) && (tile_x == 10) && (tile_y == 5)) ||
+                            (!(abs_tile_z % 2) && (tile_x == 4) && (tile_y == 5))) {
                             add_stair(game_state, abs_tile_x, abs_tile_y, door_down ? abs_tile_z - 1 : abs_tile_z);
                         }
                     }
@@ -1083,35 +1098,42 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     }
 #endif
 
-    Vec2 screen_center = make_vec2(0.5f*(f32)draw_buffer->width, 0.5f*(f32)draw_buffer->height);
+    Vec2 screen_center = 0.5f*make_vec2((f32)draw_buffer->width, (f32)draw_buffer->height);
+    
     Rect2 screen_bounds = get_camera_rect_at_target(render_group);
-    Rect3 camera_bounds_in_meters = make_rect3_min_max(make_vec3(screen_bounds.min, 0.0f),
-                                                       make_vec3(screen_bounds.max, 0.0f));
+    Rect3 camera_bounds_in_meters = make_rect3_min_max(make_vec3(screen_bounds.min, 0.0f), make_vec3(screen_bounds.max, 0.0f));
     camera_bounds_in_meters.min.z = -3.0f*game_state->typical_floor_height;
     camera_bounds_in_meters.max.z = 2.0f*game_state->typical_floor_height;
     
-#if 0
-    // NOTE(xkazu0x): render ground buffers    
+    // NOTE(xkazu0x): Ground chunk rendering
     for (u32 ground_buffer_index = 0;
          ground_buffer_index < tran_state->ground_buffer_count;
          ++ground_buffer_index) {
         Ground_Buffer *ground_buffer = tran_state->ground_buffers + ground_buffer_index;
         if (is_valid(ground_buffer->position)) {
             Bitmap *bitmap = &ground_buffer->bitmap;
-            set_bitmap_align(bitmap, 0.5f*make_vec2((f32)bitmap->width, (f32)bitmap->height));
             
             Vec3 delta = subtract(game_state->world, &ground_buffer->position, &game_state->camera_pos);
-            
-            Render_Basis *basis = push_struct(&tran_state->arena, Render_Basis);
-            render_group->default_basis = basis;
-            basis->pos = delta;
+            if ((delta.z >= -1.0f) && (delta.z < 1.0f)) {
+                    Render_Basis *basis = push_struct(&tran_state->arena, Render_Basis);
+                    render_group->default_basis = basis;
+                    basis->pos = delta;
 
-            render_bitmap(render_group, bitmap, make_vec3(0.0f));
+                    f32 ground_side_in_meters = world->chunk_dim_in_meters.x;
+            
+                    render_bitmap(render_group, bitmap, make_vec3(0.0f), ground_side_in_meters);
+#if 1
+                    render_rect_outline(render_group,
+                                        make_vec3(0.0f),
+                                        make_vec2(ground_side_in_meters),
+                                        make_vec4(1.0f, 1.0f, 0.0f, 1.0f));
+#endif
+            }
         }
     }
     
     {
-        // NOTE(xkazu0x): generate ground buffers
+        // NOTE(xkazu0x): Ground chunk updating
         World_Position min_chunk_pos = map_into_chunk_space(world, game_state->camera_pos, get_rect_min(camera_bounds_in_meters));
         World_Position max_chunk_pos = map_into_chunk_space(world, game_state->camera_pos, get_rect_max(camera_bounds_in_meters));
     
@@ -1154,32 +1176,29 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     if (furthest_ground_buffer) {
                         fill_ground_chunk(tran_state, game_state, furthest_ground_buffer, &chunk_center_pos);
                     }
-
-#if 0
-                    render_rect_outline(render_group,
-                                        make_vec3(chunk_rel_pos.xy, 0.0f),
-                                        world->chunk_dim_in_meters.xy,
-                                        make_vec4(1.0f, 1.0f, 0.0f, 1.0f));
-#endif
                 }
             }
         }
     }
-#endif
     
     // NOTE(xkazu0x): initialize simulation memory
     // TODO(xkazu0x): How big do we actually want to expand here?
     // TODO(xkazu0x): Do we want to simulate upper floors?
     Vec3 sim_bounds_expansion = make_vec3(15.0f, 15.0f, 0.0f);
     Rect3 sim_bounds = rect_add_radius(camera_bounds_in_meters, sim_bounds_expansion);
+    
     Temp_Memory sim_memory = begin_temp_memory(&tran_state->arena);
     World_Position sim_center_pos = game_state->camera_pos;
     Sim_Region *sim_region = begin_sim(&tran_state->arena, game_state, world, sim_center_pos, sim_bounds, clock->dt);
 
+    Render_Basis *basis = push_struct(&tran_state->arena, Render_Basis);
+    basis->pos = make_vec3(0.0f);
+    render_group->default_basis = basis;
+    
     render_rect_outline(render_group, make_vec3(0.0f), get_rect_dim(screen_bounds), make_vec4(0.0f, 1.0f, 0.0f, 1.0f));
     //render_rect_outline(render_group, make_vec3(0.0f), get_rect_dim(camera_bounds_in_meters).xy, make_vec4(1.0f, 0.0f, 0.0f, 1.0f));
-    render_rect_outline(render_group, make_vec3(0.0f), get_rect_dim(sim_bounds).xy, make_vec4(0.0f, 0.0f, 1.0f, 1.0f));
-    render_rect_outline(render_group, make_vec3(0.0f), get_rect_dim(sim_region->bounds).xy, make_vec4(1.0f, 1.0f, 1.0f, 1.0f));
+    render_rect_outline(render_group, make_vec3(0.0f), get_rect_dim(sim_bounds).xy, make_vec4(0.0f, 1.0f, 1.0f, 1.0f));
+    render_rect_outline(render_group, make_vec3(0.0f), get_rect_dim(sim_region->bounds).xy, make_vec4(1.0f, 0.0f, 1.0f, 1.0f));
 
     Vec3 camera_pos = subtract(world, &game_state->camera_pos, &sim_center_pos);
     
@@ -1231,7 +1250,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     render_rect(render_group, make_vec3(0.0f), dim, make_vec4(1.0f, 0.5f, 0.2f, 1.0f));
                     
                     Bitmap *sprite = &game_state->wall_sprite;
-                    set_bitmap_align(sprite, 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height));
+                    
                     render_bitmap(render_group, sprite, make_vec3(0.0f), dim.y);
                 } break;
                     
@@ -1240,7 +1259,6 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     //render_rect(render_group, make_vec3(0.0f, entity->walkable_height, 0.0f), entity->walkable_dim, make_vec4(0.0f, 1.0f, 1.0f, 1.0f));
                     
                     Bitmap *sprite = &game_state->stairwell_sprite;
-                    set_bitmap_align(sprite, 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height));
                     
                     render_bitmap(render_group, sprite, make_vec3(0.0f), 3.0f);
                     //render_bitmap(render_group, sprite, make_vec3(0.0f, 0.0f, entity->walkable_height));
@@ -1276,9 +1294,6 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
 
                     Bitmap *shadow_sprite = &game_state->shadow_sprite;
                     Bitmap *player_sprite = &game_state->player_sprites[entity->direction];
-
-                    set_bitmap_align(shadow_sprite, 0.5f*make_vec2((f32)shadow_sprite->width, (f32)shadow_sprite->height));
-                    set_bitmap_align(player_sprite, 0.5f*make_vec2((f32)player_sprite->width, (f32)player_sprite->height));
                     
                     render_bitmap(render_group, shadow_sprite, make_vec3(0.0f), 1.0f, make_vec4(1.0f, 1.0f, 1.0f, shadow_alpha));
                     render_bitmap(render_group, player_sprite, make_vec3(0.0f), 1.0f);

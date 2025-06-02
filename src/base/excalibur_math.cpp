@@ -425,7 +425,7 @@ operator!=(Vec4 a, Vec4 b) {
 }
 
 internal inline Vec2
-hadamard(Vec2 a, Vec2 b) {
+hadamard_product(Vec2 a, Vec2 b) {
     Vec2 result;
     result.x = a.x*b.x;
     result.y = a.y*b.y;
@@ -433,7 +433,7 @@ hadamard(Vec2 a, Vec2 b) {
 }
 
 internal inline Vec3
-hadamard(Vec3 a, Vec3 b) {
+hadamard_product(Vec3 a, Vec3 b) {
     Vec3 result;
     result.x = a.x*b.x;
     result.y = a.y*b.y;
@@ -442,7 +442,7 @@ hadamard(Vec3 a, Vec3 b) {
 }
 
 internal inline Vec4
-hadamard(Vec4 a, Vec4 b) {
+hadamard_product(Vec4 a, Vec4 b) {
     Vec4 result;
     result.x = a.x*b.x;
     result.y = a.y*b.y;
@@ -536,7 +536,7 @@ internal inline Rect2
 make_rect2_min_max(Vec2 min, Vec2 max) {
     Rect2 result;
     result.min = min;
-    result.min = max;
+    result.max = max;
     return(result);
 }
 
@@ -544,7 +544,7 @@ internal inline Rect3
 make_rect3_min_max(Vec3 min, Vec3 max) {
     Rect3 result;
     result.min = min;
-    result.min = max;
+    result.max = max;
     return(result);
 }
 
@@ -552,7 +552,7 @@ internal inline Rect2
 make_rect2_min_dim(Vec2 min, Vec2 dim) {
     Rect2 result;
     result.min = min;
-    result.min = min + dim;
+    result.max = min + dim;
     return(result);
 }
 
@@ -560,7 +560,7 @@ internal inline Rect3
 make_rect3_min_dim(Vec3 min, Vec3 dim) {
     Rect3 result;
     result.min = min;
-    result.min = min + dim;
+    result.max = min + dim;
     return(result);
 }
 

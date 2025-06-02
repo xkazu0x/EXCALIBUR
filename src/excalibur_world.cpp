@@ -130,7 +130,7 @@ subtract(World *world, World_Position *a, World_Position *b) {
                                  (f32)a->chunk_y - (f32)b->chunk_y,
                                  (f32)a->chunk_z - (f32)b->chunk_z);
     
-    Vec3 result = hadamard(world->chunk_dim_in_meters, delta_chunk) + (a->offset_ - b->offset_);
+    Vec3 result = hadamard_product(world->chunk_dim_in_meters, delta_chunk) + (a->offset_ - b->offset_);
 
     return(result);
 }
