@@ -31,6 +31,7 @@ enum {
     DebugCycleCounter_draw_rect_slowly,
     DebugCycleCounter_test_pixel,
     DebugCycleCounter_fill_pixel,
+    DebugCycleCounter_draw_rect_quickly,
     DebugCycleCounter_Count,
 };
 

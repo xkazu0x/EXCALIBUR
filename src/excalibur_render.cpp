@@ -53,11 +53,11 @@ internal inline Bilinear_Sample
 bilinear_sample(Bitmap *texture, s32 x, s32 y) {
     Bilinear_Sample result;
     
-    u8 *texel_ptr = ((u8 *)texture->memory) + y*texture->pitch + x*BYTES_PER_PIXEL;
+    u8 *texel_ptr = ((u8 *)texture->memory) + y*texture->pitch + x*BITMAP_BYTES_PER_PIXEL;
     result.a = *(u32 *)(texel_ptr);
-    result.b = *(u32 *)(texel_ptr + sizeof(u32));
+    result.b = *(u32 *)(texel_ptr + BITMAP_BYTES_PER_PIXEL);
     result.c = *(u32 *)(texel_ptr + texture->pitch);
-    result.d = *(u32 *)(texel_ptr + texture->pitch + sizeof(u32));
+    result.d = *(u32 *)(texel_ptr + texture->pitch + BITMAP_BYTES_PER_PIXEL);
 
     return(result);
 }
@@ -268,7 +268,6 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
                 Bilinear_Sample texel_sample = bilinear_sample(texture, texture_x, texture_y);
                 Vec4 texel = srgb_bilinear_blend(texel_sample, fx, fy);
 
-#if 0
                 if (normal_map) {
                     Bilinear_Sample normal_sample = bilinear_sample(normal_map, texture_x, texture_y);
                     
@@ -348,7 +347,6 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
                     //texel.a = 1.0f;
 #endif
                 }
-#endif
                 
                 texel = hadamard_product(texel, color);
                 texel.r = clamp01(texel.r);
@@ -382,6 +380,245 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
     }
 
     END_TIMED_BLOCK(draw_rect_slowly);
+}
+
+internal void
+draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
+                  Vec4 color, Bitmap *texture, f32 pixels_to_meters) {
+    BEGIN_TIMED_BLOCK(draw_rect_quickly);
+    
+    // NOTE(xkazu0x): premultiply color up front
+    color.rgb *= color.a;
+    
+    f32 x_axis_length = length(x_axis);
+    f32 y_axis_length = length(y_axis);
+
+    Vec2 normal_x_axis = (y_axis_length/x_axis_length)*x_axis;
+    Vec2 normal_y_axis = (x_axis_length/y_axis_length)*y_axis;
+    // NOTE(xkazu0x): normal_z_scale could be a parameter if we want people to
+    // have control over the amount of scaling in the Z direction
+    // that the normals appear to have.
+    //f32 normal_z_scale = 0.5f*(x_axis_length + y_axis_length);
+    
+    f32 inv_x_axis_length_squared = 1.0f/length_squared(x_axis);
+    f32 inv_y_axis_length_squared = 1.0f/length_squared(y_axis);
+
+    // u32 color32 = ((round_f32_to_u32(color.a*255.0f) << 24) |
+    //                (round_f32_to_u32(color.r*255.0f) << 16) |
+    //                (round_f32_to_u32(color.g*255.0f) << 8) |
+    //                (round_f32_to_u32(color.b*255.0f) << 0));
+    
+    s32 width_max = (buffer->width - 1);
+    s32 height_max = (buffer->height - 1);
+
+    //f32 inv_width_max = 1.0f/(f32)width_max;
+    //f32 inv_height_max = 1.0f/(f32)height_max;
+
+    // TODO(xkazu0x): This will need to be specified separately!!
+    //f32 origin_z = 0.0f;
+    //f32 origin_y = (origin + 0.5f*x_axis + 0.5f*y_axis).y;
+    //f32 fixed_cast_y = inv_height_max*origin_y;
+    
+    s32 min_x = width_max;
+    s32 min_y = height_max;
+    s32 max_x = 0;
+    s32 max_y = 0;
+    
+    Vec2 points[4] = {
+        origin,
+        origin + x_axis,
+        origin + x_axis + y_axis,
+        origin + y_axis,
+    };
+
+    for (s32 point_index = 0;
+         point_index < array_count(points);
+         ++point_index) {
+        Vec2 test_point = points[point_index];
+        
+        s32 floor_x = (s32)floor_f32(test_point.x);
+        s32 floor_y = (s32)floor_f32(test_point.y);
+        
+        s32 ceil_x = (s32)ceil_f32(test_point.x);
+        s32 ceil_y = (s32)ceil_f32(test_point.y);
+
+        if (min_x > floor_x) min_x = floor_x;
+        if (min_y > floor_y) min_y = floor_y;
+        
+        if (max_x < ceil_x) max_x = ceil_x;
+        if (max_y < ceil_y) max_y = ceil_y;
+    }
+
+    if (min_x < 0 ) min_x = 0;
+    if (min_y < 0 ) min_y = 0;
+    
+    if (max_x > width_max) max_x = width_max;
+    if (max_y > height_max) max_y = height_max;
+
+    Vec2 n_x_axis = inv_x_axis_length_squared*x_axis;
+    Vec2 n_y_axis = inv_y_axis_length_squared*y_axis;
+    
+    f32 inv255 = 1.0f/255.0f;
+    f32 one255 = 255.0f;
+                
+    u8 *row = ((u8 *)buffer->memory +
+               (min_x*BITMAP_BYTES_PER_PIXEL) +
+               (min_y*buffer->pitch));
+    for (s32 y = min_y;
+         y <= max_y;
+         ++y) {
+        u32 *pixel = (u32 *)row;
+        for (s32 x = min_x;
+             x <= max_x;
+             ++x) {
+            BEGIN_TIMED_BLOCK(test_pixel);
+            
+            Vec2 pixel_point = make_vec2((f32)x, (f32)y);
+            Vec2 pixel_delta = pixel_point - origin;
+                
+            f32 u = dot_product(pixel_delta, n_x_axis);
+            f32 v = dot_product(pixel_delta, n_y_axis);
+           
+            if ((u >= 0.0f) &&
+                (u <= 1.0f) &&
+                (v >= 0.0f) &&
+                (v <= 1.0f)) {
+                BEGIN_TIMED_BLOCK(fill_pixel);
+
+                // TODO(xkazu0x): formalize texture boundaries
+                f32 texture_x = ((u*(f32)(texture->width - 2)));
+                f32 texture_y = ((v*(f32)(texture->height - 2)));
+                
+                s32 int_texture_x = (s32)texture_x;
+                s32 int_texture_y = (s32)texture_y;
+
+                f32 fx = texture_x - (f32)int_texture_x;
+                f32 fy = texture_y - (f32)int_texture_y;
+
+                assert((int_texture_x >= 0) && (int_texture_x < texture->width));
+                assert((int_texture_y >= 0) && (int_texture_y < texture->height));
+                
+                u8 *sample_texel_ptr = ((u8 *)texture->memory) + int_texture_y*texture->pitch + int_texture_x*BITMAP_BYTES_PER_PIXEL;
+                u32 sample_a = *(u32 *)(sample_texel_ptr);
+                u32 sample_b = *(u32 *)(sample_texel_ptr + BITMAP_BYTES_PER_PIXEL);
+                u32 sample_c = *(u32 *)(sample_texel_ptr + texture->pitch);
+                u32 sample_d = *(u32 *)(sample_texel_ptr + texture->pitch + BITMAP_BYTES_PER_PIXEL);
+
+                Vec4 sample_texel_a = unpack4x8(sample_a);
+                
+                f32 sample_texel_a_r = (f32)((sample_a >> 16) & 0xFF);
+                f32 sample_texel_a_g = (f32)((sample_a >> 8) & 0xFF);
+                f32 sample_texel_a_b = (f32)((sample_a >> 0) & 0xFF);
+                f32 sample_texel_a_a = (f32)((sample_a >> 24) & 0xFF);
+                
+                f32 sample_texel_b_r = (f32)((sample_b >> 16) & 0xFF);
+                f32 sample_texel_b_g = (f32)((sample_b >> 8) & 0xFF);
+                f32 sample_texel_b_b = (f32)((sample_b >> 0) & 0xFF);
+                f32 sample_texel_b_a = (f32)((sample_b >> 24) & 0xFF);
+                
+                f32 sample_texel_c_r = (f32)((sample_c >> 16) & 0xFF);
+                f32 sample_texel_c_g = (f32)((sample_c >> 8) & 0xFF);
+                f32 sample_texel_c_b = (f32)((sample_c >> 0) & 0xFF);
+                f32 sample_texel_c_a = (f32)((sample_c >> 24) & 0xFF);
+                
+                f32 sample_texel_d_r = (f32)((sample_d >> 16) & 0xFF);
+                f32 sample_texel_d_g = (f32)((sample_d >> 8) & 0xFF);
+                f32 sample_texel_d_b = (f32)((sample_d >> 0) & 0xFF);
+                f32 sample_texel_d_a = (f32)((sample_d >> 24) & 0xFF);
+
+                // NOTE(xkazu0x): convert texture from sRGB to "linear" brightness space
+                sample_texel_a_r = square(inv255*sample_texel_a_r);
+                sample_texel_a_g = square(inv255*sample_texel_a_g);
+                sample_texel_a_b = square(inv255*sample_texel_a_b);
+                sample_texel_a_a = inv255*sample_texel_a_a;
+                
+                sample_texel_b_r = square(inv255*sample_texel_b_r);
+                sample_texel_b_g = square(inv255*sample_texel_b_g);
+                sample_texel_b_b = square(inv255*sample_texel_b_b);
+                sample_texel_b_a = inv255*sample_texel_b_a;
+                
+                sample_texel_c_r = square(inv255*sample_texel_c_r);
+                sample_texel_c_g = square(inv255*sample_texel_c_g);
+                sample_texel_c_b = square(inv255*sample_texel_c_b);
+                sample_texel_c_a = inv255*sample_texel_c_a;
+                
+                sample_texel_d_r = square(inv255*sample_texel_d_r);
+                sample_texel_d_g = square(inv255*sample_texel_d_g);
+                sample_texel_d_b = square(inv255*sample_texel_d_b);
+                sample_texel_d_a = inv255*sample_texel_d_a;
+
+                // NOTE(xkazu0x): Bilinear texture blend
+                f32 ifx = 1.0f - fx;
+                f32 ify = 1.0f - fy;
+
+                f32 l0 = ify*ifx;
+                f32 l1 = ify*fx;
+                f32 l2 = fy*ifx;
+                f32 l3 = fy*fx;
+
+                f32 texel_r = l0*sample_texel_a_r + l1*sample_texel_b_r + l2*sample_texel_c_r + l3*sample_texel_d_r;
+                f32 texel_g = l0*sample_texel_a_g + l1*sample_texel_b_g + l2*sample_texel_c_g + l3*sample_texel_d_g;
+                f32 texel_b = l0*sample_texel_a_b + l1*sample_texel_b_b + l2*sample_texel_c_b + l3*sample_texel_d_b;
+                f32 texel_a = l0*sample_texel_a_a + l1*sample_texel_b_a + l2*sample_texel_c_a + l3*sample_texel_d_a;
+
+                // NOTE(xkazu0x): Module by incoming color
+                texel_r = texel_r*color.r;
+                texel_g = texel_g*color.g;
+                texel_b = texel_b*color.b;
+                texel_a = texel_a*color.a;
+
+                // NOTE(xkazu0x): Clamp colors to valid range
+                texel_r = clamp01(texel_r);
+                texel_g = clamp01(texel_g);
+                texel_b = clamp01(texel_b);
+
+                // NOTE(xkazu0x): Load destination
+                f32 dest_r = (f32)((*pixel >> 16) & 0xFF);
+                f32 dest_g = (f32)((*pixel >> 8) & 0xFF);
+                f32 dest_b = (f32)((*pixel >> 0) & 0xFF);
+                f32 dest_a = (f32)((*pixel >> 24) & 0xFF);
+                
+                // NOTE(xkazu0x): Go from sRGB to "linear" brightness space
+                dest_r = square(inv255*dest_r);
+                dest_g = square(inv255*dest_g);
+                dest_b = square(inv255*dest_b);
+                dest_a = inv255*dest_a;
+                
+                // NOTE(xkazu0x): Destination blend
+                f32 inv_texel_a = (1.0f - texel_a);
+                f32 blended_r = inv_texel_a*dest_r + texel_r;
+                f32 blended_g = inv_texel_a*dest_g + texel_g;
+                f32 blended_b = inv_texel_a*dest_b + texel_b;
+                f32 blended_a = inv_texel_a*dest_a + texel_a;
+
+                if (blended_r < 0.0f) blended_r = 0.0f;
+                if (blended_g < 0.0f) blended_g = 0.0f;
+                if (blended_b < 0.0f) blended_b = 0.0f;
+                if (blended_a < 0.0f) blended_a = 0.0f;
+                
+                // NOTE(xkazu0x): Go from "linear" brightness space to sRGB
+                blended_r = one255*square_root(blended_r);
+                blended_g = one255*square_root(blended_g);
+                blended_b = one255*square_root(blended_b);
+                blended_a = one255*blended_a;
+
+                // NOTE(xkazu0x): Repack
+                *pixel = (((u32)(blended_a + 0.5f) << 24) |
+                          ((u32)(blended_r + 0.5f) << 16) |
+                          ((u32)(blended_g + 0.5f) << 8) |
+                          ((u32)(blended_b + 0.5f) << 0));
+
+                END_TIMED_BLOCK(fill_pixel);
+            }
+            
+            ++pixel;
+            END_TIMED_BLOCK(test_pixel);
+        }
+        
+        row += buffer->pitch;
+    }
+
+    END_TIMED_BLOCK(draw_rect_quickly);
 }
 
 internal void
@@ -611,10 +848,14 @@ render_group_draw(Render_Group *group, Bitmap *output_target) {
 #if 0
                     draw_bitmap(output_target, entry->bitmap, basis.point, entry->color.a);
 #else
-                    draw_rect_slowly(output_target, basis.point,
-                                     basis.scale*make_vec2(entry->size.x, 0.0f),
-                                     basis.scale*make_vec2(0.0f, entry->size.y),
-                                     entry->color, entry->bitmap, 0, 0, 0, 0, pixels_to_meters);
+                    // draw_rect_slowly(output_target, basis.point,
+                    //                  basis.scale*make_vec2(entry->size.x, 0.0f),
+                    //                  basis.scale*make_vec2(0.0f, entry->size.y),
+                    //                  entry->color, entry->bitmap, 0, 0, 0, 0, pixels_to_meters);
+                    draw_rect_quickly(output_target, basis.point,
+                                      basis.scale*make_vec2(entry->size.x, 0.0f),
+                                      basis.scale*make_vec2(0.0f, entry->size.y),
+                                      entry->color, entry->bitmap, pixels_to_meters);
 #endif
                 }
                 base_address += sizeof(*entry);
