@@ -222,8 +222,6 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
         for (s32 x = min_x;
              x <= max_x;
              ++x) {
-            BEGIN_TIMED_BLOCK(test_pixel);
-            
             Vec2 pixel_point = make_vec2((f32)x, (f32)y);
             Vec2 pixel_delta = pixel_point - origin;
             
@@ -238,7 +236,6 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
                 (edge1 < 0) &&
                 (edge2 < 0) &&
                 (edge3 < 0)) {
-                BEGIN_TIMED_BLOCK(fill_pixel);
                 Vec2 screen_space = make_vec2(inv_width_max*(f32)x, fixed_cast_y);
 
                 f32 z_diff = pixels_to_meters*((f32)y - origin_y);
@@ -369,12 +366,9 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
                           ((u32)(blended255.r + 0.5f) << 16) |
                           ((u32)(blended255.g + 0.5f) << 8) |
                           ((u32)(blended255.b + 0.5f) << 0));
-
-                END_TIMED_BLOCK(fill_pixel);
             }
             
             ++pixel;
-            END_TIMED_BLOCK(test_pixel);
         }
         row += buffer->pitch;
     }
@@ -402,11 +396,6 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
     
     f32 inv_x_axis_length_squared = 1.0f/length_squared(x_axis);
     f32 inv_y_axis_length_squared = 1.0f/length_squared(y_axis);
-
-    // u32 color32 = ((round_f32_to_u32(color.a*255.0f) << 24) |
-    //                (round_f32_to_u32(color.r*255.0f) << 16) |
-    //                (round_f32_to_u32(color.g*255.0f) << 8) |
-    //                (round_f32_to_u32(color.b*255.0f) << 0));
 
     // TODO(xkazu0x): IMPORTANT(xkazu0x): STOP DOING THIS ONCE WE HAVE REAL ROW LOADING
     s32 width_max = (buffer->width - 1) - 3;
@@ -458,13 +447,36 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
 
     Vec2 n_x_axis = inv_x_axis_length_squared*x_axis;
     Vec2 n_y_axis = inv_y_axis_length_squared*y_axis;
+
+    __m128 n_x_axis_x_4x = _mm_set1_ps(n_x_axis.x);
+    __m128 n_x_axis_y_4x = _mm_set1_ps(n_x_axis.y);
+            
+    __m128 n_y_axis_x_4x = _mm_set1_ps(n_y_axis.x);
+    __m128 n_y_axis_y_4x = _mm_set1_ps(n_y_axis.y);
     
     f32 inv255 = 1.0f/255.0f;
     f32 one255 = 255.0f;
-                
+
+    __m128 inv255_4x = _mm_set1_ps(inv255);
+    __m128 one255_4x = _mm_set1_ps(one255);
+    
+    __m128 color_r_4x = _mm_set1_ps(color.r);
+    __m128 color_g_4x = _mm_set1_ps(color.g);
+    __m128 color_b_4x = _mm_set1_ps(color.b);
+    __m128 color_a_4x = _mm_set1_ps(color.a);
+    
+    __m128 one_4x = _mm_set1_ps(1.0f);
+    __m128 zero_4x = _mm_set1_ps(0.0f);
+
+    __m128 origin_x_4x = _mm_set1_ps(origin.x);
+    __m128 origin_y_4x = _mm_set1_ps(origin.y);
+
     u8 *row = ((u8 *)buffer->memory +
                (min_x*BITMAP_BYTES_PER_PIXEL) +
                (min_y*buffer->pitch));
+    
+    BEGIN_TIMED_BLOCK(process_pixel);
+    
     for (s32 y = min_y;
          y <= max_y;
          ++y) {
@@ -472,66 +484,73 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
         for (s32 xi = min_x;
              xi <= max_x;
              xi += 4) {
-            BEGIN_TIMED_BLOCK(test_pixel);
-
-            f32 texel_a_r[4];
-            f32 texel_a_g[4];
-            f32 texel_a_b[4];
-            f32 texel_a_a[4];
-
-            f32 texel_b_r[4];
-            f32 texel_b_g[4];
-            f32 texel_b_b[4];
-            f32 texel_b_a[4];
-
-            f32 texel_c_r[4];
-            f32 texel_c_g[4];
-            f32 texel_c_b[4];
-            f32 texel_c_a[4];
-
-            f32 texel_d_r[4];
-            f32 texel_d_g[4];
-            f32 texel_d_b[4];
-            f32 texel_d_a[4];
-
-            f32 dest_r[4];
-            f32 dest_g[4];
-            f32 dest_b[4];
-            f32 dest_a[4];
-
-            f32 blended_r[4];
-            f32 blended_g[4];
-            f32 blended_b[4];
-            f32 blended_a[4];
+            __m128 texel_a_r = _mm_set1_ps(0.0f);
+            __m128 texel_a_g = _mm_set1_ps(0.0f);
+            __m128 texel_a_b = _mm_set1_ps(0.0f);
+            __m128 texel_a_a = _mm_set1_ps(0.0f);
             
-            f32 fx[4];
-            f32 fy[4];
+            __m128 texel_b_r = _mm_set1_ps(0.0f);
+            __m128 texel_b_g = _mm_set1_ps(0.0f);
+            __m128 texel_b_b = _mm_set1_ps(0.0f);
+            __m128 texel_b_a = _mm_set1_ps(0.0f);
+            
+            __m128 texel_c_r = _mm_set1_ps(0.0f);
+            __m128 texel_c_g = _mm_set1_ps(0.0f);
+            __m128 texel_c_b = _mm_set1_ps(0.0f);
+            __m128 texel_c_a = _mm_set1_ps(0.0f);
+            
+            __m128 texel_d_r = _mm_set1_ps(0.0f);
+            __m128 texel_d_g = _mm_set1_ps(0.0f);
+            __m128 texel_d_b = _mm_set1_ps(0.0f);
+            __m128 texel_d_a = _mm_set1_ps(0.0f);
+
+            __m128 dest_r = _mm_set1_ps(0.0f);
+            __m128 dest_g = _mm_set1_ps(0.0f);
+            __m128 dest_b = _mm_set1_ps(0.0f);
+            __m128 dest_a = _mm_set1_ps(0.0f);
+            
+            __m128 blended_r = _mm_set1_ps(0.0f);
+            __m128 blended_g = _mm_set1_ps(0.0f);
+            __m128 blended_b = _mm_set1_ps(0.0f);
+            __m128 blended_a = _mm_set1_ps(0.0f);
+            
+            __m128 fx = _mm_set1_ps(0.0f);
+            __m128 fy = _mm_set1_ps(0.0f);
             
             b32 should_fill[4];
+
+#define mm(x, index) ((float *)&(x))[index]
+#define mm_square(x) _mm_mul_ps(x, x)
+            
+            __m128 pixel_x = _mm_set_ps((f32)(xi + 3),
+                                        (f32)(xi + 2),
+                                        (f32)(xi + 1),
+                                        (f32)(xi + 0));
+            __m128 pixel_y = _mm_set1_ps((f32)y);
+            
+            __m128 pixel_delta_x = _mm_sub_ps(pixel_x, origin_x_4x);
+            __m128 pixel_delta_y = _mm_sub_ps(pixel_y, origin_y_4x);
+            
+            __m128 u = _mm_add_ps(_mm_mul_ps(pixel_delta_x, n_x_axis_x_4x), _mm_mul_ps(pixel_delta_y, n_x_axis_y_4x));
+            __m128 v = _mm_add_ps(_mm_mul_ps(pixel_delta_x, n_y_axis_x_4x), _mm_mul_ps(pixel_delta_y, n_y_axis_y_4x));
             
             for (s32 pixel_index = 0;
                  pixel_index < 4;
                  ++pixel_index) {
-                Vec2 pixel_point = make_vec2((f32)xi + pixel_index, (f32)y);
-                Vec2 pixel_delta = pixel_point - origin;
-                
-                f32 u = dot_product(pixel_delta, n_x_axis);
-                f32 v = dot_product(pixel_delta, n_y_axis);
-
-                should_fill[pixel_index] = ((u >= 0.0f) &&
-                                            (u <= 1.0f) &&
-                                            (v >= 0.0f) &&
-                                            (v <= 1.0f));
+                should_fill[pixel_index] = ((mm(u, pixel_index) >= 0.0f) &&
+                                            (mm(u, pixel_index) <= 1.0f) &&
+                                            (mm(v, pixel_index) >= 0.0f) &&
+                                            (mm(v, pixel_index) <= 1.0f));
                 if (should_fill[pixel_index]) {
                     // TODO(xkazu0x): formalize texture boundaries
-                    f32 texture_x = ((u*(f32)(texture->width - 2)));
-                    f32 texture_y = ((v*(f32)(texture->height - 2)));
+                    f32 texture_x = ((mm(u, pixel_index)*(f32)(texture->width - 2)));
+                    f32 texture_y = ((mm(v, pixel_index)*(f32)(texture->height - 2)));
                 
                     s32 int_texture_x = (s32)texture_x;
                     s32 int_texture_y = (s32)texture_y;
 
-                    fx[pixel_index] = texture_x - (f32)int_texture_x;
-                    fy[pixel_index] = texture_y - (f32)int_texture_y;
+                    mm(fx, pixel_index) = texture_x - (f32)int_texture_x;
+                    mm(fy, pixel_index) = texture_y - (f32)int_texture_y;
 
                     assert((int_texture_x >= 0) && (int_texture_x < texture->width));
                     assert((int_texture_y >= 0) && (int_texture_y < texture->height));
@@ -544,128 +563,131 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
                     u32 sample_d = *(u32 *)(sample_texel_ptr + texture->pitch + BITMAP_BYTES_PER_PIXEL);
 
                     // NOTE(xkazu0x): Load texel
-                    texel_a_r[pixel_index] = (f32)((sample_a >> 16) & 0xFF);
-                    texel_a_g[pixel_index] = (f32)((sample_a >> 8) & 0xFF);
-                    texel_a_b[pixel_index] = (f32)((sample_a >> 0) & 0xFF);
-                    texel_a_a[pixel_index] = (f32)((sample_a >> 24) & 0xFF);
-                
-                    texel_b_r[pixel_index] = (f32)((sample_b >> 16) & 0xFF);
-                    texel_b_g[pixel_index] = (f32)((sample_b >> 8) & 0xFF);
-                    texel_b_b[pixel_index] = (f32)((sample_b >> 0) & 0xFF);
-                    texel_b_a[pixel_index] = (f32)((sample_b >> 24) & 0xFF);
-                
-                    texel_c_r[pixel_index] = (f32)((sample_c >> 16) & 0xFF);
-                    texel_c_g[pixel_index] = (f32)((sample_c >> 8) & 0xFF);
-                    texel_c_b[pixel_index] = (f32)((sample_c >> 0) & 0xFF);
-                    texel_c_a[pixel_index] = (f32)((sample_c >> 24) & 0xFF);
-                
-                    texel_d_r[pixel_index] = (f32)((sample_d >> 16) & 0xFF);
-                    texel_d_g[pixel_index] = (f32)((sample_d >> 8) & 0xFF);
-                    texel_d_b[pixel_index] = (f32)((sample_d >> 0) & 0xFF);
-                    texel_d_a[pixel_index] = (f32)((sample_d >> 24) & 0xFF);
+                    mm(texel_a_r, pixel_index) = (f32)((sample_a >> 16) & 0xFF);
+                    mm(texel_a_g, pixel_index) = (f32)((sample_a >> 8) & 0xFF);
+                    mm(texel_a_b, pixel_index) = (f32)((sample_a >> 0) & 0xFF);
+                    mm(texel_a_a, pixel_index) = (f32)((sample_a >> 24) & 0xFF);
+                    
+                    mm(texel_b_r, pixel_index) = (f32)((sample_b >> 16) & 0xFF);
+                    mm(texel_b_g, pixel_index) = (f32)((sample_b >> 8) & 0xFF);
+                    mm(texel_b_b, pixel_index) = (f32)((sample_b >> 0) & 0xFF);
+                    mm(texel_b_a, pixel_index) = (f32)((sample_b >> 24) & 0xFF);
+                    
+                    mm(texel_c_r, pixel_index) = (f32)((sample_c >> 16) & 0xFF);
+                    mm(texel_c_g, pixel_index) = (f32)((sample_c >> 8) & 0xFF);
+                    mm(texel_c_b, pixel_index) = (f32)((sample_c >> 0) & 0xFF);
+                    mm(texel_c_a, pixel_index) = (f32)((sample_c >> 24) & 0xFF);
+                    
+                    mm(texel_d_r, pixel_index) = (f32)((sample_d >> 16) & 0xFF);
+                    mm(texel_d_g, pixel_index) = (f32)((sample_d >> 8) & 0xFF);
+                    mm(texel_d_b, pixel_index) = (f32)((sample_d >> 0) & 0xFF);
+                    mm(texel_d_a, pixel_index) = (f32)((sample_d >> 24) & 0xFF);
                     
                     // NOTE(xkazu0x): Load destination
-                    dest_r[pixel_index] = (f32)((*(pixel + pixel_index) >> 16) & 0xFF);
-                    dest_g[pixel_index] = (f32)((*(pixel + pixel_index) >> 8) & 0xFF);
-                    dest_b[pixel_index] = (f32)((*(pixel + pixel_index) >> 0) & 0xFF);
-                    dest_a[pixel_index] = (f32)((*(pixel + pixel_index) >> 24) & 0xFF);
+                    mm(dest_r, pixel_index) = (f32)((*(pixel + pixel_index) >> 16) & 0xFF);
+                    mm(dest_g, pixel_index) = (f32)((*(pixel + pixel_index) >> 8) & 0xFF);
+                    mm(dest_b, pixel_index) = (f32)((*(pixel + pixel_index) >> 0) & 0xFF);
+                    mm(dest_a, pixel_index) = (f32)((*(pixel + pixel_index) >> 24) & 0xFF);
                 }
             }
 
-            for (s32 pixel_index = 0;
-                 pixel_index < 4;
-                 ++pixel_index) {
-                // NOTE(xkazu0x): convert texture from sRGB to "linear" brightness space
-                texel_a_r[pixel_index] = square(inv255*texel_a_r[pixel_index]);
-                texel_a_g[pixel_index] = square(inv255*texel_a_g[pixel_index]);
-                texel_a_b[pixel_index] = square(inv255*texel_a_b[pixel_index]);
-                texel_a_a[pixel_index] = inv255*texel_a_a[pixel_index];
-                
-                texel_b_r[pixel_index] = square(inv255*texel_b_r[pixel_index]);
-                texel_b_g[pixel_index] = square(inv255*texel_b_g[pixel_index]);
-                texel_b_b[pixel_index] = square(inv255*texel_b_b[pixel_index]);
-                texel_b_a[pixel_index] = inv255*texel_b_a[pixel_index];
-                
-                texel_c_r[pixel_index] = square(inv255*texel_c_r[pixel_index]);
-                texel_c_g[pixel_index] = square(inv255*texel_c_g[pixel_index]);
-                texel_c_b[pixel_index] = square(inv255*texel_c_b[pixel_index]);
-                texel_c_a[pixel_index] = inv255*texel_c_a[pixel_index];
-                
-                texel_d_r[pixel_index] = square(inv255*texel_d_r[pixel_index]);
-                texel_d_g[pixel_index] = square(inv255*texel_d_g[pixel_index]);
-                texel_d_b[pixel_index] = square(inv255*texel_d_b[pixel_index]);
-                texel_d_a[pixel_index] = inv255*texel_d_a[pixel_index];
+            // NOTE(xkazu0x): convert texture from 0-255 sRGB to "linear" 0-1 brightness space
+            texel_a_r = mm_square(_mm_mul_ps(inv255_4x, texel_a_r));
+            texel_a_g = mm_square(_mm_mul_ps(inv255_4x, texel_a_g));
+            texel_a_b = mm_square(_mm_mul_ps(inv255_4x, texel_a_b));
+            texel_a_a = _mm_mul_ps(inv255_4x, texel_a_a);
+            
+            texel_b_r = mm_square(_mm_mul_ps(inv255_4x, texel_b_r));
+            texel_b_g = mm_square(_mm_mul_ps(inv255_4x, texel_b_g));
+            texel_b_b = mm_square(_mm_mul_ps(inv255_4x, texel_b_b));
+            texel_b_a = _mm_mul_ps(inv255_4x, texel_b_a);
+            
+            texel_c_r = mm_square(_mm_mul_ps(inv255_4x, texel_c_r));
+            texel_c_g = mm_square(_mm_mul_ps(inv255_4x, texel_c_g));
+            texel_c_b = mm_square(_mm_mul_ps(inv255_4x, texel_c_b));
+            texel_c_a = _mm_mul_ps(inv255_4x, texel_c_a);
+            
+            texel_d_r = mm_square(_mm_mul_ps(inv255_4x, texel_d_r));
+            texel_d_g = mm_square(_mm_mul_ps(inv255_4x, texel_d_g));
+            texel_d_b = mm_square(_mm_mul_ps(inv255_4x, texel_d_b));
+            texel_d_a = _mm_mul_ps(inv255_4x, texel_d_a);
+            
+            // NOTE(xkazu0x): Bilinear texture blend
+            __m128 ifx = _mm_sub_ps(one_4x, fx);
+            __m128 ify = _mm_sub_ps(one_4x, fy);
 
-                // NOTE(xkazu0x): Bilinear texture blend
-                f32 ifx = 1.0f - fx[pixel_index];
-                f32 ify = 1.0f - fy[pixel_index];
+            __m128 l0 = _mm_mul_ps(ify, ifx);
+            __m128 l1 = _mm_mul_ps(ify, fx);
+            __m128 l2 = _mm_mul_ps(fy, ifx);
+            __m128 l3 = _mm_mul_ps(fy, fx);
 
-                f32 l0 = ify*ifx;
-                f32 l1 = ify*fx[pixel_index];
-                f32 l2 = fy[pixel_index]*ifx;
-                f32 l3 = fy[pixel_index]*fx[pixel_index];
-
-                f32 texel_r = l0*texel_a_r[pixel_index] + l1*texel_b_r[pixel_index] + l2*texel_c_r[pixel_index] + l3*texel_d_r[pixel_index];
-                f32 texel_g = l0*texel_a_g[pixel_index] + l1*texel_b_g[pixel_index] + l2*texel_c_g[pixel_index] + l3*texel_d_g[pixel_index];
-                f32 texel_b = l0*texel_a_b[pixel_index] + l1*texel_b_b[pixel_index] + l2*texel_c_b[pixel_index] + l3*texel_d_b[pixel_index];
-                f32 texel_a = l0*texel_a_a[pixel_index] + l1*texel_b_a[pixel_index] + l2*texel_c_a[pixel_index] + l3*texel_d_a[pixel_index];
-
-                // NOTE(xkazu0x): Module by incoming color
-                texel_r = texel_r*color.r;
-                texel_g = texel_g*color.g;
-                texel_b = texel_b*color.b;
-                texel_a = texel_a*color.a;
-
-                // NOTE(xkazu0x): Clamp colors to valid range
-                texel_r = clamp01(texel_r);
-                texel_g = clamp01(texel_g);
-                texel_b = clamp01(texel_b);
+            __m128 texel_r = _mm_add_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(l0, texel_a_r), _mm_mul_ps(l1, texel_b_r)), _mm_mul_ps(l2, texel_c_r)), _mm_mul_ps(l3, texel_d_r));
+            __m128 texel_g = _mm_add_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(l0, texel_a_g), _mm_mul_ps(l1, texel_b_g)), _mm_mul_ps(l2, texel_c_g)), _mm_mul_ps(l3, texel_d_g));
+            __m128 texel_b = _mm_add_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(l0, texel_a_b), _mm_mul_ps(l1, texel_b_b)), _mm_mul_ps(l2, texel_c_b)), _mm_mul_ps(l3, texel_d_b));
+            __m128 texel_a = _mm_add_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(l0, texel_a_a), _mm_mul_ps(l1, texel_b_a)), _mm_mul_ps(l2, texel_c_a)), _mm_mul_ps(l3, texel_d_a));
+            
+            // NOTE(xkazu0x): Module by incoming color
+            texel_r = _mm_mul_ps(texel_r, color_r_4x);
+            texel_g = _mm_mul_ps(texel_g, color_g_4x);
+            texel_b = _mm_mul_ps(texel_b, color_b_4x);
+            texel_a = _mm_mul_ps(texel_a, color_a_4x);
+            
+            // NOTE(xkazu0x): Clamp colors to valid range 0-1
+            texel_r = _mm_min_ps(_mm_max_ps(texel_r, zero_4x), one_4x);
+            texel_g = _mm_min_ps(_mm_max_ps(texel_g, zero_4x), one_4x);
+            texel_b = _mm_min_ps(_mm_max_ps(texel_b, zero_4x), one_4x);
+            texel_a = _mm_min_ps(_mm_max_ps(texel_a, zero_4x), one_4x);
                 
-                // NOTE(xkazu0x): Go from sRGB to "linear" brightness space
-                dest_r[pixel_index] = square(inv255*dest_r[pixel_index]);
-                dest_g[pixel_index] = square(inv255*dest_g[pixel_index]);
-                dest_b[pixel_index] = square(inv255*dest_b[pixel_index]);
-                dest_a[pixel_index] = inv255*dest_a[pixel_index];
+            // NOTE(xkazu0x): Go from sRGB to "linear" brightness space
+            dest_r = mm_square(_mm_mul_ps(inv255_4x, dest_r));
+            dest_g = mm_square(_mm_mul_ps(inv255_4x, dest_g));
+            dest_b = mm_square(_mm_mul_ps(inv255_4x, dest_b));
+            dest_a = _mm_mul_ps(inv255_4x, dest_a);
                 
-                // NOTE(xkazu0x): Destination blend
-                f32 inv_texel_a = (1.0f - texel_a);
-                blended_r[pixel_index] = inv_texel_a*dest_r[pixel_index] + texel_r;
-                blended_g[pixel_index] = inv_texel_a*dest_g[pixel_index] + texel_g;
-                blended_b[pixel_index] = inv_texel_a*dest_b[pixel_index] + texel_b;
-                blended_a[pixel_index] = inv_texel_a*dest_a[pixel_index] + texel_a;
+            // NOTE(xkazu0x): Destination blend
+            __m128 inv_texel_a = _mm_sub_ps(one_4x, texel_a);
+            blended_r = _mm_add_ps(_mm_mul_ps(inv_texel_a, dest_r), texel_r);
+            blended_g = _mm_add_ps(_mm_mul_ps(inv_texel_a, dest_g), texel_g);
+            blended_b = _mm_add_ps(_mm_mul_ps(inv_texel_a, dest_b), texel_b);
+            blended_a = _mm_add_ps(_mm_mul_ps(inv_texel_a, dest_a), texel_a);
 
-                if (blended_r[pixel_index] < 0.0f) blended_r[pixel_index] = 0.0f;
-                if (blended_g[pixel_index] < 0.0f) blended_g[pixel_index] = 0.0f;
-                if (blended_b[pixel_index] < 0.0f) blended_b[pixel_index] = 0.0f;
-                if (blended_a[pixel_index] < 0.0f) blended_a[pixel_index] = 0.0f;
+            // TODO(xkazu0x): The prior step may generate a negative number that cause
+            // the square root function to throw an error, so we clamp that value to zero.
+            // for (s32 pixel_index = 0;
+            //      pixel_index < 4;
+            //      ++pixel_index) {
+            //     if (mm(blended_r, pixel_index) < 0.0f) mm(blended_r, pixel_index) = 0.0f;
+            //     if (mm(blended_g, pixel_index) < 0.0f) mm(blended_g, pixel_index) = 0.0f;
+            //     if (mm(blended_b, pixel_index) < 0.0f) mm(blended_b, pixel_index) = 0.0f;
+            //     if (mm(blended_a, pixel_index) < 0.0f) mm(blended_a, pixel_index) = 0.0f;
+            // }
                 
-                // NOTE(xkazu0x): Go from "linear" brightness space to sRGB
-                blended_r[pixel_index] = one255*square_root(blended_r[pixel_index]);
-                blended_g[pixel_index] = one255*square_root(blended_g[pixel_index]);
-                blended_b[pixel_index] = one255*square_root(blended_b[pixel_index]);
-                blended_a[pixel_index] = one255*blended_a[pixel_index];
-            }
+            // NOTE(xkazu0x): Go from 0-1 "linear" brightness space to sRGB 0-255
+            blended_r = _mm_mul_ps(one255_4x, _mm_sqrt_ps(blended_r));
+            blended_g = _mm_mul_ps(one255_4x, _mm_sqrt_ps(blended_g));
+            blended_b = _mm_mul_ps(one255_4x, _mm_sqrt_ps(blended_b));
+            blended_a = _mm_mul_ps(one255_4x, blended_a);
 
             for (s32 pixel_index = 0;
                  pixel_index < 4;
                  ++pixel_index) {
                 if (should_fill[pixel_index]) {
                     // NOTE(xkazu0x): Repack
-                    *(pixel + pixel_index) = (((u32)(blended_a[pixel_index] + 0.5f) << 24) |
-                                              ((u32)(blended_r[pixel_index] + 0.5f) << 16) |
-                                              ((u32)(blended_g[pixel_index] + 0.5f) << 8) |
-                                              ((u32)(blended_b[pixel_index] + 0.5f) << 0));
+                    *(pixel + pixel_index) = (((u32)(mm(blended_a, pixel_index) + 0.5f) << 24) |
+                                              ((u32)(mm(blended_r, pixel_index) + 0.5f) << 16) |
+                                              ((u32)(mm(blended_g, pixel_index) + 0.5f) << 8) |
+                                              ((u32)(mm(blended_b, pixel_index) + 0.5f) << 0));
                 }                    
             }
 
             pixel += 4;
-            
-            END_TIMED_BLOCK(test_pixel);
         }
         
         row += buffer->pitch;
     }
-
+    
+    END_TIMED_BLOCK_COUNTED(process_pixel, (max_x - min_x + 1)*(max_y - min_y + 1));
+    
     END_TIMED_BLOCK(draw_rect_quickly);
 }
 
