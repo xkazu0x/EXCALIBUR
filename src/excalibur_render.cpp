@@ -385,7 +385,7 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
 internal void
 draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
                   Vec4 color, Bitmap *texture, f32 pixels_to_meters) {
-    BEGIN_TIMED_BLOCK(draw_rect_quickly);
+    BEGIN_TIMED_BLOCK(draw_rect_quickly);    
     
     // NOTE(xkazu0x): premultiply color up front
     color.rgb *= color.a;
@@ -407,9 +407,10 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
     //                (round_f32_to_u32(color.r*255.0f) << 16) |
     //                (round_f32_to_u32(color.g*255.0f) << 8) |
     //                (round_f32_to_u32(color.b*255.0f) << 0));
-    
-    s32 width_max = (buffer->width - 1);
-    s32 height_max = (buffer->height - 1);
+
+    // TODO(xkazu0x): IMPORTANT(xkazu0x): STOP DOING THIS ONCE WE HAVE REAL ROW LOADING
+    s32 width_max = (buffer->width - 1) - 3;
+    s32 height_max = (buffer->height - 1) - 3;
 
     //f32 inv_width_max = 1.0f/(f32)width_max;
     //f32 inv_height_max = 1.0f/(f32)height_max;
@@ -468,98 +469,146 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
          y <= max_y;
          ++y) {
         u32 *pixel = (u32 *)row;
-        for (s32 x = min_x;
-             x <= max_x;
-             ++x) {
+        for (s32 xi = min_x;
+             xi <= max_x;
+             xi += 4) {
             BEGIN_TIMED_BLOCK(test_pixel);
+
+            f32 texel_a_r[4];
+            f32 texel_a_g[4];
+            f32 texel_a_b[4];
+            f32 texel_a_a[4];
+
+            f32 texel_b_r[4];
+            f32 texel_b_g[4];
+            f32 texel_b_b[4];
+            f32 texel_b_a[4];
+
+            f32 texel_c_r[4];
+            f32 texel_c_g[4];
+            f32 texel_c_b[4];
+            f32 texel_c_a[4];
+
+            f32 texel_d_r[4];
+            f32 texel_d_g[4];
+            f32 texel_d_b[4];
+            f32 texel_d_a[4];
+
+            f32 dest_r[4];
+            f32 dest_g[4];
+            f32 dest_b[4];
+            f32 dest_a[4];
+
+            f32 blended_r[4];
+            f32 blended_g[4];
+            f32 blended_b[4];
+            f32 blended_a[4];
             
-            Vec2 pixel_point = make_vec2((f32)x, (f32)y);
-            Vec2 pixel_delta = pixel_point - origin;
+            f32 fx[4];
+            f32 fy[4];
+            
+            b32 should_fill[4];
+            
+            for (s32 pixel_index = 0;
+                 pixel_index < 4;
+                 ++pixel_index) {
+                Vec2 pixel_point = make_vec2((f32)xi + pixel_index, (f32)y);
+                Vec2 pixel_delta = pixel_point - origin;
                 
-            f32 u = dot_product(pixel_delta, n_x_axis);
-            f32 v = dot_product(pixel_delta, n_y_axis);
-           
-            if ((u >= 0.0f) &&
-                (u <= 1.0f) &&
-                (v >= 0.0f) &&
-                (v <= 1.0f)) {
-                BEGIN_TIMED_BLOCK(fill_pixel);
+                f32 u = dot_product(pixel_delta, n_x_axis);
+                f32 v = dot_product(pixel_delta, n_y_axis);
 
-                // TODO(xkazu0x): formalize texture boundaries
-                f32 texture_x = ((u*(f32)(texture->width - 2)));
-                f32 texture_y = ((v*(f32)(texture->height - 2)));
+                should_fill[pixel_index] = ((u >= 0.0f) &&
+                                            (u <= 1.0f) &&
+                                            (v >= 0.0f) &&
+                                            (v <= 1.0f));
+                if (should_fill[pixel_index]) {
+                    // TODO(xkazu0x): formalize texture boundaries
+                    f32 texture_x = ((u*(f32)(texture->width - 2)));
+                    f32 texture_y = ((v*(f32)(texture->height - 2)));
                 
-                s32 int_texture_x = (s32)texture_x;
-                s32 int_texture_y = (s32)texture_y;
+                    s32 int_texture_x = (s32)texture_x;
+                    s32 int_texture_y = (s32)texture_y;
 
-                f32 fx = texture_x - (f32)int_texture_x;
-                f32 fy = texture_y - (f32)int_texture_y;
+                    fx[pixel_index] = texture_x - (f32)int_texture_x;
+                    fy[pixel_index] = texture_y - (f32)int_texture_y;
 
-                assert((int_texture_x >= 0) && (int_texture_x < texture->width));
-                assert((int_texture_y >= 0) && (int_texture_y < texture->height));
-                
-                u8 *sample_texel_ptr = ((u8 *)texture->memory) + int_texture_y*texture->pitch + int_texture_x*BITMAP_BYTES_PER_PIXEL;
-                u32 sample_a = *(u32 *)(sample_texel_ptr);
-                u32 sample_b = *(u32 *)(sample_texel_ptr + BITMAP_BYTES_PER_PIXEL);
-                u32 sample_c = *(u32 *)(sample_texel_ptr + texture->pitch);
-                u32 sample_d = *(u32 *)(sample_texel_ptr + texture->pitch + BITMAP_BYTES_PER_PIXEL);
+                    assert((int_texture_x >= 0) && (int_texture_x < texture->width));
+                    assert((int_texture_y >= 0) && (int_texture_y < texture->height));
 
-                Vec4 sample_texel_a = unpack4x8(sample_a);
-                
-                f32 sample_texel_a_r = (f32)((sample_a >> 16) & 0xFF);
-                f32 sample_texel_a_g = (f32)((sample_a >> 8) & 0xFF);
-                f32 sample_texel_a_b = (f32)((sample_a >> 0) & 0xFF);
-                f32 sample_texel_a_a = (f32)((sample_a >> 24) & 0xFF);
-                
-                f32 sample_texel_b_r = (f32)((sample_b >> 16) & 0xFF);
-                f32 sample_texel_b_g = (f32)((sample_b >> 8) & 0xFF);
-                f32 sample_texel_b_b = (f32)((sample_b >> 0) & 0xFF);
-                f32 sample_texel_b_a = (f32)((sample_b >> 24) & 0xFF);
-                
-                f32 sample_texel_c_r = (f32)((sample_c >> 16) & 0xFF);
-                f32 sample_texel_c_g = (f32)((sample_c >> 8) & 0xFF);
-                f32 sample_texel_c_b = (f32)((sample_c >> 0) & 0xFF);
-                f32 sample_texel_c_a = (f32)((sample_c >> 24) & 0xFF);
-                
-                f32 sample_texel_d_r = (f32)((sample_d >> 16) & 0xFF);
-                f32 sample_texel_d_g = (f32)((sample_d >> 8) & 0xFF);
-                f32 sample_texel_d_b = (f32)((sample_d >> 0) & 0xFF);
-                f32 sample_texel_d_a = (f32)((sample_d >> 24) & 0xFF);
+                    // NOTE(xkazu0x): Load sample
+                    u8 *sample_texel_ptr = ((u8 *)texture->memory) + int_texture_y*texture->pitch + int_texture_x*BITMAP_BYTES_PER_PIXEL;
+                    u32 sample_a = *(u32 *)(sample_texel_ptr);
+                    u32 sample_b = *(u32 *)(sample_texel_ptr + BITMAP_BYTES_PER_PIXEL);
+                    u32 sample_c = *(u32 *)(sample_texel_ptr + texture->pitch);
+                    u32 sample_d = *(u32 *)(sample_texel_ptr + texture->pitch + BITMAP_BYTES_PER_PIXEL);
 
+                    // NOTE(xkazu0x): Load texel
+                    texel_a_r[pixel_index] = (f32)((sample_a >> 16) & 0xFF);
+                    texel_a_g[pixel_index] = (f32)((sample_a >> 8) & 0xFF);
+                    texel_a_b[pixel_index] = (f32)((sample_a >> 0) & 0xFF);
+                    texel_a_a[pixel_index] = (f32)((sample_a >> 24) & 0xFF);
+                
+                    texel_b_r[pixel_index] = (f32)((sample_b >> 16) & 0xFF);
+                    texel_b_g[pixel_index] = (f32)((sample_b >> 8) & 0xFF);
+                    texel_b_b[pixel_index] = (f32)((sample_b >> 0) & 0xFF);
+                    texel_b_a[pixel_index] = (f32)((sample_b >> 24) & 0xFF);
+                
+                    texel_c_r[pixel_index] = (f32)((sample_c >> 16) & 0xFF);
+                    texel_c_g[pixel_index] = (f32)((sample_c >> 8) & 0xFF);
+                    texel_c_b[pixel_index] = (f32)((sample_c >> 0) & 0xFF);
+                    texel_c_a[pixel_index] = (f32)((sample_c >> 24) & 0xFF);
+                
+                    texel_d_r[pixel_index] = (f32)((sample_d >> 16) & 0xFF);
+                    texel_d_g[pixel_index] = (f32)((sample_d >> 8) & 0xFF);
+                    texel_d_b[pixel_index] = (f32)((sample_d >> 0) & 0xFF);
+                    texel_d_a[pixel_index] = (f32)((sample_d >> 24) & 0xFF);
+                    
+                    // NOTE(xkazu0x): Load destination
+                    dest_r[pixel_index] = (f32)((*(pixel + pixel_index) >> 16) & 0xFF);
+                    dest_g[pixel_index] = (f32)((*(pixel + pixel_index) >> 8) & 0xFF);
+                    dest_b[pixel_index] = (f32)((*(pixel + pixel_index) >> 0) & 0xFF);
+                    dest_a[pixel_index] = (f32)((*(pixel + pixel_index) >> 24) & 0xFF);
+                }
+            }
+
+            for (s32 pixel_index = 0;
+                 pixel_index < 4;
+                 ++pixel_index) {
                 // NOTE(xkazu0x): convert texture from sRGB to "linear" brightness space
-                sample_texel_a_r = square(inv255*sample_texel_a_r);
-                sample_texel_a_g = square(inv255*sample_texel_a_g);
-                sample_texel_a_b = square(inv255*sample_texel_a_b);
-                sample_texel_a_a = inv255*sample_texel_a_a;
+                texel_a_r[pixel_index] = square(inv255*texel_a_r[pixel_index]);
+                texel_a_g[pixel_index] = square(inv255*texel_a_g[pixel_index]);
+                texel_a_b[pixel_index] = square(inv255*texel_a_b[pixel_index]);
+                texel_a_a[pixel_index] = inv255*texel_a_a[pixel_index];
                 
-                sample_texel_b_r = square(inv255*sample_texel_b_r);
-                sample_texel_b_g = square(inv255*sample_texel_b_g);
-                sample_texel_b_b = square(inv255*sample_texel_b_b);
-                sample_texel_b_a = inv255*sample_texel_b_a;
+                texel_b_r[pixel_index] = square(inv255*texel_b_r[pixel_index]);
+                texel_b_g[pixel_index] = square(inv255*texel_b_g[pixel_index]);
+                texel_b_b[pixel_index] = square(inv255*texel_b_b[pixel_index]);
+                texel_b_a[pixel_index] = inv255*texel_b_a[pixel_index];
                 
-                sample_texel_c_r = square(inv255*sample_texel_c_r);
-                sample_texel_c_g = square(inv255*sample_texel_c_g);
-                sample_texel_c_b = square(inv255*sample_texel_c_b);
-                sample_texel_c_a = inv255*sample_texel_c_a;
+                texel_c_r[pixel_index] = square(inv255*texel_c_r[pixel_index]);
+                texel_c_g[pixel_index] = square(inv255*texel_c_g[pixel_index]);
+                texel_c_b[pixel_index] = square(inv255*texel_c_b[pixel_index]);
+                texel_c_a[pixel_index] = inv255*texel_c_a[pixel_index];
                 
-                sample_texel_d_r = square(inv255*sample_texel_d_r);
-                sample_texel_d_g = square(inv255*sample_texel_d_g);
-                sample_texel_d_b = square(inv255*sample_texel_d_b);
-                sample_texel_d_a = inv255*sample_texel_d_a;
+                texel_d_r[pixel_index] = square(inv255*texel_d_r[pixel_index]);
+                texel_d_g[pixel_index] = square(inv255*texel_d_g[pixel_index]);
+                texel_d_b[pixel_index] = square(inv255*texel_d_b[pixel_index]);
+                texel_d_a[pixel_index] = inv255*texel_d_a[pixel_index];
 
                 // NOTE(xkazu0x): Bilinear texture blend
-                f32 ifx = 1.0f - fx;
-                f32 ify = 1.0f - fy;
+                f32 ifx = 1.0f - fx[pixel_index];
+                f32 ify = 1.0f - fy[pixel_index];
 
                 f32 l0 = ify*ifx;
-                f32 l1 = ify*fx;
-                f32 l2 = fy*ifx;
-                f32 l3 = fy*fx;
+                f32 l1 = ify*fx[pixel_index];
+                f32 l2 = fy[pixel_index]*ifx;
+                f32 l3 = fy[pixel_index]*fx[pixel_index];
 
-                f32 texel_r = l0*sample_texel_a_r + l1*sample_texel_b_r + l2*sample_texel_c_r + l3*sample_texel_d_r;
-                f32 texel_g = l0*sample_texel_a_g + l1*sample_texel_b_g + l2*sample_texel_c_g + l3*sample_texel_d_g;
-                f32 texel_b = l0*sample_texel_a_b + l1*sample_texel_b_b + l2*sample_texel_c_b + l3*sample_texel_d_b;
-                f32 texel_a = l0*sample_texel_a_a + l1*sample_texel_b_a + l2*sample_texel_c_a + l3*sample_texel_d_a;
+                f32 texel_r = l0*texel_a_r[pixel_index] + l1*texel_b_r[pixel_index] + l2*texel_c_r[pixel_index] + l3*texel_d_r[pixel_index];
+                f32 texel_g = l0*texel_a_g[pixel_index] + l1*texel_b_g[pixel_index] + l2*texel_c_g[pixel_index] + l3*texel_d_g[pixel_index];
+                f32 texel_b = l0*texel_a_b[pixel_index] + l1*texel_b_b[pixel_index] + l2*texel_c_b[pixel_index] + l3*texel_d_b[pixel_index];
+                f32 texel_a = l0*texel_a_a[pixel_index] + l1*texel_b_a[pixel_index] + l2*texel_c_a[pixel_index] + l3*texel_d_a[pixel_index];
 
                 // NOTE(xkazu0x): Module by incoming color
                 texel_r = texel_r*color.r;
@@ -571,47 +620,46 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
                 texel_r = clamp01(texel_r);
                 texel_g = clamp01(texel_g);
                 texel_b = clamp01(texel_b);
-
-                // NOTE(xkazu0x): Load destination
-                f32 dest_r = (f32)((*pixel >> 16) & 0xFF);
-                f32 dest_g = (f32)((*pixel >> 8) & 0xFF);
-                f32 dest_b = (f32)((*pixel >> 0) & 0xFF);
-                f32 dest_a = (f32)((*pixel >> 24) & 0xFF);
                 
                 // NOTE(xkazu0x): Go from sRGB to "linear" brightness space
-                dest_r = square(inv255*dest_r);
-                dest_g = square(inv255*dest_g);
-                dest_b = square(inv255*dest_b);
-                dest_a = inv255*dest_a;
+                dest_r[pixel_index] = square(inv255*dest_r[pixel_index]);
+                dest_g[pixel_index] = square(inv255*dest_g[pixel_index]);
+                dest_b[pixel_index] = square(inv255*dest_b[pixel_index]);
+                dest_a[pixel_index] = inv255*dest_a[pixel_index];
                 
                 // NOTE(xkazu0x): Destination blend
                 f32 inv_texel_a = (1.0f - texel_a);
-                f32 blended_r = inv_texel_a*dest_r + texel_r;
-                f32 blended_g = inv_texel_a*dest_g + texel_g;
-                f32 blended_b = inv_texel_a*dest_b + texel_b;
-                f32 blended_a = inv_texel_a*dest_a + texel_a;
+                blended_r[pixel_index] = inv_texel_a*dest_r[pixel_index] + texel_r;
+                blended_g[pixel_index] = inv_texel_a*dest_g[pixel_index] + texel_g;
+                blended_b[pixel_index] = inv_texel_a*dest_b[pixel_index] + texel_b;
+                blended_a[pixel_index] = inv_texel_a*dest_a[pixel_index] + texel_a;
 
-                if (blended_r < 0.0f) blended_r = 0.0f;
-                if (blended_g < 0.0f) blended_g = 0.0f;
-                if (blended_b < 0.0f) blended_b = 0.0f;
-                if (blended_a < 0.0f) blended_a = 0.0f;
+                if (blended_r[pixel_index] < 0.0f) blended_r[pixel_index] = 0.0f;
+                if (blended_g[pixel_index] < 0.0f) blended_g[pixel_index] = 0.0f;
+                if (blended_b[pixel_index] < 0.0f) blended_b[pixel_index] = 0.0f;
+                if (blended_a[pixel_index] < 0.0f) blended_a[pixel_index] = 0.0f;
                 
                 // NOTE(xkazu0x): Go from "linear" brightness space to sRGB
-                blended_r = one255*square_root(blended_r);
-                blended_g = one255*square_root(blended_g);
-                blended_b = one255*square_root(blended_b);
-                blended_a = one255*blended_a;
-
-                // NOTE(xkazu0x): Repack
-                *pixel = (((u32)(blended_a + 0.5f) << 24) |
-                          ((u32)(blended_r + 0.5f) << 16) |
-                          ((u32)(blended_g + 0.5f) << 8) |
-                          ((u32)(blended_b + 0.5f) << 0));
-
-                END_TIMED_BLOCK(fill_pixel);
+                blended_r[pixel_index] = one255*square_root(blended_r[pixel_index]);
+                blended_g[pixel_index] = one255*square_root(blended_g[pixel_index]);
+                blended_b[pixel_index] = one255*square_root(blended_b[pixel_index]);
+                blended_a[pixel_index] = one255*blended_a[pixel_index];
             }
+
+            for (s32 pixel_index = 0;
+                 pixel_index < 4;
+                 ++pixel_index) {
+                if (should_fill[pixel_index]) {
+                    // NOTE(xkazu0x): Repack
+                    *(pixel + pixel_index) = (((u32)(blended_a[pixel_index] + 0.5f) << 24) |
+                                              ((u32)(blended_r[pixel_index] + 0.5f) << 16) |
+                                              ((u32)(blended_g[pixel_index] + 0.5f) << 8) |
+                                              ((u32)(blended_b[pixel_index] + 0.5f) << 0));
+                }                    
+            }
+
+            pixel += 4;
             
-            ++pixel;
             END_TIMED_BLOCK(test_pixel);
         }
         
