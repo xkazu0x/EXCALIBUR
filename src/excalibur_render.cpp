@@ -381,7 +381,6 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
                   Vec4 color, Bitmap *texture, f32 pixels_to_meters) {
     BEGIN_TIMED_BLOCK(draw_rect_quickly);    
     
-    // NOTE(xkazu0x): premultiply color up front
     color.rgb *= color.a;
     
     f32 x_axis_length = length(x_axis);
@@ -389,10 +388,6 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
 
     Vec2 normal_x_axis = (y_axis_length/x_axis_length)*x_axis;
     Vec2 normal_y_axis = (x_axis_length/y_axis_length)*y_axis;
-    // NOTE(xkazu0x): normal_z_scale could be a parameter if we want people to
-    // have control over the amount of scaling in the Z direction
-    // that the normals appear to have.
-    //f32 normal_z_scale = 0.5f*(x_axis_length + y_axis_length);
     
     f32 inv_x_axis_length_squared = 1.0f/length_squared(x_axis);
     f32 inv_y_axis_length_squared = 1.0f/length_squared(y_axis);
@@ -400,14 +395,6 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
     // TODO(xkazu0x): IMPORTANT(xkazu0x): STOP DOING THIS ONCE WE HAVE REAL ROW LOADING
     s32 width_max = (buffer->width - 1) - 3;
     s32 height_max = (buffer->height - 1) - 3;
-
-    //f32 inv_width_max = 1.0f/(f32)width_max;
-    //f32 inv_height_max = 1.0f/(f32)height_max;
-
-    // TODO(xkazu0x): This will need to be specified separately!!
-    //f32 origin_z = 0.0f;
-    //f32 origin_y = (origin + 0.5f*x_axis + 0.5f*y_axis).y;
-    //f32 fixed_cast_y = inv_height_max*origin_y;
     
     s32 min_x = width_max;
     s32 min_y = height_max;
@@ -459,6 +446,8 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
 
     __m128 inv255_4x = _mm_set1_ps(inv255);
     __m128 one255_4x = _mm_set1_ps(one255);
+
+    __m128i mask_ff = _mm_set1_epi32(0xFF);
     
     __m128 color_r_4x = _mm_set1_ps(color.r);
     __m128 color_g_4x = _mm_set1_ps(color.g);
@@ -466,12 +455,14 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
     __m128 color_a_4x = _mm_set1_ps(color.a);
     
     __m128 one_4x = _mm_set1_ps(1.0f);
-    __m128 half_4x = _mm_set1_ps(0.5f);
     __m128 zero_4x = _mm_set1_ps(0.0f);
 
     __m128 origin_x_4x = _mm_set1_ps(origin.x);
     __m128 origin_y_4x = _mm_set1_ps(origin.y);
 
+    __m128 width_m2 = _mm_set1_ps((f32)(texture->width - 2));
+    __m128 height_m2 = _mm_set1_ps((f32)(texture->height - 2));
+    
     u8 *row = ((u8 *)buffer->memory +
                (min_x*BITMAP_BYTES_PER_PIXEL) +
                (min_y*buffer->pitch));
@@ -480,47 +471,15 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
     
     for (s32 y = min_y;
          y <= max_y;
-         ++y) {
+         ++y)
+    {
         u32 *pixel = (u32 *)row;
         for (s32 xi = min_x;
              xi <= max_x;
-             xi += 4) {
-            __m128 texel_a_r = _mm_set1_ps(0.0f);
-            __m128 texel_a_g = _mm_set1_ps(0.0f);
-            __m128 texel_a_b = _mm_set1_ps(0.0f);
-            __m128 texel_a_a = _mm_set1_ps(0.0f);
-            
-            __m128 texel_b_r = _mm_set1_ps(0.0f);
-            __m128 texel_b_g = _mm_set1_ps(0.0f);
-            __m128 texel_b_b = _mm_set1_ps(0.0f);
-            __m128 texel_b_a = _mm_set1_ps(0.0f);
-            
-            __m128 texel_c_r = _mm_set1_ps(0.0f);
-            __m128 texel_c_g = _mm_set1_ps(0.0f);
-            __m128 texel_c_b = _mm_set1_ps(0.0f);
-            __m128 texel_c_a = _mm_set1_ps(0.0f);
-            
-            __m128 texel_d_r = _mm_set1_ps(0.0f);
-            __m128 texel_d_g = _mm_set1_ps(0.0f);
-            __m128 texel_d_b = _mm_set1_ps(0.0f);
-            __m128 texel_d_a = _mm_set1_ps(0.0f);
-
-            __m128 dest_r = _mm_set1_ps(0.0f);
-            __m128 dest_g = _mm_set1_ps(0.0f);
-            __m128 dest_b = _mm_set1_ps(0.0f);
-            __m128 dest_a = _mm_set1_ps(0.0f);
-            
-            __m128 blended_r = _mm_set1_ps(0.0f);
-            __m128 blended_g = _mm_set1_ps(0.0f);
-            __m128 blended_b = _mm_set1_ps(0.0f);
-            __m128 blended_a = _mm_set1_ps(0.0f);
-            
-            __m128 fx = _mm_set1_ps(0.0f);
-            __m128 fy = _mm_set1_ps(0.0f);
-            
-            b32 should_fill[4];
-
-#define mm(x, index) ((float *)&(x))[index]
+             xi += 4)
+        {
+#define mf(x, index) ((f32 *)&(x))[index]
+#define mi(x, index) ((u32 *)&(x))[index]
 #define mm_square(x) _mm_mul_ps(x, x)
             
             __m128 pixel_x = _mm_set_ps((f32)(xi + 3),
@@ -534,157 +493,177 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
             
             __m128 u = _mm_add_ps(_mm_mul_ps(pixel_delta_x, n_x_axis_x_4x), _mm_mul_ps(pixel_delta_y, n_x_axis_y_4x));
             __m128 v = _mm_add_ps(_mm_mul_ps(pixel_delta_x, n_y_axis_x_4x), _mm_mul_ps(pixel_delta_y, n_y_axis_y_4x));
+
+            __m128i write_mask = _mm_castps_si128(_mm_and_ps(_mm_and_ps(_mm_cmpge_ps(u, zero_4x),
+                                                                        _mm_cmple_ps(u, one_4x)),
+                                                             _mm_and_ps(_mm_cmpge_ps(v, zero_4x),
+                                                                        _mm_cmple_ps(v, one_4x))));
+
+            // TODO(xkazu0x): Later, re-check if this helps
+            // if (_mm_movemask_epi8(write_mask))
+            {
+                __m128i original_dest = _mm_loadu_si128((__m128i *)pixel);
             
-            for (s32 pixel_index = 0;
-                 pixel_index < 4;
-                 ++pixel_index) {
-                should_fill[pixel_index] = ((mm(u, pixel_index) >= 0.0f) &&
-                                            (mm(u, pixel_index) <= 1.0f) &&
-                                            (mm(v, pixel_index) >= 0.0f) &&
-                                            (mm(v, pixel_index) <= 1.0f));
-                if (should_fill[pixel_index]) {
-                    // TODO(xkazu0x): formalize texture boundaries
-                    f32 texture_x = ((mm(u, pixel_index)*(f32)(texture->width - 2)));
-                    f32 texture_y = ((mm(v, pixel_index)*(f32)(texture->height - 2)));
-                
-                    s32 int_texture_x = (s32)texture_x;
-                    s32 int_texture_y = (s32)texture_y;
+                u = _mm_min_ps(_mm_max_ps(u, zero_4x), one_4x);
+                v = _mm_min_ps(_mm_max_ps(v, zero_4x), one_4x);
+            
+                // TODO(xkazu0x): formalize texture boundaries
+                __m128 tx = _mm_mul_ps(u, width_m2);
+                __m128 ty = _mm_mul_ps(v, height_m2);
 
-                    mm(fx, pixel_index) = texture_x - (f32)int_texture_x;
-                    mm(fy, pixel_index) = texture_y - (f32)int_texture_y;
+                __m128i fetch_x_4x = _mm_cvttps_epi32(tx);
+                __m128i fetch_y_4x = _mm_cvttps_epi32(ty);
 
-                    assert((int_texture_x >= 0) && (int_texture_x < texture->width));
-                    assert((int_texture_y >= 0) && (int_texture_y < texture->height));
+                __m128 fx = _mm_sub_ps(tx, _mm_cvtepi32_ps(fetch_x_4x));
+                __m128 fy = _mm_sub_ps(ty, _mm_cvtepi32_ps(fetch_y_4x));
+            
+                __m128i sample_a;
+                __m128i sample_b;
+                __m128i sample_c;
+                __m128i sample_d;
+            
+                for (s32 pixel_index = 0;
+                     pixel_index < 4;
+                     ++pixel_index) {
+                    s32 fetch_x = mi(fetch_x_4x, pixel_index);
+                    s32 fetch_y = mi(fetch_y_4x, pixel_index);
+
+                    assert((fetch_x >= 0) && (fetch_x < texture->width));
+                    assert((fetch_y >= 0) && (fetch_y < texture->height));
 
                     // NOTE(xkazu0x): Load sample
-                    u8 *sample_texel_ptr = ((u8 *)texture->memory) + int_texture_y*texture->pitch + int_texture_x*BITMAP_BYTES_PER_PIXEL;
-                    u32 sample_a = *(u32 *)(sample_texel_ptr);
-                    u32 sample_b = *(u32 *)(sample_texel_ptr + BITMAP_BYTES_PER_PIXEL);
-                    u32 sample_c = *(u32 *)(sample_texel_ptr + texture->pitch);
-                    u32 sample_d = *(u32 *)(sample_texel_ptr + texture->pitch + BITMAP_BYTES_PER_PIXEL);
-
-                    // NOTE(xkazu0x): Load texel
-                    mm(texel_a_r, pixel_index) = (f32)((sample_a >> 16) & 0xFF);
-                    mm(texel_a_g, pixel_index) = (f32)((sample_a >> 8) & 0xFF);
-                    mm(texel_a_b, pixel_index) = (f32)((sample_a >> 0) & 0xFF);
-                    mm(texel_a_a, pixel_index) = (f32)((sample_a >> 24) & 0xFF);
-                    
-                    mm(texel_b_r, pixel_index) = (f32)((sample_b >> 16) & 0xFF);
-                    mm(texel_b_g, pixel_index) = (f32)((sample_b >> 8) & 0xFF);
-                    mm(texel_b_b, pixel_index) = (f32)((sample_b >> 0) & 0xFF);
-                    mm(texel_b_a, pixel_index) = (f32)((sample_b >> 24) & 0xFF);
-                    
-                    mm(texel_c_r, pixel_index) = (f32)((sample_c >> 16) & 0xFF);
-                    mm(texel_c_g, pixel_index) = (f32)((sample_c >> 8) & 0xFF);
-                    mm(texel_c_b, pixel_index) = (f32)((sample_c >> 0) & 0xFF);
-                    mm(texel_c_a, pixel_index) = (f32)((sample_c >> 24) & 0xFF);
-                    
-                    mm(texel_d_r, pixel_index) = (f32)((sample_d >> 16) & 0xFF);
-                    mm(texel_d_g, pixel_index) = (f32)((sample_d >> 8) & 0xFF);
-                    mm(texel_d_b, pixel_index) = (f32)((sample_d >> 0) & 0xFF);
-                    mm(texel_d_a, pixel_index) = (f32)((sample_d >> 24) & 0xFF);
-                    
-                    // NOTE(xkazu0x): Load destination
-                    mm(dest_r, pixel_index) = (f32)((*(pixel + pixel_index) >> 16) & 0xFF);
-                    mm(dest_g, pixel_index) = (f32)((*(pixel + pixel_index) >> 8) & 0xFF);
-                    mm(dest_b, pixel_index) = (f32)((*(pixel + pixel_index) >> 0) & 0xFF);
-                    mm(dest_a, pixel_index) = (f32)((*(pixel + pixel_index) >> 24) & 0xFF);
+                    u8 *sample_texel_ptr = ((u8 *)texture->memory) + fetch_y*texture->pitch + fetch_x*BITMAP_BYTES_PER_PIXEL;
+                    mi(sample_a, pixel_index) = *(u32 *)(sample_texel_ptr);
+                    mi(sample_b, pixel_index) = *(u32 *)(sample_texel_ptr + BITMAP_BYTES_PER_PIXEL);
+                    mi(sample_c, pixel_index) = *(u32 *)(sample_texel_ptr + texture->pitch);
+                    mi(sample_d, pixel_index) = *(u32 *)(sample_texel_ptr + texture->pitch + BITMAP_BYTES_PER_PIXEL);
                 }
+
+                // NOTE(xkazu0x): Unpack bilinear samples
+                __m128 texel_a_b = _mm_cvtepi32_ps(_mm_and_si128(sample_a, mask_ff));
+                __m128 texel_a_g = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sample_a, 8), mask_ff));
+                __m128 texel_a_r = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sample_a, 16), mask_ff));
+                __m128 texel_a_a = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sample_a, 24), mask_ff));
+            
+                __m128 texel_b_b = _mm_cvtepi32_ps(_mm_and_si128(sample_b, mask_ff));
+                __m128 texel_b_g = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sample_b, 8), mask_ff));
+                __m128 texel_b_r = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sample_b, 16), mask_ff));
+                __m128 texel_b_a = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sample_b, 24), mask_ff));
+            
+                __m128 texel_c_b = _mm_cvtepi32_ps(_mm_and_si128(sample_c, mask_ff));
+                __m128 texel_c_g = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sample_c, 8), mask_ff));
+                __m128 texel_c_r = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sample_c, 16), mask_ff));
+                __m128 texel_c_a = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sample_c, 24), mask_ff));
+            
+                __m128 texel_d_b = _mm_cvtepi32_ps(_mm_and_si128(sample_d, mask_ff));
+                __m128 texel_d_g = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sample_d, 8), mask_ff));
+                __m128 texel_d_r = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sample_d, 16), mask_ff));
+                __m128 texel_d_a = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sample_d, 24), mask_ff));
+                                    
+                // NOTE(xkazu0x): Load destination            
+                __m128 dest_b = _mm_cvtepi32_ps(_mm_and_si128(original_dest, mask_ff));
+                __m128 dest_g = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(original_dest, 8), mask_ff));
+                __m128 dest_r = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(original_dest, 16), mask_ff));
+                __m128 dest_a = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(original_dest, 24), mask_ff));
+                    
+                // NOTE(xkazu0x): convert texture from 0-255 sRGB to "linear" 0-1 brightness space
+                texel_a_r = mm_square(_mm_mul_ps(inv255_4x, texel_a_r));
+                texel_a_g = mm_square(_mm_mul_ps(inv255_4x, texel_a_g));
+                texel_a_b = mm_square(_mm_mul_ps(inv255_4x, texel_a_b));
+                texel_a_a = _mm_mul_ps(inv255_4x, texel_a_a);
+            
+                texel_b_r = mm_square(_mm_mul_ps(inv255_4x, texel_b_r));
+                texel_b_g = mm_square(_mm_mul_ps(inv255_4x, texel_b_g));
+                texel_b_b = mm_square(_mm_mul_ps(inv255_4x, texel_b_b));
+                texel_b_a = _mm_mul_ps(inv255_4x, texel_b_a);
+            
+                texel_c_r = mm_square(_mm_mul_ps(inv255_4x, texel_c_r));
+                texel_c_g = mm_square(_mm_mul_ps(inv255_4x, texel_c_g));
+                texel_c_b = mm_square(_mm_mul_ps(inv255_4x, texel_c_b));
+                texel_c_a = _mm_mul_ps(inv255_4x, texel_c_a);
+            
+                texel_d_r = mm_square(_mm_mul_ps(inv255_4x, texel_d_r));
+                texel_d_g = mm_square(_mm_mul_ps(inv255_4x, texel_d_g));
+                texel_d_b = mm_square(_mm_mul_ps(inv255_4x, texel_d_b));
+                texel_d_a = _mm_mul_ps(inv255_4x, texel_d_a);
+            
+                // NOTE(xkazu0x): Bilinear texture blend
+                __m128 ifx = _mm_sub_ps(one_4x, fx);
+                __m128 ify = _mm_sub_ps(one_4x, fy);
+
+                __m128 l0 = _mm_mul_ps(ify, ifx);
+                __m128 l1 = _mm_mul_ps(ify, fx);
+                __m128 l2 = _mm_mul_ps(fy, ifx);
+                __m128 l3 = _mm_mul_ps(fy, fx);
+
+                __m128 texel_r = _mm_add_ps(_mm_add_ps(_mm_mul_ps(l0, texel_a_r), _mm_mul_ps(l1, texel_b_r)),
+                                            _mm_add_ps(_mm_mul_ps(l2, texel_c_r), _mm_mul_ps(l3, texel_d_r)));
+                __m128 texel_g = _mm_add_ps(_mm_add_ps(_mm_mul_ps(l0, texel_a_g), _mm_mul_ps(l1, texel_b_g)),
+                                            _mm_add_ps(_mm_mul_ps(l2, texel_c_g), _mm_mul_ps(l3, texel_d_g)));
+                __m128 texel_b = _mm_add_ps(_mm_add_ps(_mm_mul_ps(l0, texel_a_b), _mm_mul_ps(l1, texel_b_b)),
+                                            _mm_add_ps(_mm_mul_ps(l2, texel_c_b), _mm_mul_ps(l3, texel_d_b)));
+                __m128 texel_a = _mm_add_ps(_mm_add_ps(_mm_mul_ps(l0, texel_a_a), _mm_mul_ps(l1, texel_b_a)),
+                                            _mm_add_ps(_mm_mul_ps(l2, texel_c_a), _mm_mul_ps(l3, texel_d_a)));
+            
+                // NOTE(xkazu0x): Module by incoming color
+                texel_r = _mm_mul_ps(texel_r, color_r_4x);
+                texel_g = _mm_mul_ps(texel_g, color_g_4x);
+                texel_b = _mm_mul_ps(texel_b, color_b_4x);
+                texel_a = _mm_mul_ps(texel_a, color_a_4x);
+            
+                // NOTE(xkazu0x): Clamp colors to valid range 0-1
+                texel_r = _mm_min_ps(_mm_max_ps(texel_r, zero_4x), one_4x);
+                texel_g = _mm_min_ps(_mm_max_ps(texel_g, zero_4x), one_4x);
+                texel_b = _mm_min_ps(_mm_max_ps(texel_b, zero_4x), one_4x);
+                texel_a = _mm_min_ps(_mm_max_ps(texel_a, zero_4x), one_4x);
+                
+                // NOTE(xkazu0x): Go from sRGB to "linear" brightness space
+                dest_r = mm_square(_mm_mul_ps(inv255_4x, dest_r));
+                dest_g = mm_square(_mm_mul_ps(inv255_4x, dest_g));
+                dest_b = mm_square(_mm_mul_ps(inv255_4x, dest_b));
+                dest_a = _mm_mul_ps(inv255_4x, dest_a);
+                
+                // NOTE(xkazu0x): Destination blend
+                __m128 inv_texel_a = _mm_sub_ps(one_4x, texel_a);
+                __m128 blended_r = _mm_add_ps(_mm_mul_ps(inv_texel_a, dest_r), texel_r);
+                __m128 blended_g = _mm_add_ps(_mm_mul_ps(inv_texel_a, dest_g), texel_g);
+                __m128 blended_b = _mm_add_ps(_mm_mul_ps(inv_texel_a, dest_b), texel_b);
+                __m128 blended_a = _mm_add_ps(_mm_mul_ps(inv_texel_a, dest_a), texel_a);
+
+                // TODO(xkazu0x): The prior step may generate a negative number that cause
+                // the square root function to throw an error, so we clamp that value to zero.
+                // for (s32 pixel_index = 0;
+                //      pixel_index < 4;
+                //      ++pixel_index) {
+                //     if (mf(blended_r, pixel_index) < 0.0f) mf(blended_r, pixel_index) = 0.0f;
+                //     if (mf(blended_g, pixel_index) < 0.0f) mf(blended_g, pixel_index) = 0.0f;
+                //     if (mf(blended_b, pixel_index) < 0.0f) mf(blended_b, pixel_index) = 0.0f;
+                //     if (mf(blended_a, pixel_index) < 0.0f) mf(blended_a, pixel_index) = 0.0f;
+                // }
+                
+                // NOTE(xkazu0x): Go from 0-1 "linear" brightness space to sRGB 0-255
+                blended_r = _mm_mul_ps(one255_4x, _mm_sqrt_ps(blended_r));
+                blended_g = _mm_mul_ps(one255_4x, _mm_sqrt_ps(blended_g));
+                blended_b = _mm_mul_ps(one255_4x, _mm_sqrt_ps(blended_b));
+                blended_a = _mm_mul_ps(one255_4x, blended_a);
+
+                __m128i int_r = _mm_cvtps_epi32(blended_r);
+                __m128i int_g = _mm_cvtps_epi32(blended_g);
+                __m128i int_b = _mm_cvtps_epi32(blended_b);
+                __m128i int_a = _mm_cvtps_epi32(blended_a);
+
+                __m128i sr = _mm_slli_epi32(int_r, 16);
+                __m128i sg = _mm_slli_epi32(int_g, 8);
+                __m128i sb = int_b;
+                __m128i sa = _mm_slli_epi32(int_a, 24);
+
+                __m128i out = _mm_or_si128(_mm_or_si128(sr, sg), _mm_or_si128(sb, sa));
+
+                __m128i masked_out = _mm_or_si128(_mm_and_si128(write_mask, out),
+                                                  _mm_andnot_si128(write_mask, original_dest));
+                _mm_storeu_si128((__m128i *)pixel, masked_out);
             }
-
-            // NOTE(xkazu0x): convert texture from 0-255 sRGB to "linear" 0-1 brightness space
-            texel_a_r = mm_square(_mm_mul_ps(inv255_4x, texel_a_r));
-            texel_a_g = mm_square(_mm_mul_ps(inv255_4x, texel_a_g));
-            texel_a_b = mm_square(_mm_mul_ps(inv255_4x, texel_a_b));
-            texel_a_a = _mm_mul_ps(inv255_4x, texel_a_a);
             
-            texel_b_r = mm_square(_mm_mul_ps(inv255_4x, texel_b_r));
-            texel_b_g = mm_square(_mm_mul_ps(inv255_4x, texel_b_g));
-            texel_b_b = mm_square(_mm_mul_ps(inv255_4x, texel_b_b));
-            texel_b_a = _mm_mul_ps(inv255_4x, texel_b_a);
-            
-            texel_c_r = mm_square(_mm_mul_ps(inv255_4x, texel_c_r));
-            texel_c_g = mm_square(_mm_mul_ps(inv255_4x, texel_c_g));
-            texel_c_b = mm_square(_mm_mul_ps(inv255_4x, texel_c_b));
-            texel_c_a = _mm_mul_ps(inv255_4x, texel_c_a);
-            
-            texel_d_r = mm_square(_mm_mul_ps(inv255_4x, texel_d_r));
-            texel_d_g = mm_square(_mm_mul_ps(inv255_4x, texel_d_g));
-            texel_d_b = mm_square(_mm_mul_ps(inv255_4x, texel_d_b));
-            texel_d_a = _mm_mul_ps(inv255_4x, texel_d_a);
-            
-            // NOTE(xkazu0x): Bilinear texture blend
-            __m128 ifx = _mm_sub_ps(one_4x, fx);
-            __m128 ify = _mm_sub_ps(one_4x, fy);
-
-            __m128 l0 = _mm_mul_ps(ify, ifx);
-            __m128 l1 = _mm_mul_ps(ify, fx);
-            __m128 l2 = _mm_mul_ps(fy, ifx);
-            __m128 l3 = _mm_mul_ps(fy, fx);
-
-            __m128 texel_r = _mm_add_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(l0, texel_a_r), _mm_mul_ps(l1, texel_b_r)), _mm_mul_ps(l2, texel_c_r)), _mm_mul_ps(l3, texel_d_r));
-            __m128 texel_g = _mm_add_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(l0, texel_a_g), _mm_mul_ps(l1, texel_b_g)), _mm_mul_ps(l2, texel_c_g)), _mm_mul_ps(l3, texel_d_g));
-            __m128 texel_b = _mm_add_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(l0, texel_a_b), _mm_mul_ps(l1, texel_b_b)), _mm_mul_ps(l2, texel_c_b)), _mm_mul_ps(l3, texel_d_b));
-            __m128 texel_a = _mm_add_ps(_mm_add_ps(_mm_add_ps(_mm_mul_ps(l0, texel_a_a), _mm_mul_ps(l1, texel_b_a)), _mm_mul_ps(l2, texel_c_a)), _mm_mul_ps(l3, texel_d_a));
-            
-            // NOTE(xkazu0x): Module by incoming color
-            texel_r = _mm_mul_ps(texel_r, color_r_4x);
-            texel_g = _mm_mul_ps(texel_g, color_g_4x);
-            texel_b = _mm_mul_ps(texel_b, color_b_4x);
-            texel_a = _mm_mul_ps(texel_a, color_a_4x);
-            
-            // NOTE(xkazu0x): Clamp colors to valid range 0-1
-            texel_r = _mm_min_ps(_mm_max_ps(texel_r, zero_4x), one_4x);
-            texel_g = _mm_min_ps(_mm_max_ps(texel_g, zero_4x), one_4x);
-            texel_b = _mm_min_ps(_mm_max_ps(texel_b, zero_4x), one_4x);
-            texel_a = _mm_min_ps(_mm_max_ps(texel_a, zero_4x), one_4x);
-                
-            // NOTE(xkazu0x): Go from sRGB to "linear" brightness space
-            dest_r = mm_square(_mm_mul_ps(inv255_4x, dest_r));
-            dest_g = mm_square(_mm_mul_ps(inv255_4x, dest_g));
-            dest_b = mm_square(_mm_mul_ps(inv255_4x, dest_b));
-            dest_a = _mm_mul_ps(inv255_4x, dest_a);
-                
-            // NOTE(xkazu0x): Destination blend
-            __m128 inv_texel_a = _mm_sub_ps(one_4x, texel_a);
-            blended_r = _mm_add_ps(_mm_mul_ps(inv_texel_a, dest_r), texel_r);
-            blended_g = _mm_add_ps(_mm_mul_ps(inv_texel_a, dest_g), texel_g);
-            blended_b = _mm_add_ps(_mm_mul_ps(inv_texel_a, dest_b), texel_b);
-            blended_a = _mm_add_ps(_mm_mul_ps(inv_texel_a, dest_a), texel_a);
-
-            // TODO(xkazu0x): The prior step may generate a negative number that cause
-            // the square root function to throw an error, so we clamp that value to zero.
-            // for (s32 pixel_index = 0;
-            //      pixel_index < 4;
-            //      ++pixel_index) {
-            //     if (mm(blended_r, pixel_index) < 0.0f) mm(blended_r, pixel_index) = 0.0f;
-            //     if (mm(blended_g, pixel_index) < 0.0f) mm(blended_g, pixel_index) = 0.0f;
-            //     if (mm(blended_b, pixel_index) < 0.0f) mm(blended_b, pixel_index) = 0.0f;
-            //     if (mm(blended_a, pixel_index) < 0.0f) mm(blended_a, pixel_index) = 0.0f;
-            // }
-                
-            // NOTE(xkazu0x): Go from 0-1 "linear" brightness space to sRGB 0-255
-            blended_r = _mm_mul_ps(one255_4x, _mm_sqrt_ps(blended_r));
-            blended_g = _mm_mul_ps(one255_4x, _mm_sqrt_ps(blended_g));
-            blended_b = _mm_mul_ps(one255_4x, _mm_sqrt_ps(blended_b));
-            blended_a = _mm_mul_ps(one255_4x, blended_a);
-
-            // TODO(xkazu0x): Set the rounding to something known
-            __m128i int_r = _mm_cvttps_epi32(_mm_add_ps(blended_r, half_4x));
-            __m128i int_g = _mm_cvttps_epi32(_mm_add_ps(blended_g, half_4x));
-            __m128i int_b = _mm_cvttps_epi32(_mm_add_ps(blended_b, half_4x));
-            __m128i int_a = _mm_cvttps_epi32(_mm_add_ps(blended_a, half_4x));
-
-            __m128i sr = _mm_slli_epi32(int_r, 16);
-            __m128i sg = _mm_slli_epi32(int_g, 8);
-            __m128i sb = int_b;
-            __m128i sa = _mm_slli_epi32(int_a, 24);
-
-            __m128i out = _mm_or_si128(_mm_or_si128(sr, sg), _mm_or_si128(sb, sa));
-
-            // TODO(xkazu0x): Write only the pixels where should_fill[pixel_index] == true
-            _mm_storeu_si128((__m128i *)pixel, out);
-
             pixel += 4;
         }
         

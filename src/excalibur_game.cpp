@@ -959,7 +959,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
         new_camera_pos = chunk_position_from_tile_position(game_state->world, camera_tile_x, camera_tile_y, camera_tile_z);
         game_state->camera_pos = new_camera_pos;
         
-        add_monster(game_state, camera_tile_x - 4, camera_tile_y + 2, camera_tile_z);
+        add_monster(game_state, camera_tile_x, camera_tile_y + 2, camera_tile_z);
         for (u32 familiar_index = 0;
              familiar_index < 1;
              ++familiar_index) {
