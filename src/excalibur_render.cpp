@@ -466,6 +466,7 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
     __m128 color_a_4x = _mm_set1_ps(color.a);
     
     __m128 one_4x = _mm_set1_ps(1.0f);
+    __m128 half_4x = _mm_set1_ps(0.5f);
     __m128 zero_4x = _mm_set1_ps(0.0f);
 
     __m128 origin_x_4x = _mm_set1_ps(origin.x);
@@ -668,17 +669,21 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
             blended_b = _mm_mul_ps(one255_4x, _mm_sqrt_ps(blended_b));
             blended_a = _mm_mul_ps(one255_4x, blended_a);
 
-            for (s32 pixel_index = 0;
-                 pixel_index < 4;
-                 ++pixel_index) {
-                if (should_fill[pixel_index]) {
-                    // NOTE(xkazu0x): Repack
-                    *(pixel + pixel_index) = (((u32)(mm(blended_a, pixel_index) + 0.5f) << 24) |
-                                              ((u32)(mm(blended_r, pixel_index) + 0.5f) << 16) |
-                                              ((u32)(mm(blended_g, pixel_index) + 0.5f) << 8) |
-                                              ((u32)(mm(blended_b, pixel_index) + 0.5f) << 0));
-                }                    
-            }
+            // TODO(xkazu0x): Set the rounding to something known
+            __m128i int_r = _mm_cvttps_epi32(_mm_add_ps(blended_r, half_4x));
+            __m128i int_g = _mm_cvttps_epi32(_mm_add_ps(blended_g, half_4x));
+            __m128i int_b = _mm_cvttps_epi32(_mm_add_ps(blended_b, half_4x));
+            __m128i int_a = _mm_cvttps_epi32(_mm_add_ps(blended_a, half_4x));
+
+            __m128i sr = _mm_slli_epi32(int_r, 16);
+            __m128i sg = _mm_slli_epi32(int_g, 8);
+            __m128i sb = int_b;
+            __m128i sa = _mm_slli_epi32(int_a, 24);
+
+            __m128i out = _mm_or_si128(_mm_or_si128(sr, sg), _mm_or_si128(sb, sa));
+
+            // TODO(xkazu0x): Write only the pixels where should_fill[pixel_index] == true
+            _mm_storeu_si128((__m128i *)pixel, out);
 
             pixel += 4;
         }
@@ -704,7 +709,7 @@ draw_rect(Bitmap *buffer, Vec2 min, Vec2 max, Vec4 color) {
     
     if (max_x > buffer->width) max_x = buffer->width;
     if (max_y > buffer->height) max_y = buffer->height;
-
+    
     u32 color32 = ((round_f32_to_u32(color.a*255.0f) << 24) |
                    (round_f32_to_u32(color.r*255.0f) << 16) |
                    (round_f32_to_u32(color.g*255.0f) << 8) |
@@ -713,6 +718,7 @@ draw_rect(Bitmap *buffer, Vec2 min, Vec2 max, Vec4 color) {
     u8 *row = ((u8 *)buffer->memory +
                (min_x*BYTES_PER_PIXEL) +
                (min_y*buffer->pitch));
+    
     for (s32 y = min_y;
          y < max_y;
          ++y) {
@@ -918,14 +924,17 @@ render_group_draw(Render_Group *group, Bitmap *output_target) {
 #if 0
                     draw_bitmap(output_target, entry->bitmap, basis.point, entry->color.a);
 #else
-                    // draw_rect_slowly(output_target, basis.point,
-                    //                  basis.scale*make_vec2(entry->size.x, 0.0f),
-                    //                  basis.scale*make_vec2(0.0f, entry->size.y),
-                    //                  entry->color, entry->bitmap, 0, 0, 0, 0, pixels_to_meters);
+#if 0
+                    draw_rect_slowly(output_target, basis.point,
+                                     basis.scale*make_vec2(entry->size.x, 0.0f),
+                                     basis.scale*make_vec2(0.0f, entry->size.y),
+                                     entry->color, entry->bitmap, 0, 0, 0, 0, pixels_to_meters);
+#else                    
                     draw_rect_quickly(output_target, basis.point,
                                       basis.scale*make_vec2(entry->size.x, 0.0f),
                                       basis.scale*make_vec2(0.0f, entry->size.y),
                                       entry->color, entry->bitmap, pixels_to_meters);
+#endif
 #endif
                 }
                 base_address += sizeof(*entry);
