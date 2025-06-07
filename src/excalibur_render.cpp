@@ -376,6 +376,27 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
     END_TIMED_BLOCK(draw_rect_slowly);
 }
 
+struct Operation_Count {
+    s32 mm_add_ps;
+    s32 mm_sub_ps;
+    s32 mm_mul_ps;
+    s32 mm_and_ps;
+    s32 mm_cmpge_ps;
+    s32 mm_cmple_ps;
+    s32 mm_min_ps;
+    s32 mm_max_ps;
+    s32 mm_sqrt_ps;
+    s32 mm_cvtepi32_ps;
+    s32 mm_castps_si128;
+    s32 mm_and_si128;
+    s32 mm_andnot_si128;
+    s32 mm_or_si128;
+    s32 mm_srli_epi32;
+    s32 mm_slli_epi32;
+    s32 mm_cvttps_epi32;
+    s32 mm_cvtps_epi32;
+};
+
 internal void
 draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
                   Vec4 color, Bitmap *texture, f32 pixels_to_meters) {
@@ -441,11 +462,8 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
     __m128 n_y_axis_x_4x = _mm_set1_ps(n_y_axis.x);
     __m128 n_y_axis_y_4x = _mm_set1_ps(n_y_axis.y);
     
-    f32 inv255 = 1.0f/255.0f;
-    f32 one255 = 255.0f;
-
-    __m128 inv255_4x = _mm_set1_ps(inv255);
-    __m128 one255_4x = _mm_set1_ps(one255);
+    __m128 inv255_4x = _mm_set1_ps(1.0f/255.0f);
+    __m128 one255_4x = _mm_set1_ps(255.0f);
 
     __m128i mask_ff = _mm_set1_epi32(0xFF);
     
@@ -456,7 +474,8 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
     
     __m128 one_4x = _mm_set1_ps(1.0f);
     __m128 zero_4x = _mm_set1_ps(0.0f);
-
+    __m128 four_4x = _mm_set1_ps(4.0f);
+    
     __m128 origin_x_4x = _mm_set1_ps(origin.x);
     __m128 origin_y_4x = _mm_set1_ps(origin.y);
 
@@ -471,29 +490,62 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
     
     for (s32 y = min_y;
          y <= max_y;
-         ++y)
-    {
+         ++y) {
+        __m128 pixel_y = _mm_set1_ps((f32)y);
+        pixel_y = _mm_sub_ps(pixel_y, origin_y_4x);
+        
+        // TODO(xkazu0x): Remove this!
+        __m128 pixel_x = _mm_set_ps((f32)(min_x + 3),
+                                    (f32)(min_x + 2),
+                                    (f32)(min_x + 1),
+                                    (f32)(min_x + 0));
+        pixel_x = _mm_sub_ps(pixel_x, origin_x_4x);
+            
         u32 *pixel = (u32 *)row;
-        for (s32 xi = min_x;
-             xi <= max_x;
-             xi += 4)
+        for (s32 x = min_x;
+             x <= max_x;
+             x += 4)
         {
 #define mf(x, index) ((f32 *)&(x))[index]
 #define mi(x, index) ((u32 *)&(x))[index]
 #define mm_square(x) _mm_mul_ps(x, x)
-            
-            __m128 pixel_x = _mm_set_ps((f32)(xi + 3),
-                                        (f32)(xi + 2),
-                                        (f32)(xi + 1),
-                                        (f32)(xi + 0));
-            __m128 pixel_y = _mm_set1_ps((f32)y);
-            
-            __m128 pixel_delta_x = _mm_sub_ps(pixel_x, origin_x_4x);
-            __m128 pixel_delta_y = _mm_sub_ps(pixel_y, origin_y_4x);
-            
-            __m128 u = _mm_add_ps(_mm_mul_ps(pixel_delta_x, n_x_axis_x_4x), _mm_mul_ps(pixel_delta_y, n_x_axis_y_4x));
-            __m128 v = _mm_add_ps(_mm_mul_ps(pixel_delta_x, n_y_axis_x_4x), _mm_mul_ps(pixel_delta_y, n_y_axis_y_4x));
 
+#define COUNT_CYCLES 0
+
+#if COUNT_CYCLES            
+#define _mm_add_ps(a, b)       ++counts.mm_add_ps; a; b
+#define _mm_sub_ps(a, b)       ++counts.mm_sub_ps; a; b
+#define _mm_mul_ps(a, b)       ++counts.mm_mul_ps; a; b
+#define _mm_and_ps(a, b)       ++counts.mm_and_ps; a; b
+#define _mm_cmpge_ps(a, b)     ++counts.mm_cmpge_ps; a; b
+#define _mm_cmple_ps(a, b)     ++counts.mm_cmple_ps; a; b
+#define _mm_min_ps(a, b)       ++counts.mm_min_ps; a; b
+#define _mm_max_ps(a, b)       ++counts.mm_max_ps; a; b
+#define _mm_sqrt_ps(a)         ++counts.mm_sqrt_ps; a
+#define _mm_cvtepi32_ps(a)     ++counts.mm_cvtepi32_ps; a
+#define _mm_castps_si128(a)    ++counts.mm_castps_si128; a
+#define _mm_and_si128(a, b)    ++counts.mm_and_si128; a; b
+#define _mm_andnot_si128(a, b) ++counts.mm_andnot_si128; a; b
+#define _mm_or_si128(a, b)     ++counts.mm_or_si128; a; b
+#define _mm_srli_epi32(a, b)   ++counts.mm_srli_epi32; a
+#define _mm_slli_epi32(a, b)   ++counts.mm_slli_epi32; a
+#define _mm_cvttps_epi32(a)    ++counts.mm_cvttps_epi32; a
+#define _mm_cvtps_epi32(a)     ++counts.mm_cvtps_epi32; a
+            
+#define _mm_loadu_si128(a) 0
+#define _mm_storeu_si128(a, b)
+            
+#undef mm_square
+#define mm_square(a) ++counts.mm_mul_ps; a            
+            
+#define __m128 s32
+#define __m128i s32
+
+            Operation_Count counts = {};
+#endif            
+            __m128 u = _mm_add_ps(_mm_mul_ps(pixel_x, n_x_axis_x_4x), _mm_mul_ps(pixel_y, n_x_axis_y_4x));
+            __m128 v = _mm_add_ps(_mm_mul_ps(pixel_x, n_y_axis_x_4x), _mm_mul_ps(pixel_y, n_y_axis_y_4x));
+            
             __m128i write_mask = _mm_castps_si128(_mm_and_ps(_mm_and_ps(_mm_cmpge_ps(u, zero_4x),
                                                                         _mm_cmple_ps(u, one_4x)),
                                                              _mm_and_ps(_mm_cmpge_ps(v, zero_4x),
@@ -521,7 +573,13 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
                 __m128i sample_b;
                 __m128i sample_c;
                 __m128i sample_d;
-            
+
+#if COUNT_CYCLES
+                sample_a = 0;
+                sample_b = 0;
+                sample_c = 0;
+                sample_d = 0;
+#else
                 for (s32 pixel_index = 0;
                      pixel_index < 4;
                      ++pixel_index) {
@@ -538,13 +596,13 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
                     mi(sample_c, pixel_index) = *(u32 *)(sample_texel_ptr + texture->pitch);
                     mi(sample_d, pixel_index) = *(u32 *)(sample_texel_ptr + texture->pitch + BITMAP_BYTES_PER_PIXEL);
                 }
-
+#endif
                 // NOTE(xkazu0x): Unpack bilinear samples
                 __m128 texel_a_b = _mm_cvtepi32_ps(_mm_and_si128(sample_a, mask_ff));
                 __m128 texel_a_g = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sample_a, 8), mask_ff));
                 __m128 texel_a_r = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sample_a, 16), mask_ff));
                 __m128 texel_a_a = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sample_a, 24), mask_ff));
-            
+          
                 __m128 texel_b_b = _mm_cvtepi32_ps(_mm_and_si128(sample_b, mask_ff));
                 __m128 texel_b_g = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sample_b, 8), mask_ff));
                 __m128 texel_b_r = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sample_b, 16), mask_ff));
@@ -661,9 +719,37 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
 
                 __m128i masked_out = _mm_or_si128(_mm_and_si128(write_mask, out),
                                                   _mm_andnot_si128(write_mask, original_dest));
+                
                 _mm_storeu_si128((__m128i *)pixel, masked_out);
             }
+
+#if COUNT_CYCLES
+#undef _mm_add_ps
+            f32 total = 0.0f;
+            f32 third = 1.0f / 3.0f;
+
+#define sum(l, a) (l*(f32)a); total += (l*(f32)(a));
+            f32 mm_add_ps       = sum(1, counts.mm_add_ps);
+            f32 mm_sub_ps       = sum(1, counts.mm_sub_ps);
+            f32 mm_mul_ps       = sum(1, counts.mm_mul_ps);
+            f32 mm_and_ps       = sum(third, counts.mm_and_ps);
+            f32 mm_cmpge_ps     = sum(1, counts.mm_cmpge_ps);
+            f32 mm_cmple_ps     = sum(1, counts.mm_cmple_ps);
+            f32 mm_min_ps       = sum(1, counts.mm_min_ps);
+            f32 mm_max_ps       = sum(1, counts.mm_max_ps);
+            f32 mm_sqrt_ps      = sum(16, counts.mm_sqrt_ps);
+            f32 mm_cvtepi32_ps  = sum(1, counts.mm_cvtepi32_ps);
+            f32 mm_castps_si128 = sum(0, 0);
+            f32 mm_and_si128    = sum(third, counts.mm_and_si128);
+            f32 mm_andnot_si128 = sum(third, counts.mm_andnot_si128);
+            f32 mm_or_si128     = sum(third, counts.mm_or_si128);
+            f32 mm_srli_epi32   = sum(1, counts.mm_srli_epi32);
+            f32 mm_slli_epi32   = sum(1, counts.mm_slli_epi32);
+            f32 mm_cvttps_epi32 = sum(1, counts.mm_cvttps_epi32);
+            f32 mm_cvtps_epi32  = sum(1, counts.mm_cvtps_epi32);
+#endif
             
+            pixel_x = _mm_add_ps(pixel_x, four_4x);
             pixel += 4;
         }
         
@@ -903,17 +989,10 @@ render_group_draw(Render_Group *group, Bitmap *output_target) {
 #if 0
                     draw_bitmap(output_target, entry->bitmap, basis.point, entry->color.a);
 #else
-#if 0
-                    draw_rect_slowly(output_target, basis.point,
-                                     basis.scale*make_vec2(entry->size.x, 0.0f),
-                                     basis.scale*make_vec2(0.0f, entry->size.y),
-                                     entry->color, entry->bitmap, 0, 0, 0, 0, pixels_to_meters);
-#else                    
                     draw_rect_quickly(output_target, basis.point,
                                       basis.scale*make_vec2(entry->size.x, 0.0f),
                                       basis.scale*make_vec2(0.0f, entry->size.y),
                                       entry->color, entry->bitmap, pixels_to_meters);
-#endif
 #endif
                 }
                 base_address += sizeof(*entry);
