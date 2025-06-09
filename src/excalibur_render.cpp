@@ -492,6 +492,8 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
 
     s32 texture_pitch = texture->pitch;
     void *texture_memory = texture->memory;
+
+    __m128i texture_pitch_4x = _mm_set1_epi32(texture->pitch);
     
     BEGIN_TIMED_BLOCK(process_pixel);
     
@@ -576,36 +578,46 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
                 __m128 fx = _mm_sub_ps(tx, _mm_cvtepi32_ps(fetch_x_4x));
                 __m128 fy = _mm_sub_ps(ty, _mm_cvtepi32_ps(fetch_y_4x));
             
-                __m128i sample_a;
-                __m128i sample_b;
-                __m128i sample_c;
-                __m128i sample_d;
-
 #if COUNT_CYCLES
-                sample_a = 0;
-                sample_b = 0;
-                sample_c = 0;
-                sample_d = 0;
+                __m128i sample_a = 0;
+                __m128i sample_b = 0;
+                __m128i sample_c = 0;
+                __m128i sample_d = 0;
 #else
-                for (s32 pixel_index = 0;
-                     pixel_index < 4;
-                     ++pixel_index) {
-                    s32 fetch_x = mi(fetch_x_4x, pixel_index);
-                    s32 fetch_y = mi(fetch_y_4x, pixel_index);
 
-                    assert((fetch_x >= 0) && (fetch_x < texture->width));
-                    assert((fetch_y >= 0) && (fetch_y < texture->height));
+                fetch_x_4x = _mm_slli_epi32(fetch_x_4x, 2);
+                fetch_y_4x = _mm_mullo_epi32(fetch_y_4x, texture_pitch_4x);
+                __m128i fetch_4x = _mm_add_epi32(fetch_x_4x, fetch_y_4x);
 
-                    // NOTE(xkazu0x): Load sample
-                    u8 *sample_texel_ptr = ((u8 *)texture_memory) + fetch_y*texture_pitch + fetch_x*BITMAP_BYTES_PER_PIXEL;
-                    mi(sample_a, pixel_index) = *(u32 *)(sample_texel_ptr);
-                    mi(sample_b, pixel_index) = *(u32 *)(sample_texel_ptr + BITMAP_BYTES_PER_PIXEL);
-                    mi(sample_c, pixel_index) = *(u32 *)(sample_texel_ptr + texture_pitch);
-                    mi(sample_d, pixel_index) = *(u32 *)(sample_texel_ptr + texture_pitch + BITMAP_BYTES_PER_PIXEL);
-                }
+                u8 *texel_ptr0 = ((u8 *)texture_memory) + mi(fetch_4x, 0);
+                u8 *texel_ptr1 = ((u8 *)texture_memory) + mi(fetch_4x, 1);
+                u8 *texel_ptr2 = ((u8 *)texture_memory) + mi(fetch_4x, 2);
+                u8 *texel_ptr3 = ((u8 *)texture_memory) + mi(fetch_4x, 3);
+                
+                __m128i sample_a = _mm_setr_epi32(*(u32 *)(texel_ptr0),
+                                                  *(u32 *)(texel_ptr1),
+                                                  *(u32 *)(texel_ptr2),
+                                                  *(u32 *)(texel_ptr3));
+                
+                __m128i sample_b = _mm_setr_epi32(*(u32 *)(texel_ptr0 + BITMAP_BYTES_PER_PIXEL),
+                                                  *(u32 *)(texel_ptr1 + BITMAP_BYTES_PER_PIXEL),
+                                                  *(u32 *)(texel_ptr2 + BITMAP_BYTES_PER_PIXEL),
+                                                  *(u32 *)(texel_ptr3 + BITMAP_BYTES_PER_PIXEL));
+
+                __m128i sample_c = _mm_setr_epi32(*(u32 *)(texel_ptr0 + texture_pitch),
+                                                  *(u32 *)(texel_ptr1 + texture_pitch),
+                                                  *(u32 *)(texel_ptr2 + texture_pitch),
+                                                  *(u32 *)(texel_ptr3 + texture_pitch));
+
+                __m128i sample_d = _mm_setr_epi32(*(u32 *)(texel_ptr0 + texture_pitch + BITMAP_BYTES_PER_PIXEL),
+                                                  *(u32 *)(texel_ptr1 + texture_pitch + BITMAP_BYTES_PER_PIXEL),
+                                                  *(u32 *)(texel_ptr2 + texture_pitch + BITMAP_BYTES_PER_PIXEL),
+                                                  *(u32 *)(texel_ptr3 + texture_pitch + BITMAP_BYTES_PER_PIXEL));
+                
 #endif
+                
+#if 1
                 // NOTE(xkazu0x): Unpack bilinear samples
-#if 0
                 __m128i texel_a_rb = _mm_and_si128(sample_a, mask_ff00ff);
                 __m128i texel_a_ag = _mm_and_si128(_mm_srli_epi32(sample_a, 8), mask_ff00ff);
                 texel_a_rb = _mm_mullo_epi16(texel_a_rb, texel_a_rb);
@@ -629,7 +641,25 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
                 texel_d_rb = _mm_mullo_epi16(texel_d_rb, texel_d_rb);
                 __m128 texel_d_a = _mm_cvtepi32_ps(_mm_srli_epi32(texel_d_ag, 16));
                 texel_d_ag = _mm_mullo_epi16(texel_d_ag, texel_d_ag);
+
+                // NOTE(xkazu0x): convert texture from 0-255 sRGB to "linear" 0-1 brightness space
+                __m128 texel_a_r = _mm_cvtepi32_ps(_mm_srli_epi32(texel_a_rb, 16));
+                __m128 texel_a_g = _mm_cvtepi32_ps(_mm_and_si128(texel_a_ag, mask_ffff));
+                __m128 texel_a_b = _mm_cvtepi32_ps(_mm_and_si128(texel_a_rb, mask_ffff));
+
+                __m128 texel_b_r = _mm_cvtepi32_ps(_mm_srli_epi32(texel_b_rb, 16));
+                __m128 texel_b_g = _mm_cvtepi32_ps(_mm_and_si128(texel_b_ag, mask_ffff));
+                __m128 texel_b_b = _mm_cvtepi32_ps(_mm_and_si128(texel_b_rb, mask_ffff));
+                
+                __m128 texel_c_r = _mm_cvtepi32_ps(_mm_srli_epi32(texel_c_rb, 16));
+                __m128 texel_c_g = _mm_cvtepi32_ps(_mm_and_si128(texel_c_ag, mask_ffff));
+                __m128 texel_c_b = _mm_cvtepi32_ps(_mm_and_si128(texel_c_rb, mask_ffff));
+                
+                __m128 texel_d_r = _mm_cvtepi32_ps(_mm_srli_epi32(texel_d_rb, 16));
+                __m128 texel_d_g = _mm_cvtepi32_ps(_mm_and_si128(texel_d_ag, mask_ffff));
+                __m128 texel_d_b = _mm_cvtepi32_ps(_mm_and_si128(texel_d_rb, mask_ffff));
 #else
+                // NOTE(xkazu0x): Unpack bilinear samples
                 __m128 texel_a_b = _mm_cvtepi32_ps(_mm_and_si128(sample_a, mask_ff));
                 __m128 texel_a_g = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sample_a, 8), mask_ff));
                 __m128 texel_a_r = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sample_a, 16), mask_ff));
@@ -649,32 +679,8 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
                 __m128 texel_d_g = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sample_d, 8), mask_ff));
                 __m128 texel_d_r = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sample_d, 16), mask_ff));
                 __m128 texel_d_a = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sample_d, 24), mask_ff));
-#endif
                 
-                // NOTE(xkazu0x): Load destination            
-                __m128 dest_b = _mm_cvtepi32_ps(_mm_and_si128(original_dest, mask_ff));
-                __m128 dest_g = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(original_dest, 8), mask_ff));
-                __m128 dest_r = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(original_dest, 16), mask_ff));
-                __m128 dest_a = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(original_dest, 24), mask_ff));
-                    
-                // NOTE(xkazu0x): convert texture from 0-255 sRGB to "linear" 0-1 brightness space
-#if 0
-                __m128 texel_a_r = _mm_cvtepi32_ps(_mm_srli_epi32(texel_a_rb, 16));
-                __m128 texel_a_g = _mm_cvtepi32_ps(_mm_and_si128(texel_a_ag, mask_ffff));
-                __m128 texel_a_b = _mm_cvtepi32_ps(_mm_and_si128(texel_a_rb, mask_ffff));
-
-                __m128 texel_b_r = _mm_cvtepi32_ps(_mm_srli_epi32(texel_b_rb, 16));
-                __m128 texel_b_g = _mm_cvtepi32_ps(_mm_and_si128(texel_b_ag, mask_ffff));
-                __m128 texel_b_b = _mm_cvtepi32_ps(_mm_and_si128(texel_b_rb, mask_ffff));
-                
-                __m128 texel_c_r = _mm_cvtepi32_ps(_mm_srli_epi32(texel_c_rb, 16));
-                __m128 texel_c_g = _mm_cvtepi32_ps(_mm_and_si128(texel_c_ag, mask_ffff));
-                __m128 texel_c_b = _mm_cvtepi32_ps(_mm_and_si128(texel_c_rb, mask_ffff));
-                
-                __m128 texel_d_r = _mm_cvtepi32_ps(_mm_srli_epi32(texel_d_rb, 16));
-                __m128 texel_d_g = _mm_cvtepi32_ps(_mm_and_si128(texel_d_ag, mask_ffff));
-                __m128 texel_d_b = _mm_cvtepi32_ps(_mm_and_si128(texel_d_rb, mask_ffff));
-#else
+                // NOTE(xkazu0x): convert texture from 0-255 sRGB to "linear" 0-1 brightness space                
                 texel_a_r = mm_square(texel_a_r);
                 texel_a_g = mm_square(texel_a_g);
                 texel_a_b = mm_square(texel_a_b);
@@ -691,6 +697,12 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
                 texel_d_g = mm_square(texel_d_g);
                 texel_d_b = mm_square(texel_d_b);
 #endif
+                
+                // NOTE(xkazu0x): Load destination            
+                __m128 dest_b = _mm_cvtepi32_ps(_mm_and_si128(original_dest, mask_ff));
+                __m128 dest_g = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(original_dest, 8), mask_ff));
+                __m128 dest_r = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(original_dest, 16), mask_ff));
+                __m128 dest_a = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(original_dest, 24), mask_ff));
                 
                 // NOTE(xkazu0x): Bilinear texture blend
                 __m128 ifx = _mm_sub_ps(one_4x, fx);
