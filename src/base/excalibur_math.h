@@ -203,6 +203,81 @@ struct Rect3 {
     Vec3 max;
 };
 
+struct Rect2i {
+    s32 min_x;
+    s32 min_y;
+    s32 max_x;
+    s32 max_y;
+};
+
+internal inline Rect2i
+make_rect2i(s32 min, s32 max) {
+    Rect2i result;
+    result.min_x = min;
+    result.min_y = min;
+    result.max_x = max;
+    result.max_y = max;
+    return(result);
+}
+
+internal inline Rect2i
+make_rect2i(s32 min_x, s32 min_y, s32 max_x, s32 max_y) {
+    Rect2i result;
+    result.min_x = min_x;
+    result.min_y = min_y;
+    result.max_x = max_x;
+    result.max_y = max_y;
+    return(result);
+}
+
+internal inline Rect2i
+rect2i_intersect(Rect2i a, Rect2i b) {
+    Rect2i result;
+    result.min_x = (a.min_x < b.min_x) ? b.min_x : a.min_x;
+    result.min_y = (a.min_y < b.min_y) ? b.min_y : a.min_y;
+    result.max_x = (a.max_x > b.max_x) ? b.max_x : a.max_x;
+    result.max_y = (a.max_y > b.max_y) ? b.max_y : a.max_y;
+    return(result);
+}
+
+internal inline Rect2i
+rect2i_union(Rect2i a, Rect2i b) {
+    Rect2i result;
+    result.min_x = (a.min_x < b.min_x) ? a.min_x : b.min_x;
+    result.min_y = (a.min_y < b.min_y) ? a.min_y : b.min_y;
+    result.max_x = (a.max_x > b.max_x) ? a.max_x : b.max_x;
+    result.max_y = (a.max_y > b.max_y) ? a.max_y : b.max_y;
+    return(result);
+}
+
+internal inline s32
+get_rect2i_clamped_area(Rect2i a) {
+    s32 result = 0;
+    
+    s32 width = (a.max_x - a.min_x);
+    s32 height = (a.max_y - a.min_y);
+
+    if ((width > 0) && (height > 0)) {
+        result = width*height;
+    }
+    
+    return(result);
+}
+
+internal inline b32
+has_rect2i_area(Rect2i a) {
+    b32 result = ((a.min_x < a.max_x) && (a.min_y < a.max_y));
+    return(result);
+}
+
+internal inline Rect2i
+rect2i_inverted_infinity(void) {
+    Rect2i result;
+    result.min_x = result.min_y = s32_max;
+    result.max_x = result.max_y = -s32_max;
+    return(result);
+}
+
 ////////////////////////////////
 // NOTE(xkazu0x): Rectangle functions
 

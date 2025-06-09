@@ -7,7 +7,6 @@ struct OS_Thread {
 };
 
 #if EXCALIBUR_INTERNAL
-
 // IMPORTANT(xkazu0x): These are NOT for doing anything in the shipping game
 // they are blocking and the write doesn't protect against lost data
 
@@ -17,9 +16,9 @@ struct Debug_OS_File {
     void *data;
 };
 
-#define DEBUG_OS_FREE_FILE(x)  void x(OS_Thread *thread, void *memory)
-#define DEBUG_OS_READ_FILE(x)  Debug_OS_File x(OS_Thread *thread, char *filename)
-#define DEBUG_OS_WRITE_FILE(x) b32 x(OS_Thread *thread, char *filename, u32 memory_size, void *memory)
+# define DEBUG_OS_FREE_FILE(x)  void x(OS_Thread *thread, void *memory)
+# define DEBUG_OS_READ_FILE(x)  Debug_OS_File x(OS_Thread *thread, char *filename)
+# define DEBUG_OS_WRITE_FILE(x) b32 x(OS_Thread *thread, char *filename, u32 memory_size, void *memory)
 
 typedef DEBUG_OS_FREE_FILE(Debug_OS_Free_File);
 typedef DEBUG_OS_READ_FILE(Debug_OS_Read_File);
@@ -41,16 +40,19 @@ struct Debug_Cycle_Counter {
 };
 
 extern struct OS_Memory *debug_global_memory;
-#if COMPILER_MSVC
-# include <intrin.h> // NOTE(xkazu0x): Include intrin.h if not already included
+
+# if COMPILER_MSVC
+#  include <intrin.h>
+# elif COMPILER_CLANG || COMPILER GCC
+#  include <x86intrin.h>
+# else
+#  error SSE/NEON optimizations are not available for this compiler.
+# endif
+
 # define BEGIN_TIMED_BLOCK(id) u64 start_cycle_count_##id = __rdtsc();
 # define END_TIMED_BLOCK(id) debug_global_memory->counters[DebugCycleCounter_##id].cycle_count += __rdtsc() - start_cycle_count_##id; ++debug_global_memory->counters[DebugCycleCounter_##id].hit_count;
+// TODO(xkazu0x): Clamp END_TIMED_BLOCK_COUNTED so that if the calc is wrong, it won't overflow!
 # define END_TIMED_BLOCK_COUNTED(id, count) debug_global_memory->counters[DebugCycleCounter_##id].cycle_count += __rdtsc() - start_cycle_count_##id; debug_global_memory->counters[DebugCycleCounter_##id].hit_count += (count);
-#else
-# define BEGIN_TIMED_BLOCK(id)
-# define END_TIMED_BLOCK(id)
-#endif
-
 #endif
 
 ///////////////////////////////////////////////////////////////////////

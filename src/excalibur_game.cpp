@@ -581,7 +581,7 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
     }
 #endif
     
-    render_group_draw(render_group, output_target);
+    render_group_draw_tiled(render_group, output_target);
     end_temp_memory(&render_memory);
 }
 
@@ -997,7 +997,8 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
         }
 
         game_state->test_diffuse = make_empty_bitmap(&tran_state->arena, 256, 256, false);
-        draw_rect(&game_state->test_diffuse, make_vec2(0.0f), make_vec2((f32)game_state->test_diffuse.width, (f32)game_state->test_diffuse.height), make_vec4(0.5f, 0.5f, 0.5f, 1.0f));
+        // TODO(xkazu0x): Re-fill with gray
+        //draw_rect(&game_state->test_diffuse, make_vec2(0.0f), make_vec2((f32)game_state->test_diffuse.width, (f32)game_state->test_diffuse.height), make_vec4(0.5f, 0.5f, 0.5f, 1.0f));
         
         game_state->test_normal = make_empty_bitmap(&tran_state->arena, game_state->test_diffuse.width, game_state->test_diffuse.height, false);
         make_sphere_normal_map(&game_state->test_normal, 0.0f);
@@ -1509,7 +1510,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
 #endif
 
     // NOTE(xkazu0x): draw to screen and end simulation
-    render_group_draw(render_group, draw_buffer);
+    render_group_draw_tiled(render_group, draw_buffer);
     end_sim(sim_region, game_state);
     
     // NOTE(xkazu0x): reset and check renderer and simulation memory
