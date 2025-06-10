@@ -15,6 +15,7 @@
   > Hardware acceleration (OpenGL)
   > ChangeDisplaySettings option
 */
+global b32 quit;
 
 global Win32_State win32_state;
 
@@ -324,6 +325,47 @@ win32_window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
     return(result);
 }
 
+struct Work_Queue_Entry {
+    char *string_to_print;
+};
+
+global u32 next_entry_to_do;
+global u32 entry_count;
+Work_Queue_Entry entries[256];
+
+internal void
+push_string(char *string) {
+    assert(entry_count < array_count(entries));
+
+    // TODO(xkazu0x): These writes are not in order!
+    Work_Queue_Entry *entry = entries + entry_count++;
+    entry->string_to_print = string;
+}
+
+struct Win32_Thread_Info {
+    s32 logical_thread_index;
+};
+
+DWORD WINAPI
+thread_proc(LPVOID data) {
+    Win32_Thread_Info *thread_info = (Win32_Thread_Info *)data;
+    
+    for (;;) {
+        if (next_entry_to_do < entry_count) {
+            // TODO(xkazu0x): This line is not interlocked, so two thread could see the same value.
+            // TODO(xkazu0x): Compiler doesn't know that multiple threads could write this value.
+            s32 entry_index = next_entry_to_do++;
+
+            // TODO(xkazu0x): These reads are not in order!
+            Work_Queue_Entry *entry = entries + entry_index;
+            
+            log_info("Thread %u: %s", thread_info->logical_thread_index, entry->string_to_print);
+        }
+    }
+    
+    //return(0);
+}
+    
 // NOTE(xkazu0x): When building with WinMain, It is not possible to print in the terminal.
 // Build with the default main function if you want to print in the terminal :).
 #if 0
@@ -337,7 +379,30 @@ main(void)
     log_info("operating system: %s", string_from_operating_system(operating_system_from_context()));
     log_info("architecture: %s", string_from_architecture(architecture_from_context()));
     log_info("compiler: %s", string_from_compiler(compiler_from_context()));
+    
+    Win32_Thread_Info thread_infos[4];
+    for (s32 thread_index = 0;
+         thread_index < array_count(thread_infos);
+         ++thread_index) {
+        Win32_Thread_Info *thread_info = thread_infos + thread_index;
+        thread_info->logical_thread_index = thread_index;
+    
+        DWORD thread_id;
+        HANDLE thread_handle = CreateThread(0, 0, thread_proc, thread_info, 0, &thread_id);
+        CloseHandle(thread_handle);
+    }
 
+    push_string("String 0");
+    push_string("String 1");
+    push_string("String 2");
+    push_string("String 3");
+    push_string("String 4");
+    push_string("String 5");
+    push_string("String 6");
+    push_string("String 7");
+    push_string("String 8");
+    push_string("String 9");
+    
     ///////////////////////////
     // NOTE(xkazu0x): game load
     win32_get_exe_filename(&win32_state);
@@ -521,7 +586,6 @@ main(void)
 
     ///////////////////////////////
     // NOTE(xkazu0x): engine state
-    b32 quit = false;
     b32 pause = false;
     
     while (!quit) {
