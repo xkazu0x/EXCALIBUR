@@ -329,37 +329,50 @@ struct Work_Queue_Entry {
     char *string_to_print;
 };
 
-global u32 next_entry_to_do;
-global u32 entry_count;
+global u32 volatile entry_completion_count;
+global u32 volatile next_entry_to_do;
+global u32 volatile entry_count;
 Work_Queue_Entry entries[256];
 
+// TODO(xkazu0x): Double-check the write ordering stuff on the CPU
+#define complete_past_write_before_future_write _WriteBarrier(); _mm_sfence()
+#define complete_past_read_before_future_read _ReadBarrier()
+
 internal void
-push_string(char *string) {
+push_string(HANDLE semaphore_handle, char *string) {
     assert(entry_count < array_count(entries));
 
-    // TODO(xkazu0x): These writes are not in order!
-    Work_Queue_Entry *entry = entries + entry_count++;
+    Work_Queue_Entry *entry = entries + entry_count;
     entry->string_to_print = string;
+    
+    complete_past_write_before_future_write;
+    
+    ++entry_count;
+
+    ReleaseSemaphore(semaphore_handle, 1, 0);
 }
 
 struct Win32_Thread_Info {
+    HANDLE semaphore_handle;
     s32 logical_thread_index;
 };
 
 DWORD WINAPI
 thread_proc(LPVOID data) {
     Win32_Thread_Info *thread_info = (Win32_Thread_Info *)data;
-    
+
     for (;;) {
         if (next_entry_to_do < entry_count) {
-            // TODO(xkazu0x): This line is not interlocked, so two thread could see the same value.
-            // TODO(xkazu0x): Compiler doesn't know that multiple threads could write this value.
-            s32 entry_index = next_entry_to_do++;
-
-            // TODO(xkazu0x): These reads are not in order!
-            Work_Queue_Entry *entry = entries + entry_index;
+            s32 entry_index = InterlockedIncrement((LONG volatile *)&next_entry_to_do) - 1;
             
+            complete_past_read_before_future_read;
+            
+            Work_Queue_Entry *entry = entries + entry_index;
             log_info("Thread %u: %s", thread_info->logical_thread_index, entry->string_to_print);
+
+            InterlockedIncrement((LONG volatile *)&entry_completion_count);
+        } else {
+            WaitForSingleObjectEx(thread_info->semaphore_handle, INFINITE, FALSE);
         }
     }
     
@@ -379,12 +392,19 @@ main(void)
     log_info("operating system: %s", string_from_operating_system(operating_system_from_context()));
     log_info("architecture: %s", string_from_architecture(architecture_from_context()));
     log_info("compiler: %s", string_from_compiler(compiler_from_context()));
-    
+
     Win32_Thread_Info thread_infos[4];
-    for (s32 thread_index = 0;
-         thread_index < array_count(thread_infos);
+
+    u32 initial_count = 0;
+    u32 thread_count = array_count(thread_infos);
+    
+    HANDLE semaphore_handle = CreateSemaphoreEx(0, initial_count, thread_count, 0, 0, SEMAPHORE_ALL_ACCESS);
+    
+    for (u32 thread_index = 0;
+         thread_index < thread_count;
          ++thread_index) {
         Win32_Thread_Info *thread_info = thread_infos + thread_index;
+        thread_info->semaphore_handle = semaphore_handle;
         thread_info->logical_thread_index = thread_index;
     
         DWORD thread_id;
@@ -392,16 +412,31 @@ main(void)
         CloseHandle(thread_handle);
     }
 
-    push_string("String 0");
-    push_string("String 1");
-    push_string("String 2");
-    push_string("String 3");
-    push_string("String 4");
-    push_string("String 5");
-    push_string("String 6");
-    push_string("String 7");
-    push_string("String 8");
-    push_string("String 9");
+    push_string(semaphore_handle, "String A0");
+    push_string(semaphore_handle, "String A1");
+    push_string(semaphore_handle, "String A2");
+    push_string(semaphore_handle, "String A3");
+    push_string(semaphore_handle, "String A4");
+    push_string(semaphore_handle, "String A5");
+    push_string(semaphore_handle, "String A6");
+    push_string(semaphore_handle, "String A7");
+    push_string(semaphore_handle, "String A8");
+    push_string(semaphore_handle, "String A9");
+
+    Sleep(5000);
+
+    push_string(semaphore_handle, "String B0");
+    push_string(semaphore_handle, "String B1");
+    push_string(semaphore_handle, "String B2");
+    push_string(semaphore_handle, "String B3");
+    push_string(semaphore_handle, "String B4");
+    push_string(semaphore_handle, "String B5");
+    push_string(semaphore_handle, "String B6");
+    push_string(semaphore_handle, "String B7");
+    push_string(semaphore_handle, "String B8");
+    push_string(semaphore_handle, "String B9");
+    
+    while (entry_count != entry_completion_count);
     
     ///////////////////////////
     // NOTE(xkazu0x): game load
