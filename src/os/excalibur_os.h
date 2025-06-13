@@ -221,9 +221,12 @@ struct OS_Memory {
     
     u64 permanent_storage_size;
     u64 transient_storage_size;
-    
-    void *permanent_storage; // NOTE(xkazu0x): required to be cleared to zero at startup
-    void *transient_storage; // NOTE(xkazu0x): required to be cleared to zero at startup
+
+    // NOTE(xkazu0x): required to be cleared to zero at startup
+    // {
+    void *permanent_storage;
+    void *transient_storage;
+    // }
 
 #if EXCALIBUR_INTERNAL
     Debug_OS_Free_File *debug_os_free_file;

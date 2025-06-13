@@ -325,60 +325,93 @@ win32_window_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
     return(result);
 }
 
-struct Work_Queue_Entry {
-    char *string_to_print;
+struct Work_Queue_Entry_Storage {
+    void *user_ptr;
 };
 
-global u32 volatile entry_completion_count;
-global u32 volatile next_entry_to_do;
-global u32 volatile entry_count;
-Work_Queue_Entry entries[256];
+struct Work_Queue {
+    HANDLE semaphore_handle;
+    
+    u32 volatile entry_completion_count;
+    u32 volatile next_entry_to_do;
+    u32 volatile entry_count;
+    
+    Work_Queue_Entry_Storage entries[256];
+};
 
-// TODO(xkazu0x): Double-check the write ordering stuff on the CPU
-#define complete_past_write_before_future_write _WriteBarrier(); _mm_sfence()
-#define complete_past_read_before_future_read _ReadBarrier()
+struct Work_Queue_Entry {
+    void *data;
+    b32 is_valid;
+};
 
 internal void
-push_string(HANDLE semaphore_handle, char *string) {
-    assert(entry_count < array_count(entries));
+add_work_queue_entry(Work_Queue *queue, void *ptr) {
+    assert(queue->entry_count < array_count(queue->entries));
+    queue->entries[queue->entry_count].user_ptr = ptr;
+    _WriteBarrier();
+    _mm_sfence();
+    ++queue->entry_count;
+    ReleaseSemaphore(queue->semaphore_handle, 1, 0);
+}
 
-    Work_Queue_Entry *entry = entries + entry_count;
-    entry->string_to_print = string;
-    
-    complete_past_write_before_future_write;
-    
-    ++entry_count;
+internal Work_Queue_Entry
+complete_and_get_next_work_queue_entry(Work_Queue *queue, Work_Queue_Entry completed) {
+    Work_Queue_Entry result;
+    result.is_valid = false;
 
-    ReleaseSemaphore(semaphore_handle, 1, 0);
+    if (completed.is_valid) {
+        InterlockedIncrement((LONG volatile *)&queue->entry_completion_count);
+    }
+    
+    if (queue->next_entry_to_do < queue->entry_count) {
+        u32 entry_index = InterlockedIncrement((LONG volatile *)&queue->next_entry_to_do) - 1;
+        result.data = queue->entries[entry_index].user_ptr;
+        result.is_valid = true;
+        _ReadBarrier();
+    }
+    
+    return(result);
+}
+
+internal b32
+queue_work_still_in_progress(Work_Queue *queue) {
+    b32 result = (queue->entry_count != queue->entry_completion_count);
+    return(result);
+}
+
+internal inline void
+do_worker_work(Work_Queue_Entry entry, s32 logical_thread_index) {
+    assert(entry.is_valid);
+    log_info("Thread %u: %s", logical_thread_index, (char *)entry.data);
 }
 
 struct Win32_Thread_Info {
-    HANDLE semaphore_handle;
     s32 logical_thread_index;
+    Work_Queue *queue;
 };
 
 DWORD WINAPI
 thread_proc(LPVOID data) {
     Win32_Thread_Info *thread_info = (Win32_Thread_Info *)data;
 
+    Work_Queue_Entry entry = {};
     for (;;) {
-        if (next_entry_to_do < entry_count) {
-            s32 entry_index = InterlockedIncrement((LONG volatile *)&next_entry_to_do) - 1;
-            
-            complete_past_read_before_future_read;
-            
-            Work_Queue_Entry *entry = entries + entry_index;
-            log_info("Thread %u: %s", thread_info->logical_thread_index, entry->string_to_print);
-
-            InterlockedIncrement((LONG volatile *)&entry_completion_count);
+        entry = complete_and_get_next_work_queue_entry(thread_info->queue, entry);
+        if (entry.is_valid) {
+            do_worker_work(entry, thread_info->logical_thread_index);
         } else {
-            WaitForSingleObjectEx(thread_info->semaphore_handle, INFINITE, FALSE);
+            WaitForSingleObjectEx(thread_info->queue->semaphore_handle, INFINITE, FALSE);
         }
     }
     
     //return(0);
 }
-    
+
+internal void
+push_string(Work_Queue *queue, char *string) {
+    add_work_queue_entry(queue, string);
+}
+
 // NOTE(xkazu0x): When building with WinMain, It is not possible to print in the terminal.
 // Build with the default main function if you want to print in the terminal :).
 #if 0
@@ -392,51 +425,55 @@ main(void)
     log_info("operating system: %s", string_from_operating_system(operating_system_from_context()));
     log_info("architecture: %s", string_from_architecture(architecture_from_context()));
     log_info("compiler: %s", string_from_compiler(compiler_from_context()));
-
+    
     Win32_Thread_Info thread_infos[4];
-
+    
+    Work_Queue queue = {};
     u32 initial_count = 0;
     u32 thread_count = array_count(thread_infos);
-    
-    HANDLE semaphore_handle = CreateSemaphoreEx(0, initial_count, thread_count, 0, 0, SEMAPHORE_ALL_ACCESS);
+    queue.semaphore_handle = CreateSemaphoreEx(0, initial_count, thread_count, 0, 0, SEMAPHORE_ALL_ACCESS);
     
     for (u32 thread_index = 0;
          thread_index < thread_count;
          ++thread_index) {
         Win32_Thread_Info *thread_info = thread_infos + thread_index;
-        thread_info->semaphore_handle = semaphore_handle;
         thread_info->logical_thread_index = thread_index;
+        thread_info->queue = &queue;
     
         DWORD thread_id;
         HANDLE thread_handle = CreateThread(0, 0, thread_proc, thread_info, 0, &thread_id);
         CloseHandle(thread_handle);
     }
 
-    push_string(semaphore_handle, "String A0");
-    push_string(semaphore_handle, "String A1");
-    push_string(semaphore_handle, "String A2");
-    push_string(semaphore_handle, "String A3");
-    push_string(semaphore_handle, "String A4");
-    push_string(semaphore_handle, "String A5");
-    push_string(semaphore_handle, "String A6");
-    push_string(semaphore_handle, "String A7");
-    push_string(semaphore_handle, "String A8");
-    push_string(semaphore_handle, "String A9");
-
-    Sleep(5000);
-
-    push_string(semaphore_handle, "String B0");
-    push_string(semaphore_handle, "String B1");
-    push_string(semaphore_handle, "String B2");
-    push_string(semaphore_handle, "String B3");
-    push_string(semaphore_handle, "String B4");
-    push_string(semaphore_handle, "String B5");
-    push_string(semaphore_handle, "String B6");
-    push_string(semaphore_handle, "String B7");
-    push_string(semaphore_handle, "String B8");
-    push_string(semaphore_handle, "String B9");
+    push_string(&queue, "String A0");
+    push_string(&queue, "String A1");
+    push_string(&queue, "String A2");
+    push_string(&queue, "String A3");
+    push_string(&queue, "String A4");
+    push_string(&queue, "String A5");
+    push_string(&queue, "String A6");
+    push_string(&queue, "String A7");
+    push_string(&queue, "String A8");
+    push_string(&queue, "String A9");
     
-    while (entry_count != entry_completion_count);
+    push_string(&queue, "String B0");
+    push_string(&queue, "String B1");
+    push_string(&queue, "String B2");
+    push_string(&queue, "String B3");
+    push_string(&queue, "String B4");
+    push_string(&queue, "String B5");
+    push_string(&queue, "String B6");
+    push_string(&queue, "String B7");
+    push_string(&queue, "String B8");
+    push_string(&queue, "String B9");
+
+    Work_Queue_Entry entry = {};
+    while (queue_work_still_in_progress(&queue)) {
+        entry = complete_and_get_next_work_queue_entry(&queue, entry);
+        if (entry.is_valid) {
+            do_worker_work(entry, 4);
+        }
+    }
     
     ///////////////////////////
     // NOTE(xkazu0x): game load
