@@ -637,9 +637,8 @@ main(void)
         log_fatal("failed to allocate game memory");
         return(1);
     }
-    log_debug("memory allocated:");
-    log_trace("permanent storage size: %llu", memory.permanent_storage_size);
-    log_trace("transient storage size: %llu", memory.transient_storage_size);
+    log_debug("permanent storage size: %llu", memory.permanent_storage_size);
+    log_debug("transient storage size: %llu", memory.transient_storage_size);
     
     ////////////////////////////
     // NOTE(xkazu0x): init clock
