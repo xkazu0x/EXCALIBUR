@@ -1017,16 +1017,15 @@ struct Tile_Render_Work {
     Rect2i clip_rect;
 };
 
-internal void
-do_tiled_render_work(void *data) {
+internal
+OS_WORK_QUEUE_CALLBACK(do_tiled_render_work) {
     Tile_Render_Work *work = (Tile_Render_Work *)data;
     render_group_draw(work->render_group, work->output_target, work->clip_rect, false);
     render_group_draw(work->render_group, work->output_target, work->clip_rect, true);
 }
 
 internal void
-render_group_draw_tiled(//OS_Work_Queue *render_queue,
-                        Render_Group *render_group, Bitmap *output_target) {
+render_group_draw_tiled(OS_Work_Queue *render_queue, Render_Group *render_group, Bitmap *output_target) {
     const s32 tile_count_x = 4;
     const s32 tile_count_y = 4;
 
@@ -1055,18 +1054,11 @@ render_group_draw_tiled(//OS_Work_Queue *render_queue,
             work->output_target = output_target;
             work->clip_rect = clip_rect;
 
-            //render_queue->add_entry(render_queue, do_tiled_render_work, work);
+            os_work_queue_add_entry(render_queue, do_tiled_render_work, work);
         }
     }
 
-    //render_queue->complete_all_work(render_queue);
-
-    for (u32 work_index = 0;
-         work_index < array_count(work_array);
-         ++work_index) {
-        Tile_Render_Work *work = work_array + work_index;
-        do_tiled_render_work(work);
-    }
+    os_work_queue_complete_all_work(render_queue);
 }
 
 internal void *

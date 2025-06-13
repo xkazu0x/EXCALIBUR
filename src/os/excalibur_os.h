@@ -215,6 +215,14 @@ struct OS_Framebuffer {
     void *memory;
 };
 
+typedef struct OS_Work_Queue OS_Work_Queue;
+
+#define OS_WORK_QUEUE_CALLBACK(x) void x(OS_Work_Queue *queue, void *data)
+typedef OS_WORK_QUEUE_CALLBACK(OS_Work_Queue_Callback);
+
+typedef void OS_Work_Queue_Add_Entry(OS_Work_Queue *queue, OS_Work_Queue_Callback *callback, void *data);
+typedef void OS_Work_Queue_Complete_All_Work(OS_Work_Queue *queue);
+
 typedef struct OS_Memory OS_Memory;
 struct OS_Memory {
     b32 initialized;
@@ -228,6 +236,10 @@ struct OS_Memory {
     void *transient_storage;
     // }
 
+    OS_Work_Queue *high_priority_queue;
+    OS_Work_Queue_Add_Entry *os_work_queue_add_entry;
+    OS_Work_Queue_Complete_All_Work *os_work_queue_complete_all_work;
+    
 #if EXCALIBUR_INTERNAL
     Debug_OS_Free_File *debug_os_free_file;
     Debug_OS_Read_File *debug_os_read_file;

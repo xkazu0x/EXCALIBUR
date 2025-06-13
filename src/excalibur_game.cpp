@@ -5,6 +5,9 @@
 #include "excalibur_simulation.h"
 #include "excalibur_entity.h"
 
+global OS_Work_Queue_Add_Entry *os_work_queue_add_entry;
+global OS_Work_Queue_Complete_All_Work *os_work_queue_complete_all_work;
+
 struct Arena {
     memi reserve_size;
     memi used;
@@ -581,7 +584,7 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
     }
 #endif
     
-    render_group_draw_tiled(render_group, output_target);
+    render_group_draw_tiled(tran_state->render_queue, render_group, output_target);
     end_temp_memory(&render_memory);
 }
 
@@ -765,6 +768,9 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     // NOTE(xkazu0x): initialize game state
     //
     if (!memory->initialized) {
+        os_work_queue_add_entry = memory->os_work_queue_add_entry;
+        os_work_queue_complete_all_work = memory->os_work_queue_complete_all_work;
+        
         game_state->typical_floor_height = 3.0f;
 
         // TODO(xkazu0x): Remove this!
@@ -975,15 +981,17 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     }
 
     //
-    // NOTE(xkazu0x): initialize transient state
+    // NOTE(xkazu0x): init transient state
     //
     assert(sizeof(Transient_State) <= memory->transient_storage_size);
     Transient_State *tran_state = (Transient_State *)memory->transient_storage;
     if (!tran_state->initialized) {
         tran_state->arena = make_arena(memory->transient_storage_size - sizeof(Transient_State),
                                        (u8 *)memory->transient_storage + sizeof(Transient_State));
+
+        tran_state->render_queue = memory->high_priority_queue;
         
-        tran_state->ground_buffer_count = 64;
+        tran_state->ground_buffer_count = 256;
         tran_state->ground_buffers = push_array(&tran_state->arena,
                                                 Ground_Buffer,
                                                 tran_state->ground_buffer_count);
@@ -1510,7 +1518,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
 #endif
 
     // NOTE(xkazu0x): draw to screen and end simulation
-    render_group_draw_tiled(render_group, draw_buffer);
+    render_group_draw_tiled(tran_state->render_queue, render_group, draw_buffer);
     end_sim(sim_region, game_state);
     
     // NOTE(xkazu0x): reset and check renderer and simulation memory

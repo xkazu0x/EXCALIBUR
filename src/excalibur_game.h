@@ -94,7 +94,8 @@ struct Transient_State {
 
     u32 ground_buffer_count;
     Ground_Buffer *ground_buffers;
-
+    OS_Work_Queue *render_queue;
+    
     u32 env_map_width;
     u32 env_map_height;
     // NOTE(xkazu0x): 0 is bottom, 1 is middle, 2 is top
