@@ -5,6 +5,10 @@
 #include "excalibur_simulation.h"
 #include "excalibur_entity.h"
 
+#if EXCALIBUR_INTERNAL
+OS_Memory *debug_global_memory;
+#endif
+
 global OS_Work_Queue_Add_Entry *os_work_queue_add_entry;
 global OS_Work_Queue_Complete_All_Work *os_work_queue_complete_all_work;
 
@@ -740,15 +744,13 @@ make_pyramid_normal_map(Bitmap *bitmap, f32 roughness) {
     }
 }
 
-#if EXCALIBUR_INTERNAL
-OS_Memory *debug_global_memory;
-#endif
-
 shared_function
 GAME_UPDATE_AND_RENDER(game_update_and_render) {
 #if EXCALIBUR_INTERNAL
     debug_global_memory = memory;
 #endif
+    os_work_queue_add_entry = memory->os_work_queue_add_entry;
+    os_work_queue_complete_all_work = memory->os_work_queue_complete_all_work;
 
     BEGIN_TIMED_BLOCK(game_update_and_render);
 
@@ -767,10 +769,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     //
     // NOTE(xkazu0x): initialize game state
     //
-    if (!memory->initialized) {
-        os_work_queue_add_entry = memory->os_work_queue_add_entry;
-        os_work_queue_complete_all_work = memory->os_work_queue_complete_all_work;
-        
+    if (!memory->initialized) {        
         game_state->typical_floor_height = 3.0f;
 
         // TODO(xkazu0x): Remove this!

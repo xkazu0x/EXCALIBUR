@@ -425,21 +425,33 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
     if (!even == (fill_rect.min_y & 1)) fill_rect.min_y += 1;
 
     if (has_rect2i_area(fill_rect)) {
-        __m128i startup_clip_mask = _mm_set1_epi8(-1);
-        s32 fill_width = fill_rect.max_x - fill_rect.min_x;
-        s32 fill_width_align = fill_width & 3;
-        if (fill_width_align > 0) {
-            s32 adjustment = (4 - fill_width_align);
-            // TODO(xkazu0x): This is stupid.
-            switch (adjustment) {
-                case 1: { startup_clip_mask =_mm_slli_si128(startup_clip_mask, 1*4); } break;
-                case 2: { startup_clip_mask =_mm_slli_si128(startup_clip_mask, 2*4); } break;
-                case 3: { startup_clip_mask =_mm_slli_si128(startup_clip_mask, 3*4); } break;
-            }
-            fill_width += adjustment;
-            fill_rect.min_x = fill_rect.max_x - fill_width;
+        __m128i start_clip_mask = _mm_set1_epi8(-1);
+        __m128i end_clip_mask = _mm_set1_epi8(-1);
+
+        __m128i start_clip_masks[] = {
+            _mm_slli_si128(start_clip_mask, 0*4),
+            _mm_slli_si128(start_clip_mask, 1*4),
+            _mm_slli_si128(start_clip_mask, 2*4),
+            _mm_slli_si128(start_clip_mask, 3*4),
+        };
+        
+        __m128i end_clip_masks[] = {
+            _mm_srli_si128(end_clip_mask, 0*4),
+            _mm_srli_si128(end_clip_mask, 3*4),
+            _mm_srli_si128(end_clip_mask, 2*4),
+            _mm_srli_si128(end_clip_mask, 1*4),
+        };
+        
+        if (fill_rect.min_x & 3) {
+            start_clip_mask = start_clip_masks[fill_rect.min_x & 3];
+            fill_rect.min_x = fill_rect.min_x & ~3;
         }
-    
+
+        if (fill_rect.max_x & 3) {
+            end_clip_mask = end_clip_masks[fill_rect.max_x & 3];
+            fill_rect.max_x = (fill_rect.max_x & ~3) + 4;
+        }
+            
         Vec2 n_x_axis = inv_x_axis_length_squared*x_axis;
         Vec2 n_y_axis = inv_y_axis_length_squared*y_axis;
 
@@ -500,7 +512,7 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
                                                    (f32)(min_x + 0)),
                                         origin_x_4x);
 
-            __m128i clip_mask = startup_clip_mask;
+            __m128i clip_mask = start_clip_mask;
         
             u32 *pixel = (u32 *)row;
             for (s32 x = min_x;
@@ -522,7 +534,7 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
                 // TODO(xkazu0x): Later, re-check if this helps
                 // if (_mm_movemask_epi8(write_mask))
                 {
-                    __m128i original_dest = _mm_loadu_si128((__m128i *)pixel);
+                    __m128i original_dest = _mm_load_si128((__m128i *)pixel);
             
                     u = _mm_min_ps(_mm_max_ps(u, zero_4x), one_4x);
                     v = _mm_min_ps(_mm_max_ps(v, zero_4x), one_4x);
@@ -733,12 +745,16 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
                     __m128i masked_out = _mm_or_si128(_mm_and_si128(write_mask, out),
                                                       _mm_andnot_si128(write_mask, original_dest));
                 
-                    _mm_storeu_si128((__m128i *)pixel, masked_out);
+                    _mm_store_si128((__m128i *)pixel, masked_out);
                 }
                 pixel_x = _mm_add_ps(pixel_x, four_4x);
                 pixel += 4;
 
-                clip_mask = _mm_set1_epi8(-1);
+                if ((x + 8) < max_x) {
+                    clip_mask = _mm_set1_epi8(-1);
+                } else {
+                    clip_mask = end_clip_mask;
+                }
             }
             row += row_advance;
         }
@@ -1030,11 +1046,14 @@ render_group_draw_tiled(OS_Work_Queue *render_queue, Render_Group *render_group,
     const s32 tile_count_y = 4;
 
     Tile_Render_Work work_array[tile_count_x*tile_count_y];
+    u32 work_count = 0;
+    
+    assert((((uintptr_t)output_target->memory) & 15) == 0);
     
     s32 tile_width = output_target->width/tile_count_x;
     s32 tile_height = output_target->height/tile_count_y;
 
-    u32 work_count = 0;
+    tile_width = ((tile_width + 3)/4)*4;
     
     for (s32 tile_y = 0;
          tile_y < tile_count_y;
@@ -1045,11 +1064,19 @@ render_group_draw_tiled(OS_Work_Queue *render_queue, Render_Group *render_group,
             Tile_Render_Work *work = work_array + work_count++;
             
             Rect2i clip_rect;
-            clip_rect.min_x = tile_x*tile_width + 4;
-            clip_rect.min_y = tile_y*tile_height + 4;
-            clip_rect.max_x = clip_rect.min_x + tile_width - 4;
-            clip_rect.max_y = clip_rect.min_y + tile_height - 4;
+            clip_rect.min_x = tile_x*tile_width;
+            clip_rect.min_y = tile_y*tile_height;
+            clip_rect.max_x = clip_rect.min_x + tile_width;
+            clip_rect.max_y = clip_rect.min_y + tile_height;
 
+            if (tile_x < (tile_count_x - 1)) {
+                clip_rect.max_x = output_target->width;
+            }
+            
+            if (tile_y < (tile_count_y - 1)) {
+                clip_rect.max_y = output_target->height;
+            }
+            
             work->render_group = render_group;
             work->output_target = output_target;
             work->clip_rect = clip_rect;

@@ -236,6 +236,8 @@ win32_get_window_size(HWND window) {
     return(result);
 }
 
+#define align16(x) ((x + 15) & ~15)
+
 internal void
 win32_resize_framebuffer(OS_Framebuffer *framebuffer, s32 width, s32 height) {
     if (framebuffer->memory) {
@@ -244,7 +246,7 @@ win32_resize_framebuffer(OS_Framebuffer *framebuffer, s32 width, s32 height) {
 
     framebuffer->width = width;
     framebuffer->height = height;
-    framebuffer->pitch = framebuffer->width*BYTES_PER_PIXEL;
+    framebuffer->pitch = align16(framebuffer->width*BYTES_PER_PIXEL);
     
     win32_state.bitmap_info.bmiHeader.biSize = sizeof(win32_state.bitmap_info.bmiHeader);
     win32_state.bitmap_info.bmiHeader.biWidth = framebuffer->width;
@@ -253,15 +255,12 @@ win32_resize_framebuffer(OS_Framebuffer *framebuffer, s32 width, s32 height) {
     win32_state.bitmap_info.bmiHeader.biBitCount = 8*BYTES_PER_PIXEL;
     win32_state.bitmap_info.bmiHeader.biCompression = BI_RGB;
 
-    s32 framebuffer_memory_size = (framebuffer->width*framebuffer->height)*BYTES_PER_PIXEL;
+    s32 framebuffer_memory_size = (framebuffer->pitch*framebuffer->height);
     framebuffer->memory = VirtualAlloc(0, framebuffer_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 }
 
 internal void
 win32_display_framebuffer(OS_Framebuffer framebuffer, HWND window_handle, s32 window_width, s32 window_height) {
-    //s32 display_width = ((f32)framebuffer.width/(f32)framebuffer.height)*window_height;
-    //s32 display_height = window_height;
-    
     s32 display_width = framebuffer.width;
     s32 display_height = framebuffer.height;
 
@@ -354,7 +353,6 @@ win32_work_queue_add_entry(OS_Work_Queue *queue, OS_Work_Queue_Callback *callbac
     ++queue->completion_goal;
     
     _WriteBarrier();
-    _mm_sfence();
     
     queue->next_entry_to_write = new_next_entry_to_write;
     
@@ -509,6 +507,8 @@ main(void)
     OS_Framebuffer framebuffer = {};
     //win32_resize_framebuffer(&framebuffer, 320, 180);
     win32_resize_framebuffer(&framebuffer, 960, 540);
+    //win32_resize_framebuffer(&framebuffer, 1920, 1080);
+    //win32_resize_framebuffer(&framebuffer, 1279, 719);
     log_info("framebuffer size: %dx%d", framebuffer.width, framebuffer.height);
     
     /////////////////////////////
