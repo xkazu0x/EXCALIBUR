@@ -39,15 +39,6 @@ struct Environment_Map {
     f32 pos_z;
 };
 
-struct Render_Basis {
-    Vec3 pos;
-};
-
-struct Render_Entity_Basis {
-    Render_Basis *basis;
-    Vec3 offset;
-};
-
 enum Render_Entry_Type {
     RenderEntryType_Render_Entry_Clear,
     RenderEntryType_Render_Entry_Rect,
@@ -64,14 +55,14 @@ struct Render_Entry_Clear {
 };
 
 struct Render_Entry_Rect {
-    Render_Entity_Basis entity_basis;
-    Vec2 dim;
+    Vec2 pos;
+    Vec2 size;
     Vec4 color;
 };
 
 struct Render_Entry_Bitmap {
-    Render_Entity_Basis entity_basis;
     Bitmap *bitmap;
+    Vec2 pos;
     Vec2 size;
     Vec4 color;
 };
@@ -79,6 +70,8 @@ struct Render_Entry_Bitmap {
 // NOTE(xkazu0x): This is only for test
 // {
 struct Render_Entry_Coordinate_System {
+    f32 pixels_to_meters; // TODO(xkazu0x): Need to store this for lighting!
+    
     Vec2 origin;
     Vec2 x_axis;
     Vec2 y_axis;
@@ -91,23 +84,24 @@ struct Render_Entry_Coordinate_System {
 };
 // }
 
-struct Render_Camera {
+struct Render_Transform {
+    f32 meters_to_pixels; // NOTE(xkazu0x): This translates meters _on the monitor_ into pixels _on the monitor_
+    Vec2 screen_center;
+    
     // NOTE(xkazu0x): Camera parameters
     f32 focal_length;
     f32 distance_above_target;
     f32 near_clip_plane;
+
+    Vec3 offset;
+    f32 scale;
 };
 
 struct Render_Group {
-    Render_Camera game_camera;
-    Render_Camera render_camera;
-    
-    f32 meters_to_pixels; // NOTE(xkazu0x): This translates meters _on the monitor_ into pixels _on the monitor_
-    Vec2 monitor_half_dim_in_meters;
-    
     f32 global_alpha;
-    
-    Render_Basis *default_basis;
+        
+    Vec2 monitor_half_dim_in_meters;    
+    Render_Transform transform;
     
     u32 max_push_buffer_size;
     u32 push_buffer_size;
@@ -124,8 +118,8 @@ internal void *render_push_(Render_Group *group, u32 size, Render_Entry_Type typ
 #define render_push(group, type) (type *)render_push_(group, sizeof(type), RenderEntryType_##type)
 
 internal void render_clear(Render_Group *group, Vec4 color);
-internal void render_rect(Render_Group *group, Vec3 offset, Vec2 dim, Vec4 color = make_vec4(1.0f));
-internal void render_rect_outline(Render_Group *group, Vec3 offset, Vec2 dim, Vec4 color = make_vec4(1.0f));
+internal void render_rect(Render_Group *group, Vec3 offset, Vec2 size, Vec4 color = make_vec4(1.0f));
+internal void render_rect_outline(Render_Group *group, Vec3 offset, Vec2 size, Vec4 color = make_vec4(1.0f));
 internal void render_bitmap(Render_Group *group, Bitmap *bitmap, Vec3 offset, f32 height, Vec4 color = make_vec4(1.0f));
 
 #endif // EXCALIBUR_RENDER_H
