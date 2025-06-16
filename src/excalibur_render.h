@@ -85,6 +85,8 @@ struct Render_Entry_Coordinate_System {
 // }
 
 struct Render_Transform {
+    b32 orthographic;
+    
     f32 meters_to_pixels; // NOTE(xkazu0x): This translates meters _on the monitor_ into pixels _on the monitor_
     Vec2 screen_center;
     
@@ -111,12 +113,14 @@ struct Render_Group {
 ////////////////////////////////
 // NOTE(xkazu0x): Renderer API
 
-internal Render_Group *render_group_alloc(Arena *arena, u32 max_push_buffer_size, u32 resolution_pixels_x, u32 resolution_pixels_y);
+internal Render_Group *render_group_alloc(Arena *arena, u32 max_push_buffer_size);
 internal void render_group_draw(Render_Group *group, Bitmap *output_target);
+
+internal void render_perspective(Render_Group *render_group, s32 pixel_width, s32 pixel_height, f32 meters_to_pixels, f32 focal_length, f32 distance_above_target);
+internal void render_orthographic(Render_Group *render_group, s32 pixel_width, s32 pixel_height, f32 meters_to_pixels);
 
 internal void *render_push_(Render_Group *group, u32 size, Render_Entry_Type type);
 #define render_push(group, type) (type *)render_push_(group, sizeof(type), RenderEntryType_##type)
-
 internal void render_clear(Render_Group *group, Vec4 color);
 internal void render_rect(Render_Group *group, Vec3 offset, Vec2 size, Vec4 color = make_vec4(1.0f));
 internal void render_rect_outline(Render_Group *group, Vec3 offset, Vec2 size, Vec4 color = make_vec4(1.0f));

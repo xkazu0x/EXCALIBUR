@@ -502,25 +502,24 @@ make_null_collision(Game_State *game_state) {
 
 internal void
 fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Buffer *ground_buffer, World_Position *position) {
-    Temp_Memory render_memory = begin_temp_memory(&tran_state->arena);
+    ground_buffer->position = *position;
 
-    // TODO(xkazu0x): Need to be able to set a orthographic display mode!!!
     Bitmap *output_target = &ground_buffer->bitmap;
     output_target->align_percentage = make_vec2(0.5f);
     output_target->width_over_height = 1.0f;
-    
-    Render_Group *render_group = render_group_alloc(&tran_state->arena, MB(4), output_target->width, output_target->height);
 
-    render_clear(render_group, make_vec4(1.0f, 0.0f, 1.0f, 1.0f));
-    
-    ground_buffer->position = *position;
-    
-#if 1
     f32 width = game_state->world->chunk_dim_in_meters.x;
     f32 height = game_state->world->chunk_dim_in_meters.y;
+    assert(width == height);
+    
     Vec2 half_dim = 0.5f*make_vec2(width, height);
-
-    half_dim = 1.5f*half_dim;
+    //half_dim *= 0.5f;
+    
+    Temp_Memory render_memory = begin_temp_memory(&tran_state->arena);
+    // TODO(xkazu0x): Decide what the push_buffer size is!
+    Render_Group *render_group = render_group_alloc(&tran_state->arena, MB(4));
+    render_orthographic(render_group, output_target->width, output_target->height, output_target->width / width);
+    render_clear(render_group, make_vec4(1.0f, 0.0f, 1.0f, 1.0f));
     
     for (s32 chunk_offset_y = -1;
          chunk_offset_y <= 1;
@@ -536,9 +535,13 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
             random_series_t series = random_seed(464*chunk_x + 132*chunk_y + 235*chunk_z);
             Vec2 chunk_center = make_vec2(chunk_offset_x*width, chunk_offset_y*height);
 
-            // TODO(xkazu0x): optimize to draw ground index
+            Vec4 color = make_vec4(1.0f, 0.0f, 0.0f, 1.0f);
+            if ((chunk_x % 2) == (chunk_y % 2)) {
+                color = make_vec4(0.0f, 0.0f, 1.0f, 1.0f);
+            }
+            
             for (u32 ground_index = 0;
-                 ground_index < 32;
+                 ground_index < 100;
                  ++ground_index) {
                 Bitmap *sprite;
                 if (random_choice(&series, 2)) {
@@ -547,10 +550,10 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
                     sprite = game_state->stone_sprites + random_choice(&series, array_count(game_state->stone_sprites));
                 }
 
-                Vec2 output_offset = hadamard_product(half_dim, make_vec2(random_bilateral(&series), random_bilateral(&series)));
-                Vec2 sprite_offset = chunk_center + output_offset;
+                Vec2 random_offset = hadamard_product(half_dim, make_vec2(random_bilateral(&series), random_bilateral(&series)));
+                Vec2 sprite_offset = chunk_center + random_offset;
         
-                render_bitmap(render_group, sprite, make_vec3(sprite_offset, 0.0f), 5.0f);
+                render_bitmap(render_group, sprite, make_vec3(sprite_offset, 0.0f), 1.4f, color);
             }
         }
     }
@@ -579,14 +582,13 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
                     sprite = game_state->tuft_sprites + random_choice(&series, array_count(game_state->tuft_sprites));
                 }
         
-                Vec2 output_offset = hadamard_product(half_dim, make_vec2(random_bilateral(&series), random_bilateral(&series)));
-                Vec2 sprite_offset = chunk_center + output_offset;
+                Vec2 random_offset = hadamard_product(half_dim, make_vec2(random_bilateral(&series), random_bilateral(&series)));
+                Vec2 sprite_offset = chunk_center + random_offset;
         
-                render_bitmap(render_group, sprite, make_vec3(sprite_offset, 0.0f), 5.0f);
+                render_bitmap(render_group, sprite, make_vec3(sprite_offset, 0.0f), 1.4f);
             }
         }
     }
-#endif
     
     render_group_draw_tiled(tran_state->render_queue, render_group, output_target);
     end_temp_memory(&render_memory);
@@ -1084,9 +1086,8 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
         }
     }
 
-    //
-    // NOTE(xkazu0x): Update and Render
-    //
+    ////////////////////////////////
+    // NOTE(xkazu0x): update and render
     Bitmap _draw_buffer = {};
     Bitmap *draw_buffer = &_draw_buffer;
     draw_buffer->width  = framebuffer->width;
@@ -1094,11 +1095,15 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     draw_buffer->pitch  = framebuffer->pitch;
     draw_buffer->memory = framebuffer->memory;
     
-    // NOTE(xkazu0x): initialize renderer memory
+    // NOTE(xkazu0x): init renderer memory
     Temp_Memory render_memory = begin_temp_memory(&tran_state->arena);
     // TODO(xkazu0x): Decide what out push buffer size is!
-    Render_Group *render_group = render_group_alloc(&tran_state->arena, MB(4), draw_buffer->width, draw_buffer->height);
+    Render_Group *render_group = render_group_alloc(&tran_state->arena, MB(4));
+    
+    f32 width_of_monitor = 0.635f; // NOTE(xkazu0x): Horizontal measurement of monitor in meters
+    f32 meters_to_pixels = ((f32)draw_buffer->width)*width_of_monitor;
 
+    render_perspective(render_group, draw_buffer->width, draw_buffer->height, meters_to_pixels, 0.6f, 9.0f);
     render_clear(render_group, make_vec4(0.2f, 0.3f, 0.3f, 1.0f));
 
 #if 0

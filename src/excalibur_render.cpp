@@ -862,33 +862,48 @@ draw_bitmap(Bitmap *buffer, Bitmap *bitmap, Vec2 offset, f32 c_alpha) {
 }
 
 internal Render_Group *
-render_group_alloc(Arena *arena, u32 max_push_buffer_size, u32 resolution_pixels_x, u32 resolution_pixels_y) {
+render_group_alloc(Arena *arena, u32 max_push_buffer_size) {
     Render_Group *result = push_struct(arena, Render_Group);
-    
     result->max_push_buffer_size = max_push_buffer_size;
     result->push_buffer_size = 0;
     result->push_buffer_base = (u8 *)push_size(arena, max_push_buffer_size);
-
-    // TODO(xkazu0x): Need to adjust this based on the buffer size
-    f32 width_of_monitor = 0.635f; // NOTE(xkazu0x): Horizontal measurement of monitor in meters
-    f32 meters_to_pixels = ((f32)resolution_pixels_x)*width_of_monitor;
-    f32 pixels_to_meters = safe_ratio1(1.0f, meters_to_pixels);
     
-    result->transform.meters_to_pixels = meters_to_pixels;
-    result->transform.screen_center = 0.5f*make_vec2((f32)resolution_pixels_x, (f32)resolution_pixels_y);
-    
-    result->transform.focal_length = 0.6f; // NOTE(xkazu0x): Meters the person is sitting from the monitor
-    result->transform.distance_above_target = 9.0f;
-    result->transform.near_clip_plane = 0.2f;
+    result->global_alpha = 1.0f;
 
     result->transform.offset = make_vec3(0.0f);
     result->transform.scale = 1.0f;
 
-    result->monitor_half_dim_in_meters = 0.5f*make_vec2(resolution_pixels_x*pixels_to_meters,
-                                                        resolution_pixels_y*pixels_to_meters);
-    result->global_alpha = 1.0f;
-
     return(result);
+}
+
+internal void
+render_perspective(Render_Group *render_group, s32 pixel_width, s32 pixel_height, f32 meters_to_pixels, f32 focal_length, f32 distance_above_target) {
+    // TODO(xkazu0x): Need to adjust this based on the buffer size
+    f32 pixels_to_meters = safe_ratio1(1.0f, meters_to_pixels);
+    render_group->monitor_half_dim_in_meters = 0.5f*make_vec2((f32)pixel_width, (f32)pixel_height)*pixels_to_meters;
+
+    render_group->transform.meters_to_pixels = meters_to_pixels;
+    render_group->transform.focal_length = focal_length; // NOTE(xkazu0x): Meters the person is sitting from the monitor
+    render_group->transform.distance_above_target = distance_above_target;
+    render_group->transform.near_clip_plane = 0.2f;
+    render_group->transform.screen_center = 0.5f*make_vec2((f32)pixel_width, (f32)pixel_height);
+
+    render_group->transform.orthographic = false;
+}
+
+internal void
+render_orthographic(Render_Group *render_group, s32 pixel_width, s32 pixel_height, f32 meters_to_pixels) {
+    // TODO(xkazu0x): Need to adjust this based on the buffer size
+    f32 pixels_to_meters = safe_ratio1(1.0f, meters_to_pixels);
+    render_group->monitor_half_dim_in_meters = 0.5f*make_vec2((f32)pixel_width, (f32)pixel_height)*pixels_to_meters;
+    
+    render_group->transform.meters_to_pixels = meters_to_pixels;
+    render_group->transform.focal_length = 1.0f; // NOTE(xkazu0x): Meters the person is sitting from the monitor
+    render_group->transform.distance_above_target = 1.0f;
+    render_group->transform.near_clip_plane = 0.2f;
+    render_group->transform.screen_center = 0.5f*make_vec2((f32)pixel_width, (f32)pixel_height);
+
+    render_group->transform.orthographic = true;
 }
 
 internal void
@@ -1056,33 +1071,39 @@ render_group_draw_tiled(OS_Work_Queue *render_queue, Render_Group *render_group,
     os_work_queue_complete_all_work(render_queue);
 }
 
-struct Entity_Basis_Point {
+struct Project_Point_Result {
     Vec2 point;
     f32 scale;
     b32 valid;
 };
 
-internal Entity_Basis_Point
-get_entity_basis_point(Render_Transform *transform, Vec3 pos) {
-    Entity_Basis_Point result = {};
+internal Project_Point_Result
+project_point(Render_Transform *transform, Vec3 point) {
+    Project_Point_Result result = {};
 
-    Vec3 new_pos = make_vec3(pos.xy, 0.0f) + transform->offset;
-    Vec3 raw_point = make_vec3(new_pos.xy, 1.0f);
+    Vec3 new_point = make_vec3(point.xy, 0.0f) + transform->offset;
 
-    f32 offset_z = 0.0f;
-    
-    f32 distance_above_target = transform->distance_above_target;
-#if 0
-    // TODO(xkazu0x): How do we want to control the debug camera?
-    if (1) distance_above_target += 40.0f;
-#endif
-    f32 distance_to_point_z = distance_above_target - new_pos.z;
-    
-    if (distance_to_point_z > transform->near_clip_plane) {
-        Vec3 projected_point = (1.0f / distance_to_point_z)*transform->focal_length*raw_point;
-        result.scale = transform->meters_to_pixels*projected_point.z;
-        result.point = transform->screen_center + transform->meters_to_pixels*projected_point.xy + make_vec2(0.0f, result.scale*offset_z);
+    if (transform->orthographic) {
+        result.point = transform->screen_center + transform->meters_to_pixels*new_point.xy;
+        result.scale = transform->meters_to_pixels;
         result.valid = true;
+    } else {
+        Vec3 raw_point = make_vec3(new_point.xy, 1.0f);
+        f32 distance_above_target = transform->distance_above_target;
+#if 0
+        // TODO(xkazu0x): How do we want to control the debug camera?
+        if (1) distance_above_target += 40.0f;
+#endif
+        f32 distance_to_point_z = distance_above_target - new_point.z;
+        
+        f32 offset_z = 0.0f;
+        
+        if (distance_to_point_z > transform->near_clip_plane) {
+            Vec3 projected_point = (1.0f / distance_to_point_z)*transform->focal_length*raw_point;
+            result.scale = transform->meters_to_pixels*projected_point.z;
+            result.point = transform->screen_center + transform->meters_to_pixels*projected_point.xy + make_vec2(0.0f, result.scale*offset_z);
+            result.valid = true;
+        }
     }
     
     return(result);
@@ -1115,12 +1136,12 @@ internal void
 render_rect(Render_Group *group, Vec3 offset, Vec2 size, Vec4 color) {
     Vec3 pos = offset - make_vec3(0.5f*size, 0.0f);
 
-    Entity_Basis_Point basis = get_entity_basis_point(&group->transform, pos);
-    if (basis.valid) {
+    Project_Point_Result project = project_point(&group->transform, pos);
+    if (project.valid) {
         Render_Entry_Rect *entry = render_push(group, Render_Entry_Rect);
         if (entry) {
-            entry->pos = basis.point;
-            entry->size = basis.scale*size;
+            entry->pos = project.point;
+            entry->size = project.scale*size;
             entry->color = color;
         }
     }
@@ -1145,13 +1166,13 @@ render_bitmap(Render_Group *group, Bitmap *bitmap, Vec3 offset, f32 height, Vec4
     Vec2 align = hadamard_product(bitmap->align_percentage, size);
     Vec3 pos = offset - make_vec3(align, 0.0f);
     
-    Entity_Basis_Point basis = get_entity_basis_point(&group->transform, pos);
-    if (basis.valid) {    
+    Project_Point_Result project = project_point(&group->transform, pos);
+    if (project.valid) {    
         Render_Entry_Bitmap *entry = render_push(group, Render_Entry_Bitmap);
         if (entry) {
             entry->bitmap = bitmap;
-            entry->pos = basis.point;
-            entry->size = basis.scale*size;
+            entry->pos = project.point;
+            entry->size = project.scale*size;
             entry->color = group->global_alpha*color;
         }
     }
