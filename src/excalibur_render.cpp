@@ -377,9 +377,7 @@ draw_rect_slowly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
 }
 
 internal void
-draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
-                  Vec4 color, Bitmap *texture, f32 pixels_to_meters,
-                  Rect2i clip_rect, b32 even) {
+draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis, Vec4 color, Bitmap *texture, f32 pixels_to_meters, Rect2i clip_rect, b32 even) {
     BEGIN_TIMED_BLOCK(draw_rect_quickly);    
     
     color.rgb *= color.a;
@@ -476,6 +474,7 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
         __m128 color_a_4x = _mm_set1_ps(color.a);
     
         __m128 one_4x = _mm_set1_ps(1.0f);
+        __m128 half_4x = _mm_set1_ps(0.5f);
         __m128 zero_4x = _mm_set1_ps(0.0f);
         __m128 four_4x = _mm_set1_ps(4.0f);
     
@@ -538,10 +537,10 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis,
             
                     u = _mm_min_ps(_mm_max_ps(u, zero_4x), one_4x);
                     v = _mm_min_ps(_mm_max_ps(v, zero_4x), one_4x);
-            
-                    // TODO(xkazu0x): formalize texture boundaries
-                    __m128 tx = _mm_mul_ps(u, width_m2);
-                    __m128 ty = _mm_mul_ps(v, height_m2);
+
+                    // NOTE(xkazu0x): Bias texture coordinates to start on the boundary between the 0,0 and 1,1 pixels.
+                    __m128 tx = _mm_add_ps(_mm_mul_ps(u, width_m2), half_4x);
+                    __m128 ty = _mm_add_ps(_mm_mul_ps(v, height_m2), half_4x);
 
                     __m128i fetch_x_4x = _mm_cvttps_epi32(tx);
                     __m128i fetch_y_4x = _mm_cvttps_epi32(ty);
@@ -1090,9 +1089,8 @@ project_point(Render_Transform *transform, Vec3 point) {
     } else {
         Vec3 raw_point = make_vec3(new_point.xy, 1.0f);
         f32 distance_above_target = transform->distance_above_target;
-#if 0
-        // TODO(xkazu0x): How do we want to control the debug camera?
-        if (1) distance_above_target += 40.0f;
+#if 1
+        distance_above_target = 40.0f;
 #endif
         f32 distance_to_point_z = distance_above_target - new_point.z;
         
@@ -1136,12 +1134,12 @@ internal void
 render_rect(Render_Group *group, Vec3 offset, Vec2 size, Vec4 color) {
     Vec3 pos = offset - make_vec3(0.5f*size, 0.0f);
 
-    Project_Point_Result project = project_point(&group->transform, pos);
-    if (project.valid) {
+    Project_Point_Result projection = project_point(&group->transform, pos);
+    if (projection.valid) {
         Render_Entry_Rect *entry = render_push(group, Render_Entry_Rect);
         if (entry) {
-            entry->pos = project.point;
-            entry->size = project.scale*size;
+            entry->pos = projection.point;
+            entry->size = projection.scale*size;
             entry->color = color;
         }
     }
@@ -1166,13 +1164,13 @@ render_bitmap(Render_Group *group, Bitmap *bitmap, Vec3 offset, f32 height, Vec4
     Vec2 align = hadamard_product(bitmap->align_percentage, size);
     Vec3 pos = offset - make_vec3(align, 0.0f);
     
-    Project_Point_Result project = project_point(&group->transform, pos);
-    if (project.valid) {    
+    Project_Point_Result projection = project_point(&group->transform, pos);
+    if (projection.valid) {    
         Render_Entry_Bitmap *entry = render_push(group, Render_Entry_Bitmap);
         if (entry) {
             entry->bitmap = bitmap;
-            entry->pos = project.point;
-            entry->size = project.scale*size;
+            entry->pos = projection.point;
+            entry->size = projection.scale*size;
             entry->color = group->global_alpha*color;
         }
     }

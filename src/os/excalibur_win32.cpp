@@ -393,18 +393,13 @@ win32_work_queue_complete_all_work(OS_Work_Queue *queue) {
     queue->completion_count = 0;
 }
 
-struct Win32_Thread_Info {
-    s32 logical_thread_index;
-    OS_Work_Queue *queue;
-};
-
 DWORD WINAPI
 thread_proc(LPVOID data) {
-    Win32_Thread_Info *thread_info = (Win32_Thread_Info *)data;
-
+    OS_Work_Queue *queue = (OS_Work_Queue *)data;
+    
     for (;;) {
-        if (win32_do_next_work_queue_entry(thread_info->queue)) {
-            WaitForSingleObjectEx(thread_info->queue->semaphore_handle, INFINITE, FALSE);
+        if (win32_do_next_work_queue_entry(queue)) {
+            WaitForSingleObjectEx(queue->semaphore_handle, INFINITE, FALSE);
         }
     }
     
@@ -415,40 +410,43 @@ internal
 OS_WORK_QUEUE_CALLBACK(do_worker_work) {
     log_info("Thread %u: %s", GetCurrentThreadId(), (char *)data);
 }
+internal OS_Work_Queue
+win32_make_queue(u32 thread_count) {
+    OS_Work_Queue result;
+    result.completion_goal = 0;
+    result.completion_count = 0;
+    result.next_entry_to_write = 0;
+    result.next_entry_to_read = 0;
+    
+    u32 initial_count = 0;
+    result.semaphore_handle = CreateSemaphoreEx(0, initial_count, thread_count, 0, 0, SEMAPHORE_ALL_ACCESS);
+    
+    for (u32 thread_index = 0;
+         thread_index < thread_count;
+         ++thread_index) {
+        DWORD thread_id;
+        HANDLE thread_handle = CreateThread(0, 0, thread_proc, &result, 0, &thread_id);
+        CloseHandle(thread_handle);
+    }
 
-// NOTE(xkazu0x): When building with WinMain, It is not possible to print in the terminal.
-// Build with the default main function if you want to print in the terminal :).
+    return(result);
+}
+
+// NOTE(xkazu0x): When building with WinMain, It is not possible to print in the terminal. Build with the default main function if you want to print in the terminal :).
 #if 0
-int WINAPI
-WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
+int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 #else
-int
-main(void)
+int main(void)
 #endif
 {
     log_info("operating system: %s", string_from_operating_system(operating_system_from_context()));
     log_info("architecture: %s", string_from_architecture(architecture_from_context()));
     log_info("compiler: %s", string_from_compiler(compiler_from_context()));
     
-    Win32_Thread_Info thread_infos[7];
-    
-    OS_Work_Queue queue = {};
-    u32 initial_count = 0;
-    u32 thread_count = array_count(thread_infos);
-    queue.semaphore_handle = CreateSemaphoreEx(0, initial_count, thread_count, 0, 0, SEMAPHORE_ALL_ACCESS);
-    
-    for (u32 thread_index = 0;
-         thread_index < thread_count;
-         ++thread_index) {
-        Win32_Thread_Info *thread_info = thread_infos + thread_index;
-        thread_info->logical_thread_index = thread_index;
-        thread_info->queue = &queue;
-    
-        DWORD thread_id;
-        HANDLE thread_handle = CreateThread(0, 0, thread_proc, thread_info, 0, &thread_id);
-        CloseHandle(thread_handle);
-    }
+    OS_Work_Queue high_priority_queue = win32_make_queue(6);
+    OS_Work_Queue low_priority_queue = win32_make_queue(2);
 
+#if 0
     win32_work_queue_add_entry(&queue, do_worker_work, "String A0");
     win32_work_queue_add_entry(&queue, do_worker_work, "String A1");
     win32_work_queue_add_entry(&queue, do_worker_work, "String A2");
@@ -470,8 +468,9 @@ main(void)
     win32_work_queue_add_entry(&queue, do_worker_work, "String B7");
     win32_work_queue_add_entry(&queue, do_worker_work, "String B8");
     win32_work_queue_add_entry(&queue, do_worker_work, "String B9");
-
-    win32_work_queue_complete_all_work(&queue);    
+    
+    win32_work_queue_complete_all_work(&queue);
+#endif
     
     ///////////////////////////
     // NOTE(xkazu0x): game load
@@ -620,7 +619,9 @@ main(void)
     memory.permanent_storage_size = MB(64);
     memory.transient_storage_size = GB(1);
     
-    memory.high_priority_queue = &queue;
+    memory.high_priority_queue = &high_priority_queue;
+    memory.low_priority_queue = &low_priority_queue;
+    
     memory.os_work_queue_add_entry = win32_work_queue_add_entry;
     memory.os_work_queue_complete_all_work = win32_work_queue_complete_all_work;
 

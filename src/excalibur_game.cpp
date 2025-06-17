@@ -518,7 +518,7 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
     Temp_Memory render_memory = begin_temp_memory(&tran_state->arena);
     // TODO(xkazu0x): Decide what the push_buffer size is!
     Render_Group *render_group = render_group_alloc(&tran_state->arena, MB(4));
-    render_orthographic(render_group, output_target->width, output_target->height, output_target->width / width);
+    render_orthographic(render_group, output_target->width, output_target->height, (output_target->width - 2) / width);
     render_clear(render_group, make_vec4(1.0f, 0.0f, 1.0f, 1.0f));
     
     for (s32 chunk_offset_y = -1;
@@ -585,12 +585,12 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
                 Vec2 random_offset = hadamard_product(half_dim, make_vec2(random_bilateral(&series), random_bilateral(&series)));
                 Vec2 sprite_offset = chunk_center + random_offset;
         
-                render_bitmap(render_group, sprite, make_vec3(sprite_offset, 0.0f), 1.4f);
+                render_bitmap(render_group, sprite, make_vec3(sprite_offset, 0.0f), 1.0f);
             }
         }
     }
     
-    render_group_draw_tiled(tran_state->render_queue, render_group, output_target);
+    render_group_draw_tiled(tran_state->high_priority_queue, render_group, output_target);
     end_temp_memory(&render_memory);
 }
 
@@ -990,7 +990,8 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
         tran_state->arena = make_arena(memory->transient_storage_size - sizeof(Transient_State),
                                        (u8 *)memory->transient_storage + sizeof(Transient_State));
 
-        tran_state->render_queue = memory->high_priority_queue;
+        tran_state->high_priority_queue = memory->high_priority_queue;
+        tran_state->low_priority_queue = memory->low_priority_queue;
         
         tran_state->ground_buffer_count = 256;
         tran_state->ground_buffers = push_array(&tran_state->arena,
@@ -1102,8 +1103,10 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     
     f32 width_of_monitor = 0.635f; // NOTE(xkazu0x): Horizontal measurement of monitor in meters
     f32 meters_to_pixels = ((f32)draw_buffer->width)*width_of_monitor;
+    f32 focal_length = 0.6f;
+    f32 distance_above_ground = 9.0f;
 
-    render_perspective(render_group, draw_buffer->width, draw_buffer->height, meters_to_pixels, 0.6f, 9.0f);
+    render_perspective(render_group, draw_buffer->width, draw_buffer->height, meters_to_pixels, focal_length, distance_above_ground);
     render_clear(render_group, make_vec4(0.2f, 0.3f, 0.3f, 1.0f));
 
 #if 0
@@ -1130,7 +1133,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     camera_bounds_in_meters.min.z = -3.0f*game_state->typical_floor_height;
     camera_bounds_in_meters.max.z = 2.0f*game_state->typical_floor_height;
     
-    // NOTE(xkazu0x): Ground chunk rendering
+    // NOTE(xkazu0x): ground chunk rendering
     for (u32 ground_buffer_index = 0;
          ground_buffer_index < tran_state->ground_buffer_count;
          ++ground_buffer_index) {
@@ -1141,7 +1144,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
             if ((delta.z >= -1.0f) && (delta.z < 1.0f)) {
                     f32 ground_side_in_meters = world->chunk_dim_in_meters.x;
                     render_bitmap(render_group, bitmap, delta, ground_side_in_meters);
-#if 1
+#if 0
                     render_rect_outline(render_group, delta, make_vec2(ground_side_in_meters), make_vec4(1.0f, 1.0f, 0.0f, 1.0f));
 #endif
             }
@@ -1149,7 +1152,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     }
     
     {
-        // NOTE(xkazu0x): Ground chunk updating
+        // NOTE(xkazu0x): ground chunk updating
         World_Position min_chunk_pos = map_into_chunk_space(world, game_state->camera_pos, get_rect_min(camera_bounds_in_meters));
         World_Position max_chunk_pos = map_into_chunk_space(world, game_state->camera_pos, get_rect_max(camera_bounds_in_meters));
     
@@ -1520,7 +1523,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
 #endif
 
     // NOTE(xkazu0x): draw to screen and end simulation
-    render_group_draw_tiled(tran_state->render_queue, render_group, draw_buffer);
+    render_group_draw_tiled(tran_state->high_priority_queue, render_group, draw_buffer);
     end_sim(sim_region, game_state);
     
     // NOTE(xkazu0x): reset and check renderer and simulation memory

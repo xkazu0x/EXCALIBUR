@@ -237,6 +237,8 @@ struct OS_Memory {
     // }
 
     OS_Work_Queue *high_priority_queue;
+    OS_Work_Queue *low_priority_queue;
+    
     OS_Work_Queue_Add_Entry *os_work_queue_add_entry;
     OS_Work_Queue_Complete_All_Work *os_work_queue_complete_all_work;
     
