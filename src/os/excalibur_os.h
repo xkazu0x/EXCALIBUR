@@ -55,6 +55,12 @@ extern struct OS_Memory *debug_global_memory;
 # define END_TIMED_BLOCK_COUNTED(id, count) debug_global_memory->counters[DebugCycleCounter_##id].cycle_count += __rdtsc() - start_cycle_count_##id; debug_global_memory->counters[DebugCycleCounter_##id].hit_count += (count);
 #endif
 
+#if COMPILER_MSVC
+# define complete_previous_write_before_future_write _WriteBarrier()
+#else
+// TODO(xkazu0x): need to define these on GCC/LLVM?
+# define complete_previous_write_before_future_write
+#endif
 ///////////////////////////////////////////////////////////////////////
 // NOTE(xkazu0x): services that the game provides to the platform layer
 // TODO(xkazu0x): key codes for keyboard input

@@ -863,9 +863,13 @@ draw_bitmap(Bitmap *buffer, Bitmap *bitmap, Vec2 offset, f32 c_alpha) {
 internal Render_Group *
 render_group_alloc(Arena *arena, u32 max_push_buffer_size) {
     Render_Group *result = push_struct(arena, Render_Group);
+    if (max_push_buffer_size == 0) {
+        max_push_buffer_size = (u32)get_arena_size_remaining(arena);
+    }
+    result->push_buffer_base = (u8 *)push_size(arena, max_push_buffer_size);
+    
     result->max_push_buffer_size = max_push_buffer_size;
     result->push_buffer_size = 0;
-    result->push_buffer_base = (u8 *)push_size(arena, max_push_buffer_size);
     
     result->global_alpha = 1.0f;
 
@@ -1016,6 +1020,24 @@ OS_WORK_QUEUE_CALLBACK(do_tiled_render_work) {
 }
 
 internal void
+render_group_draw_not_tiled(Render_Group *render_group, Bitmap *output_target) {
+    assert((((uintptr_t)output_target->memory) & 15) == 0);
+                
+    Rect2i clip_rect;
+    clip_rect.min_x = 0;
+    clip_rect.min_y = 0;
+    clip_rect.max_x = output_target->width;
+    clip_rect.max_y = output_target->height;
+
+    Tile_Render_Work work;
+    work.render_group = render_group;
+    work.output_target = output_target;
+    work.clip_rect = clip_rect;
+
+    do_tiled_render_work(0, &work);
+}
+
+internal void
 render_group_draw_tiled(OS_Work_Queue *render_queue, Render_Group *render_group, Bitmap *output_target) {
     // TODO(xkazu0x):
     // - Make sure that tiles are all cache-aligned
@@ -1026,17 +1048,15 @@ render_group_draw_tiled(OS_Work_Queue *render_queue, Render_Group *render_group,
     
     const s32 tile_count_x = 4;
     const s32 tile_count_y = 4;
-
     Tile_Render_Work work_array[tile_count_x*tile_count_y];
-    u32 work_count = 0;
     
     assert((((uintptr_t)output_target->memory) & 15) == 0);
-    
     s32 tile_width = output_target->width/tile_count_x;
     s32 tile_height = output_target->height/tile_count_y;
 
     tile_width = ((tile_width + 3)/4)*4;
     
+    u32 work_count = 0;    
     for (s32 tile_y = 0;
          tile_y < tile_count_y;
          ++tile_y) {
@@ -1089,7 +1109,7 @@ project_point(Render_Transform *transform, Vec3 point) {
     } else {
         Vec3 raw_point = make_vec3(new_point.xy, 1.0f);
         f32 distance_above_target = transform->distance_above_target;
-#if 1
+#if 0
         distance_above_target = 40.0f;
 #endif
         f32 distance_to_point_z = distance_above_target - new_point.z;

@@ -88,6 +88,12 @@ struct Game_State {
     Bitmap test_normal;
 };
 
+struct Memory_Task {
+    b32 is_being_used;
+    Arena arena;
+    Temp_Memory memory_flush;
+};
+
 struct Transient_State {
     b32 initialized;
     Arena arena;
@@ -97,12 +103,13 @@ struct Transient_State {
     
     OS_Work_Queue *high_priority_queue;
     OS_Work_Queue *low_priority_queue;
-    u32 pad;
     
     u32 env_map_width;
     u32 env_map_height;
     // NOTE(xkazu0x): 0 is bottom, 1 is middle, 2 is top
     Environment_Map env_maps[3];
+
+    Memory_Task tasks[4];
 };
 
 internal Low_Entity *

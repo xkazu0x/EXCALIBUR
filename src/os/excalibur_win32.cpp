@@ -410,6 +410,7 @@ internal
 OS_WORK_QUEUE_CALLBACK(do_worker_work) {
     log_info("Thread %u: %s", GetCurrentThreadId(), (char *)data);
 }
+
 internal OS_Work_Queue
 win32_make_queue(u32 thread_count) {
     OS_Work_Queue result;
@@ -443,7 +444,7 @@ int main(void)
     log_info("architecture: %s", string_from_architecture(architecture_from_context()));
     log_info("compiler: %s", string_from_compiler(compiler_from_context()));
     
-    OS_Work_Queue high_priority_queue = win32_make_queue(6);
+    OS_Work_Queue high_priority_queue = win32_make_queue(4);
     OS_Work_Queue low_priority_queue = win32_make_queue(2);
 
 #if 0

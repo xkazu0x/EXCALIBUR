@@ -30,17 +30,55 @@ make_arena(memi reserve_size, void *base_memory) {
     return(result);
 }
 
-internal void *
-arena_push_(Arena *arena, memi size) {
-    assert((arena->used + size) <= arena->reserve_size);
-    void *result = arena->base_memory + arena->used;
-    arena->used += size;
+internal memi
+get_alignment_offset(Arena *arena, memi alignment) {
+    memi result = 0;
+
+    memi arena_ptr = (memi)arena->base_memory + arena->used;
+    memi alignment_mask = alignment - 1;
+
+    if (arena_ptr & alignment_mask) {
+        result = alignment - (arena_ptr & alignment_mask);
+    }
+    
     return(result);
 }
 
-#define push_size(arena, size) arena_push_(arena, size)
-#define push_struct(arena, type) (type *)arena_push_(arena, sizeof(type))
-#define push_array(arena, type, count) (type *)arena_push_(arena, sizeof(type)*(count))
+internal memi
+get_arena_size_remaining(Arena *arena, memi alignment = 4) {
+    memi result = arena->reserve_size - (arena->used + get_alignment_offset(arena, alignment));
+    return(result);
+}
+
+internal void *
+arena_push_(Arena *arena, memi size_init, memi alignment = 4) {
+    memi size = size_init;
+    
+    memi alignment_offset = get_alignment_offset(arena, alignment);
+    size += alignment_offset;
+    
+    assert((arena->used + size) <= arena->reserve_size);
+    void *result = (void *)(arena->base_memory + arena->used + alignment_offset);
+    arena->used += size;
+
+    assert(size >= size_init);
+    
+    return(result);
+}
+
+#define push_struct(arena, type, ...) (type *)arena_push_(arena, sizeof(type), ##__VA_ARGS__)
+#define push_array(arena, type, count, ...) (type *)arena_push_(arena, sizeof(type)*(count), ##__VA_ARGS__)
+#define push_size(arena, size, ...) arena_push_(arena, size, ##__VA_ARGS__)
+
+internal Arena
+make_sub_arena(Arena *arena, memi reserve_size, memi alignment = 16) {
+    Arena result;
+    result.reserve_size = reserve_size;
+    result.used = 0;
+    result.base_memory = (u8 *)push_size(arena, reserve_size, alignment);
+    result.temp_count = 0;
+    return(result);
+}
 
 struct Temp_Memory {
     Arena *arena;
@@ -500,98 +538,146 @@ make_null_collision(Game_State *game_state) {
     return(collision);
 }
 
+internal Memory_Task *
+begin_memory_task(Transient_State *tran_state) {
+    Memory_Task *result = 0;
+
+    for (u32 task_index = 0;
+         task_index < array_count(tran_state->tasks);
+         ++task_index) {
+        Memory_Task *task = tran_state->tasks + task_index;
+        if (!task->is_being_used) {
+            result = task;
+            task->is_being_used = true;
+            task->memory_flush = begin_temp_memory(&task->arena);
+            break;
+        }
+    }
+
+    return(result);
+}
+
+inline void
+end_memory_task(Memory_Task *task) {
+    end_temp_memory(&task->memory_flush);
+    complete_previous_write_before_future_write;
+    task->is_being_used = false;
+}
+
+struct Fill_Ground_Chunk_Work {
+    Render_Group *render_group;
+    Bitmap *buffer;
+    Memory_Task *memory_task;
+};
+
+internal
+OS_WORK_QUEUE_CALLBACK(fill_ground_chunk_work) {
+    Fill_Ground_Chunk_Work *work = (Fill_Ground_Chunk_Work *)data;
+    render_group_draw_not_tiled(work->render_group, work->buffer);
+    end_memory_task(work->memory_task);
+}
+
 internal void
 fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Buffer *ground_buffer, World_Position *position) {
-    ground_buffer->position = *position;
-
-    Bitmap *output_target = &ground_buffer->bitmap;
-    output_target->align_percentage = make_vec2(0.5f);
-    output_target->width_over_height = 1.0f;
-
-    f32 width = game_state->world->chunk_dim_in_meters.x;
-    f32 height = game_state->world->chunk_dim_in_meters.y;
-    assert(width == height);
-    
-    Vec2 half_dim = 0.5f*make_vec2(width, height);
-    //half_dim *= 0.5f;
-    
-    Temp_Memory render_memory = begin_temp_memory(&tran_state->arena);
-    // TODO(xkazu0x): Decide what the push_buffer size is!
-    Render_Group *render_group = render_group_alloc(&tran_state->arena, MB(4));
-    render_orthographic(render_group, output_target->width, output_target->height, (output_target->width - 2) / width);
-    render_clear(render_group, make_vec4(1.0f, 0.0f, 1.0f, 1.0f));
-    
-    for (s32 chunk_offset_y = -1;
-         chunk_offset_y <= 1;
-         ++chunk_offset_y) {
-        for (s32 chunk_offset_x = -1;
-             chunk_offset_x <= 1;
-             ++chunk_offset_x) {
-            s32 chunk_x = position->chunk_x + chunk_offset_x;
-            s32 chunk_y = position->chunk_y + chunk_offset_y;
-            u32 chunk_z = position->chunk_z;
-            
-            // TODO(xkazu0x): look into wang hashing here or some other spatial seed generation "thing"!
-            random_series_t series = random_seed(464*chunk_x + 132*chunk_y + 235*chunk_z);
-            Vec2 chunk_center = make_vec2(chunk_offset_x*width, chunk_offset_y*height);
-
-            Vec4 color = make_vec4(1.0f, 0.0f, 0.0f, 1.0f);
-            if ((chunk_x % 2) == (chunk_y % 2)) {
-                color = make_vec4(0.0f, 0.0f, 1.0f, 1.0f);
-            }
-            
-            for (u32 ground_index = 0;
-                 ground_index < 100;
-                 ++ground_index) {
-                Bitmap *sprite;
-                if (random_choice(&series, 2)) {
-                    sprite = game_state->grass_sprites + random_choice(&series, array_count(game_state->grass_sprites));
-                } else {
-                    sprite = game_state->stone_sprites + random_choice(&series, array_count(game_state->stone_sprites));
-                }
-
-                Vec2 random_offset = hadamard_product(half_dim, make_vec2(random_bilateral(&series), random_bilateral(&series)));
-                Vec2 sprite_offset = chunk_center + random_offset;
+    Memory_Task *memory_task = begin_memory_task(tran_state);
+    if (memory_task) {
+        Fill_Ground_Chunk_Work *work = push_struct(&memory_task->arena, Fill_Ground_Chunk_Work);
         
-                render_bitmap(render_group, sprite, make_vec3(sprite_offset, 0.0f), 1.4f, color);
+        ground_buffer->position = *position;
+
+        Bitmap *buffer = &ground_buffer->bitmap;
+        buffer->align_percentage = make_vec2(0.5f);
+        buffer->width_over_height = 1.0f;
+
+        f32 width = game_state->world->chunk_dim_in_meters.x;
+        f32 height = game_state->world->chunk_dim_in_meters.y;
+        assert(width == height);
+    
+        Vec2 half_dim = 0.5f*make_vec2(width, height);
+        //half_dim *= 0.5f;
+    
+        // TODO(xkazu0x): Decide what the push_buffer size is!
+        // TODO(xkazu0x): safe cast from memory_unit to u32?
+        Render_Group *render_group = render_group_alloc(&memory_task->arena, 0);
+        render_orthographic(render_group, buffer->width, buffer->height, (buffer->width - 2) / width);
+        render_clear(render_group, make_vec4(1.0f, 0.0f, 1.0f, 1.0f));
+    
+        for (s32 chunk_offset_y = -1;
+             chunk_offset_y <= 1;
+             ++chunk_offset_y) {
+            for (s32 chunk_offset_x = -1;
+                 chunk_offset_x <= 1;
+                 ++chunk_offset_x) {
+                s32 chunk_x = position->chunk_x + chunk_offset_x;
+                s32 chunk_y = position->chunk_y + chunk_offset_y;
+                u32 chunk_z = position->chunk_z;
+            
+                // TODO(xkazu0x): look into wang hashing here or some other spatial seed generation "thing"!
+                random_series_t series = random_seed(464*chunk_x + 132*chunk_y + 235*chunk_z);
+                Vec2 chunk_center = make_vec2(chunk_offset_x*width, chunk_offset_y*height);
+
+                Vec4 color = make_vec4(1.0f, 0.0f, 0.0f, 1.0f);
+                if ((chunk_x % 2) == (chunk_y % 2)) {
+                    color = make_vec4(0.0f, 0.0f, 1.0f, 1.0f);
+                }
+            
+                for (u32 ground_index = 0;
+                     ground_index < 100;
+                     ++ground_index) {
+                    Bitmap *sprite;
+                    if (random_choice(&series, 2)) {
+                        sprite = game_state->grass_sprites + random_choice(&series, array_count(game_state->grass_sprites));
+                    } else {
+                        sprite = game_state->stone_sprites + random_choice(&series, array_count(game_state->stone_sprites));
+                    }
+
+                    Vec2 random_offset = hadamard_product(half_dim, make_vec2(random_bilateral(&series), random_bilateral(&series)));
+                    Vec2 sprite_offset = chunk_center + random_offset;
+        
+                    render_bitmap(render_group, sprite, make_vec3(sprite_offset, 0.0f), 1.4f, color);
+                }
             }
         }
-    }
     
-    for (s32 chunk_offset_y = -1;
-         chunk_offset_y <= 1;
-         ++chunk_offset_y) {
-        for (s32 chunk_offset_x = -1;
-             chunk_offset_x <= 1;
-             ++chunk_offset_x) {
-            s32 chunk_x = position->chunk_x + chunk_offset_x;
-            s32 chunk_y = position->chunk_y + chunk_offset_y;
-            u32 chunk_z = position->chunk_z;
+        for (s32 chunk_offset_y = -1;
+             chunk_offset_y <= 1;
+             ++chunk_offset_y) {
+            for (s32 chunk_offset_x = -1;
+                 chunk_offset_x <= 1;
+                 ++chunk_offset_x) {
+                s32 chunk_x = position->chunk_x + chunk_offset_x;
+                s32 chunk_y = position->chunk_y + chunk_offset_y;
+                u32 chunk_z = position->chunk_z;
             
-            // TODO(xkazu0x): look into wang hashing here or some other spatial seed generation "thing"!
-            random_series_t series = random_seed(464*chunk_x + 132*chunk_y + 235*chunk_z);
-            Vec2 chunk_center = make_vec2(chunk_offset_x*width, chunk_offset_y*height);
+                // TODO(xkazu0x): look into wang hashing here or some other spatial seed generation "thing"!
+                random_series_t series = random_seed(464*chunk_x + 132*chunk_y + 235*chunk_z);
+                Vec2 chunk_center = make_vec2(chunk_offset_x*width, chunk_offset_y*height);
                         
-            for (u32 ground_index = 0;
-                 ground_index < 8;
-                 ++ground_index) {
-                Bitmap *sprite;
-                if (random_choice(&series, 2)) {
-                    sprite = game_state->tuft_sprites + random_choice(&series, array_count(game_state->tuft_sprites));
-                } else {
-                    sprite = game_state->tuft_sprites + random_choice(&series, array_count(game_state->tuft_sprites));
+                for (u32 ground_index = 0;
+                     ground_index < 8;
+                     ++ground_index) {
+                    Bitmap *sprite;
+                    if (random_choice(&series, 2)) {
+                        sprite = game_state->tuft_sprites + random_choice(&series, array_count(game_state->tuft_sprites));
+                    } else {
+                        sprite = game_state->tuft_sprites + random_choice(&series, array_count(game_state->tuft_sprites));
+                    }
+        
+                    Vec2 random_offset = hadamard_product(half_dim, make_vec2(random_bilateral(&series), random_bilateral(&series)));
+                    Vec2 sprite_offset = chunk_center + random_offset;
+        
+                    render_bitmap(render_group, sprite, make_vec3(sprite_offset, 0.0f), 1.0f);
                 }
-        
-                Vec2 random_offset = hadamard_product(half_dim, make_vec2(random_bilateral(&series), random_bilateral(&series)));
-                Vec2 sprite_offset = chunk_center + random_offset;
-        
-                render_bitmap(render_group, sprite, make_vec3(sprite_offset, 0.0f), 1.0f);
             }
         }
+        
+        work->render_group = render_group;
+        work->buffer = buffer;
+        work->memory_task = memory_task;
+
+        // TODO(xkazu0x): use the low_priority_queue
+        os_work_queue_add_entry(tran_state->high_priority_queue, fill_ground_chunk_work, work);
     }
-    
-    render_group_draw_tiled(tran_state->high_priority_queue, render_group, output_target);
-    end_temp_memory(&render_memory);
 }
 
 internal void
@@ -609,7 +695,7 @@ make_empty_bitmap(Arena *arena, u32 width, u32 height, b32 clear = true) {
     result.height = height;
     result.pitch = result.width*BITMAP_BYTES_PER_PIXEL;
     s32 bitmap_size = width*height*BITMAP_BYTES_PER_PIXEL;
-    result.memory = push_size(arena, bitmap_size);
+    result.memory = push_size(arena, bitmap_size, 16);
     if (clear) {
         clear_bitmap(&result);
     }
@@ -768,9 +854,8 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     u32 ground_buffer_width = 256;
     u32 ground_buffer_height = 256;
 
-    //
-    // NOTE(xkazu0x): initialize game state
-    //
+    ////////////////////////////////
+    // NOTE(xkazu0x): init game state
     if (!memory->initialized) {        
         game_state->typical_floor_height = 3.0f;
 
@@ -981,15 +1066,21 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
         memory->initialized = true;
     }
 
-    //
+    ////////////////////////////////
     // NOTE(xkazu0x): init transient state
-    //
     assert(sizeof(Transient_State) <= memory->transient_storage_size);
     Transient_State *tran_state = (Transient_State *)memory->transient_storage;
     if (!tran_state->initialized) {
-        tran_state->arena = make_arena(memory->transient_storage_size - sizeof(Transient_State),
-                                       (u8 *)memory->transient_storage + sizeof(Transient_State));
+        tran_state->arena = make_arena(memory->transient_storage_size - sizeof(Transient_State), (u8 *)memory->transient_storage + sizeof(Transient_State));
 
+        for (u32 task_index = 0;
+             task_index < array_count(tran_state->tasks);
+             ++task_index) {
+            Memory_Task *task = tran_state->tasks + task_index;
+            task->is_being_used = false;
+            task->arena = make_sub_arena(&tran_state->arena, MB(1));
+        }
+        
         tran_state->high_priority_queue = memory->high_priority_queue;
         tran_state->low_priority_queue = memory->low_priority_queue;
         
@@ -1200,7 +1291,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
         }
     }
     
-    // NOTE(xkazu0x): initialize simulation memory
+    // NOTE(xkazu0x): init simulation memory
     // TODO(xkazu0x): How big do we actually want to expand here?
     // TODO(xkazu0x): Do we want to simulate upper floors?
     Vec3 sim_bounds_expansion = make_vec3(15.0f, 15.0f, 0.0f);
