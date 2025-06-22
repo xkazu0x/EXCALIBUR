@@ -565,9 +565,9 @@ end_memory_task(Memory_Task *task) {
 }
 
 struct Fill_Ground_Chunk_Work {
+    Memory_Task *memory_task;
     Render_Group *render_group;
     Bitmap *buffer;
-    Memory_Task *memory_task;
 };
 
 internal
@@ -577,13 +577,41 @@ OS_WORK_QUEUE_CALLBACK(fill_ground_chunk_work) {
     end_memory_task(work->memory_task);
 }
 
+// TODO(xkazu0x):
+internal u32
+pick_best(u32 info_count, Asset_Bitmap_Info *infos, Asset_Tag *tags, f32 *match_vector, f32 *weight_vector) {
+    f32 best_diff = f32_max;
+    u32 best_index = 0;
+    
+    for (u32 info_index = 0;
+         info_index < info_count;
+         ++info_index) {
+        Asset_Bitmap_Info *info = infos + info_index;
+
+        f32 total_weighted_diff = 0.0f;
+        for (u32 tag_index = info->first_tag_index;
+             tag_index < info->tag_count;
+             ++tag_index) {
+            Asset_Tag *tag = tags + tag_index;
+            f32 difference = match_vector[tag->id] - tag->value;
+            f32 weighted = weight_vector[tag->id]*abs_f32(difference);
+            total_weighted_diff += weighted;
+        }
+
+        if (best_diff > total_weighted_diff) {
+            best_diff = total_weighted_diff;
+            best_index = info_index;
+        }
+    }
+
+    return(best_index);
+}
+
 internal void
 fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Buffer *ground_buffer, World_Position *position) {
     Memory_Task *memory_task = begin_memory_task(tran_state);
     if (memory_task) {
         Fill_Ground_Chunk_Work *work = push_struct(&memory_task->arena, Fill_Ground_Chunk_Work);
-        
-        ground_buffer->position = *position;
 
         Bitmap *buffer = &ground_buffer->bitmap;
         buffer->align_percentage = make_vec2(0.5f);
@@ -613,7 +641,7 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
                 u32 chunk_z = position->chunk_z;
             
                 // TODO(xkazu0x): look into wang hashing here or some other spatial seed generation "thing"!
-                random_series_t series = random_seed(464*chunk_x + 132*chunk_y + 235*chunk_z);
+                Random_Series series = random_seed(464*chunk_x + 132*chunk_y + 235*chunk_z);
                 Vec2 chunk_center = make_vec2(chunk_offset_x*width, chunk_offset_y*height);
 
 #if 0
@@ -654,7 +682,7 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
                 u32 chunk_z = position->chunk_z;
             
                 // TODO(xkazu0x): look into wang hashing here or some other spatial seed generation "thing"!
-                random_series_t series = random_seed(464*chunk_x + 132*chunk_y + 235*chunk_z);
+                Random_Series series = random_seed(464*chunk_x + 132*chunk_y + 235*chunk_z);
                 Vec2 chunk_center = make_vec2(chunk_offset_x*width, chunk_offset_y*height);
                         
                 for (u32 ground_index = 0;
@@ -674,12 +702,16 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
                 }
             }
         }
-        
-        work->render_group = render_group;
-        work->buffer = buffer;
-        work->memory_task = memory_task;
 
-        os_work_queue_add_entry(tran_state->low_priority_queue, fill_ground_chunk_work, work);
+        if (all_resources_present(render_group)) {
+            ground_buffer->position = *position;
+        
+            work->memory_task = memory_task;
+            work->render_group = render_group;
+            work->buffer = buffer;
+
+            os_work_queue_add_entry(tran_state->low_priority_queue, fill_ground_chunk_work, work);
+        }
     }
 }
 
@@ -841,6 +873,12 @@ struct Load_Asset_Work {
     Game_Asset_ID id;
     char *filename;
     Bitmap *bitmap;
+
+    b32 has_alignment;
+    s32 align_x;
+    s32 align_y;
+
+    Asset_State final_state;
 };
 
 internal
@@ -849,48 +887,59 @@ OS_WORK_QUEUE_CALLBACK(load_asset_work) {
     
     // TODO(xkazu0x): Get rid of this thread thing when I load through a queue instead of the debug call.
     OS_Thread *thread = 0;
-    *work->bitmap = debug_load_bitmap(work->assets->os_read_file, thread, work->filename);
-    // TODO(xkazu0x): Fence!
 
-    work->assets->bitmaps[work->id] = work->bitmap;
+    if (work->has_alignment) {
+        *work->bitmap = debug_load_bitmap(work->assets->os_read_file, thread, work->filename, work->align_x, work->align_y);
+    } else {
+        *work->bitmap = debug_load_bitmap(work->assets->os_read_file, thread, work->filename);
+    }
+
+    complete_previous_write_before_future_write;
+
+    work->assets->bitmaps[work->id].bitmap = work->bitmap;
+    work->assets->bitmaps[work->id].state = work->final_state;
     
     end_memory_task(work->memory_task);
 }
 
 internal void
 load_asset(Game_Assets *assets, Game_Asset_ID id) {
-    Memory_Task *memory_task = begin_memory_task(assets->tran_state);
-    if (memory_task) {
-        Load_Asset_Work *work = push_struct(&memory_task->arena, Load_Asset_Work);
-        work->memory_task = memory_task;
-        work->assets = assets;
-        work->id = id;
-        work->filename = "";
-        work->bitmap = push_struct(&assets->arena, Bitmap);
-        
-        switch (id) {
-            case GAI_Wall: {
-                work->filename = "../res/wall.bmp";
-            } break;
+    if (atomic_compare_exchange_u32((u32 *)&assets->bitmaps[id].state, AssetState_Unloaded, AssetState_Queued) == AssetState_Unloaded) {
+        Memory_Task *memory_task = begin_memory_task(assets->tran_state);
+        if (memory_task) {
+            Load_Asset_Work *work = push_struct(&memory_task->arena, Load_Asset_Work);
+            work->memory_task = memory_task;
+            work->assets = assets;
+            work->id = id;
+            work->filename = "";
+            work->bitmap = push_struct(&assets->arena, Bitmap);
+            work->has_alignment = false;
+            work->final_state = AssetState_Loaded;
+            
+            switch (id) {
+                case GAI_Wall: {
+                    work->filename = "../res/wall.bmp";
+                } break;
 
-            case GAI_Stairwell: {
-                work->filename = "../res/stair.bmp";
-            } break;
+                case GAI_Stairwell: {
+                    work->filename = "../res/stair.bmp";
+                } break;
 
-            case GAI_Shadow: {
-                work->filename = "../res/shadow.bmp";
-            } break;
+                case GAI_Shadow: {
+                    work->filename = "../res/shadow.bmp";
+                } break;
 
-            case GAI_Bat: {
-                work->filename = "../res/bat.bmp";
-            } break;
+                case GAI_Bat: {
+                    work->filename = "../res/bat.bmp";
+                } break;
 
-            case GAI_Sword: {
-                work->filename = "../res/shadow.bmp";
-            } break;
+                case GAI_Sword: {
+                    work->filename = "../res/shadow.bmp";
+                } break;
+            }
+
+            os_work_queue_add_entry(assets->tran_state->low_priority_queue, load_asset_work, work);
         }
-
-        os_work_queue_add_entry(assets->tran_state->low_priority_queue, load_asset_work, work);
     }
 }
 
@@ -947,7 +996,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
         
         add_low_entity(game_state, EntityType_Null, null_position());
 
-        random_series_t series = random_seed(0);
+        Random_Series series = random_seed(0);
        
         u32 screen_base_x = 0;
         u32 screen_base_y = 0;

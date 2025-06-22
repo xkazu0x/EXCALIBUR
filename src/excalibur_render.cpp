@@ -877,6 +877,8 @@ render_group_alloc(Game_Assets *assets, Arena *arena, u32 max_push_buffer_size) 
     result->transform.offset = make_vec3(0.0f);
     result->transform.scale = 1.0f;
 
+    result->missing_resource_count = 0;
+    
     return(result);
 }
 
@@ -1205,6 +1207,7 @@ render_bitmap(Render_Group *group, Game_Asset_ID id, Vec3 offset, f32 height, Ve
         render_bitmap(group, bitmap, offset, height, color);
     } else {
         load_asset(group->assets, id);
+        ++group->missing_resource_count;
     }
 }
 
@@ -1248,5 +1251,11 @@ get_camera_rect_at_distance(Render_Group *group, f32 distance_from_camera) {
 internal Rect2
 get_camera_rect_at_target(Render_Group *group) {
     Rect2 result = get_camera_rect_at_distance(group, group->transform.distance_above_target);
+    return(result);
+}
+
+internal b32
+all_resources_present(Render_Group *group) {
+    b32 result = (group->missing_resource_count == 0);
     return(result);
 }

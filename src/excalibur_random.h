@@ -518,19 +518,19 @@ global u32 random_number_table[] = {
     0x5c15c61, 0x3fef373, 0x033b595, 0x2803e45, 0x371de24, 0x49f6d49, 0x2b287f3, 0x5bebec1,
 };
 
-struct random_series_t {
+struct Random_Series {
     u32 index;
 };
 
-internal inline random_series_t
+internal inline Random_Series
 random_seed(u32 value) {
-    random_series_t series;
+    Random_Series series;
     series.index = (value % array_count(random_number_table));
     return(series);
 }
 
 internal inline u32
-next_random_u32(random_series_t *series) {
+next_random_u32(Random_Series *series) {
     u32 result = random_number_table[series->index++];
     if (series->index >= array_count(random_number_table)) {
         series->index = 0;
@@ -539,32 +539,32 @@ next_random_u32(random_series_t *series) {
 }
 
 internal inline u32
-random_choice(random_series_t *series, u32 choice_count) {
+random_choice(Random_Series *series, u32 choice_count) {
     u32 result = next_random_u32(series) % choice_count;
     return(result);
 }
 
 internal inline f32
-random_unilateral(random_series_t *series) {
+random_unilateral(Random_Series *series) {
     f32 divisor = 1.0f/(f32)MAX_RANDOM_NUMBER;
     f32 result = divisor*(f32)next_random_u32(series);
     return(result);
 }
 
 internal inline f32
-random_bilateral(random_series_t *series) {
+random_bilateral(Random_Series *series) {
     f32 result = 2.0f*(f32)random_unilateral(series) - 1.0f;
     return(result);
 }
 
 internal inline f32
-random_between(random_series_t *series, f32 min, f32 max) {
+random_between(Random_Series *series, f32 min, f32 max) {
     f32 result = lerp(min, random_unilateral(series), max);
     return(result);
 }
 
 internal inline s32
-random_between(random_series_t *series, s32 min, s32 max) {
+random_between(Random_Series *series, s32 min, s32 max) {
     s32 result = min + (s32)(next_random_u32(series) % ((max + 1) - min));
     return(result);
 }

@@ -84,6 +84,18 @@ struct Memory_Task {
     Temp_Memory memory_flush;
 };
 
+enum Asset_State {
+    AssetState_Unloaded,
+    AssetState_Queued,
+    AssetState_Loaded,
+    AssetState_Locked,
+};
+
+struct Asset_Slot {
+    Asset_State state;
+    Bitmap *bitmap;
+};
+
 enum Game_Asset_ID {
     GAI_Wall,
     GAI_Stairwell,
@@ -94,12 +106,33 @@ enum Game_Asset_ID {
     GAI_Count,
 };
 
+struct Asset_Tag {
+    u32 id;
+    f32 value;
+};
+
+struct Asset_Bitmap_Info {
+    Vec2 align_percentage;
+    f32 width_over_height;
+    s32 width;
+    s32 height;
+
+    u32 first_tag_index;
+    u32 tag_count;
+};
+
+struct Asset_Group {
+    u32 first_tag_index;
+    u32 tag_count;
+};
+
 struct Game_Assets {
-    struct Transient_State *tran_state;
-    Arena arena;
     Debug_OS_Read_File *os_read_file;
     
-    Bitmap *bitmaps[GAI_Count];
+    struct Transient_State *tran_state;
+    Arena arena;
+    
+    Asset_Slot bitmaps[GAI_Count];
 
     // NOTE(xkazu0x): Array'd assets
     Bitmap grass[2];
@@ -112,7 +145,7 @@ struct Game_Assets {
 
 internal Bitmap *
 get_game_asset_bitmap(Game_Assets *assets, Game_Asset_ID id) {
-    Bitmap *result = assets->bitmaps[id];
+    Bitmap *result = assets->bitmaps[id].bitmap;
     return(result);
 }
 

@@ -41,6 +41,8 @@ struct Debug_Cycle_Counter {
 
 extern struct OS_Memory *debug_global_memory;
 
+// TODO(xkazu0x): make a intrinsic file
+// {
 # if COMPILER_MSVC
 #  include <intrin.h>
 # elif COMPILER_CLANG || COMPILER GCC
@@ -57,10 +59,16 @@ extern struct OS_Memory *debug_global_memory;
 
 #if COMPILER_MSVC
 # define complete_previous_write_before_future_write _WriteBarrier()
+inline u32 atomic_compare_exchange_u32(u32 volatile *test_value, u32 expected_value, u32 new_value) {
+    u32 result = _InterlockedCompareExchange((long *)test_value, expected_value, new_value);
+    return(result);
+}
 #else
-// TODO(xkazu0x): need to define these on GCC/LLVM?
+// TODO(xkazu0x): need GCC/LLVM equivalents!
 # define complete_previous_write_before_future_write
 #endif
+// }
+
 ///////////////////////////////////////////////////////////////////////
 // NOTE(xkazu0x): services that the game provides to the platform layer
 // TODO(xkazu0x): key codes for keyboard input

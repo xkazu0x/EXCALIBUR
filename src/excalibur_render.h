@@ -109,6 +109,8 @@ struct Render_Group {
     u32 max_push_buffer_size;
     u32 push_buffer_size;
     u8 *push_buffer_base;
+
+    u32 missing_resource_count;
 };
 
 ////////////////////////////////
