@@ -45,30 +45,56 @@ compiler_from_context(void) {
 internal char *
 string_from_operating_system(Operating_System os) {
     switch (os) {
-        case OperatingSystem_Windows: return("windows");
-        case OperatingSystem_Linux:   return("linux");
-        case OperatingSystem_Mac:     return("mac");
-        default:                      return("<null>");
+        case OperatingSystem_Windows: {
+            return("windows");
+        } break;
+        case OperatingSystem_Linux: {
+            return("linux");
+        } break;
+        case OperatingSystem_Mac: {
+            return("mac");
+        } break;
+        default: {
+            return("<null>");
+        } break;
     }
 }
 
 internal char *
 string_from_architecture(Architecture arch) {
     switch (arch) {
-        case Architecture_x64:   return("x64");
-        case Architecture_x86:   return("x86");
-        case Architecture_arm64: return("arm64");
-        case Architecture_arm32: return("arm32");
-        default:                 return("<null>");
+        case Architecture_x64: {
+            return("x64");
+        } break;
+        case Architecture_x86: {
+            return("x86");
+        } break;
+        case Architecture_arm64: {
+            return("arm64");
+        } break;
+        case Architecture_arm32: {
+            return("arm32");
+        } break;
+        default: {
+            return("<null>");
+        } break;
     }
 }
 
 internal char *
 string_from_compiler(Compiler compiler) {
     switch (compiler) {
-        case Compiler_msvc:  return("msvc");
-        case Compiler_gcc:   return("gcc");
-        case Compiler_clang: return("clang");
-        default:             return("<null>");
+        case Compiler_msvc: {
+            return("msvc");
+        } break;
+        case Compiler_gcc: {
+            return("gcc");
+        } break;
+        case Compiler_clang: {
+            return("clang");
+        } break;
+        default: {
+            return("<null>");
+        } break;
     }
 }
