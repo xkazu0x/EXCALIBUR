@@ -227,7 +227,7 @@ typedef struct OS_Work_Queue OS_Work_Queue;
 typedef OS_WORK_QUEUE_CALLBACK(OS_Work_Queue_Callback);
 
 typedef void OS_Work_Queue_Add_Entry(OS_Work_Queue *queue, OS_Work_Queue_Callback *callback, void *data);
-typedef void OS_Work_Queue_Complete_All_Work(OS_Work_Queue *queue);
+typedef void OS_Work_Queue_Complete(OS_Work_Queue *queue);
 
 typedef struct OS_Memory OS_Memory;
 struct OS_Memory {
@@ -246,7 +246,7 @@ struct OS_Memory {
     OS_Work_Queue *low_priority_queue;
     
     OS_Work_Queue_Add_Entry *os_work_queue_add_entry;
-    OS_Work_Queue_Complete_All_Work *os_work_queue_complete_all_work;
+    OS_Work_Queue_Complete *os_work_queue_complete;
     
 #if EXCALIBUR_INTERNAL
     Debug_OS_Free_File *debug_os_free_file;

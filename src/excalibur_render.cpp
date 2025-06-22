@@ -1088,7 +1088,7 @@ render_group_draw_tiled(OS_Work_Queue *render_queue, Render_Group *render_group,
         }
     }
 
-    os_work_queue_complete_all_work(render_queue);
+    os_work_queue_complete(render_queue);
 }
 
 struct Project_Point_Result {

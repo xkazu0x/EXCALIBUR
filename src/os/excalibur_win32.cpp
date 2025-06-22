@@ -360,7 +360,7 @@ win32_work_queue_add_entry(OS_Work_Queue *queue, OS_Work_Queue_Callback *callbac
 }
 
 internal b32
-win32_do_next_work_queue_entry(OS_Work_Queue *queue) {
+win32_work_queue_do_next_entry(OS_Work_Queue *queue) {
     b32 should_sleep = false;
 
     u32 original_next_entry_to_read = queue->next_entry_to_read;
@@ -384,9 +384,9 @@ win32_do_next_work_queue_entry(OS_Work_Queue *queue) {
 }
 
 internal void
-win32_work_queue_complete_all_work(OS_Work_Queue *queue) {
+win32_work_queue_complete(OS_Work_Queue *queue) {
     while (queue->completion_goal != queue->completion_count) {
-        win32_do_next_work_queue_entry(queue);
+        win32_work_queue_do_next_entry(queue);
     }
 
     queue->completion_goal = 0;
@@ -394,11 +394,11 @@ win32_work_queue_complete_all_work(OS_Work_Queue *queue) {
 }
 
 DWORD WINAPI
-thread_proc(LPVOID data) {
+win32_thread_proc(LPVOID data) {
     OS_Work_Queue *queue = (OS_Work_Queue *)data;
     
     for (;;) {
-        if (win32_do_next_work_queue_entry(queue)) {
+        if (win32_work_queue_do_next_entry(queue)) {
             WaitForSingleObjectEx(queue->semaphore_handle, INFINITE, FALSE);
         }
     }
@@ -406,31 +406,22 @@ thread_proc(LPVOID data) {
     //return(0);
 }
 
-internal
-OS_WORK_QUEUE_CALLBACK(do_worker_work) {
-    log_info("Thread %u: %s", GetCurrentThreadId(), (char *)data);
-}
-
-internal OS_Work_Queue
-win32_make_queue(u32 thread_count) {
-    OS_Work_Queue result;
-    result.completion_goal = 0;
-    result.completion_count = 0;
-    result.next_entry_to_write = 0;
-    result.next_entry_to_read = 0;
+internal void
+win32_make_work_queue(OS_Work_Queue *queue, u32 thread_count) {
+    queue->completion_goal = 0;
+    queue->completion_count = 0;
+    queue->next_entry_to_write = 0;
+    queue->next_entry_to_read = 0;
     
-    u32 initial_count = 0;
-    result.semaphore_handle = CreateSemaphoreEx(0, initial_count, thread_count, 0, 0, SEMAPHORE_ALL_ACCESS);
+    queue->semaphore_handle = CreateSemaphoreEx(0, 0, thread_count, 0, 0, SEMAPHORE_ALL_ACCESS);
     
     for (u32 thread_index = 0;
          thread_index < thread_count;
          ++thread_index) {
         DWORD thread_id;
-        HANDLE thread_handle = CreateThread(0, 0, thread_proc, &result, 0, &thread_id);
+        HANDLE thread_handle = CreateThread(0, 0, win32_thread_proc, queue, 0, &thread_id);
         CloseHandle(thread_handle);
     }
-
-    return(result);
 }
 
 // NOTE(xkazu0x): When building with WinMain, It is not possible to print in the terminal. Build with the default main function if you want to print in the terminal :).
@@ -444,37 +435,14 @@ int main(void)
     log_info("architecture: %s", string_from_architecture(architecture_from_context()));
     log_info("compiler: %s", string_from_compiler(compiler_from_context()));
 
-    OS_Work_Queue high_priority_queue = win32_make_queue(4);
-    OS_Work_Queue low_priority_queue = win32_make_queue(2);
-
-#if 0
-    win32_work_queue_add_entry(&queue, do_worker_work, "String A0");
-    win32_work_queue_add_entry(&queue, do_worker_work, "String A1");
-    win32_work_queue_add_entry(&queue, do_worker_work, "String A2");
-    win32_work_queue_add_entry(&queue, do_worker_work, "String A3");
-    win32_work_queue_add_entry(&queue, do_worker_work, "String A4");
-    win32_work_queue_add_entry(&queue, do_worker_work, "String A5");
-    win32_work_queue_add_entry(&queue, do_worker_work, "String A6");
-    win32_work_queue_add_entry(&queue, do_worker_work, "String A7");
-    win32_work_queue_add_entry(&queue, do_worker_work, "String A8");
-    win32_work_queue_add_entry(&queue, do_worker_work, "String A9");
+    // NOTE(xkazu0x): create threads
+    OS_Work_Queue high_priority_queue;
+    win32_make_work_queue(&high_priority_queue, 4);
     
-    win32_work_queue_add_entry(&queue, do_worker_work, "String B0");
-    win32_work_queue_add_entry(&queue, do_worker_work, "String B1");
-    win32_work_queue_add_entry(&queue, do_worker_work, "String B2");
-    win32_work_queue_add_entry(&queue, do_worker_work, "String B3");
-    win32_work_queue_add_entry(&queue, do_worker_work, "String B4");
-    win32_work_queue_add_entry(&queue, do_worker_work, "String B5");
-    win32_work_queue_add_entry(&queue, do_worker_work, "String B6");
-    win32_work_queue_add_entry(&queue, do_worker_work, "String B7");
-    win32_work_queue_add_entry(&queue, do_worker_work, "String B8");
-    win32_work_queue_add_entry(&queue, do_worker_work, "String B9");
+    OS_Work_Queue low_priority_queue;
+    win32_make_work_queue(&low_priority_queue, 2);
     
-    win32_work_queue_complete_all_work(&queue);
-#endif
-    
-    ///////////////////////////
-    // NOTE(xkazu0x): game load
+    // NOTE(xkazu0x): load game code
     win32_get_exe_filename(&win32_state);
     
     char source_game_code_dll_fullpath[WIN32_FILENAME_MAX];
@@ -490,7 +458,6 @@ int main(void)
     Win32_Game game = win32_load_game(source_game_code_dll_fullpath, temp_game_code_dll_fullpath);
     if (!game.loaded) return(1);
     
-    //////////////////////////////
     // NOTE(xkazu0x): monitor info
     DEVMODE monitor_info;
     monitor_info.dmSize = sizeof(DEVMODE);
@@ -502,8 +469,7 @@ int main(void)
     log_info("monitor size: %dx%d", monitor_width, monitor_height);
     log_info("monitor refresh rate: %dHz", monitor_frame_rate);
     
-    //////////////////////////////////
-    // NOTE(xkazu0x): framebuffer init
+    // NOTE(xkazu0x): init framebuffer
     OS_Framebuffer framebuffer = {};
     //win32_resize_framebuffer(&framebuffer, 320, 180);
     win32_resize_framebuffer(&framebuffer, 960, 540);
@@ -511,8 +477,7 @@ int main(void)
     //win32_resize_framebuffer(&framebuffer, 1279, 719);
     log_info("framebuffer size: %dx%d", framebuffer.width, framebuffer.height);
     
-    /////////////////////////////
-    // NOTE(xkazu0x): window init
+    // NOTE(xkazu0x): init window 
     s32 window_width = 1280;
     s32 window_height = 720;
     s32 window_x = (monitor_width - window_width)/2;
@@ -567,8 +532,7 @@ int main(void)
     log_debug("win32 window created");
     ShowWindow(window_handle, SW_SHOW);
 
-    ////////////////////////////
-    // NOTE(xkazu0x): input init
+    // NOTE(xkazu0x): init input
     OS_Input input = {};
     
     RAWINPUTDEVICE raw_input_device = {};
@@ -608,8 +572,7 @@ int main(void)
         xinput_set_state = _xinput_set_state;
     }
 
-    /////////////////////////////
-    // NOTE(xkazu0x): memory init
+    // NOTE(xkazu0x): init memory
     OS_Memory memory = {};
     
 #if EXCALIBUR_INTERNAL
@@ -624,7 +587,7 @@ int main(void)
     memory.low_priority_queue = &low_priority_queue;
     
     memory.os_work_queue_add_entry = win32_work_queue_add_entry;
-    memory.os_work_queue_complete_all_work = win32_work_queue_complete_all_work;
+    memory.os_work_queue_complete = win32_work_queue_complete;
 
     memory.debug_os_free_file = debug_os_free_file;
     memory.debug_os_read_file = debug_os_read_file;
@@ -642,7 +605,6 @@ int main(void)
     log_debug("permanent storage size: %llu", memory.permanent_storage_size);
     log_debug("transient storage size: %llu", memory.transient_storage_size);
     
-    ////////////////////////////
     // NOTE(xkazu0x): init clock
     OS_Clock clock = {};
     
@@ -663,12 +625,9 @@ int main(void)
     LARGE_INTEGER last_counter = win32_get_time();
     u64 last_cycle_count = __rdtsc();
 
-    ///////////////////////////////
-    // NOTE(xkazu0x): engine state
     b32 pause = false;
-    
     while (!quit) {
-        // NOTE(xkazu0x): game reload
+        // NOTE(xkazu0x): reload game
         input.executable_reloaded = false;
         FILETIME game_new_write_time = win32_get_last_write_time(source_game_code_dll_fullpath);
         if (CompareFileTime(&game_new_write_time, &game.last_write_time) != 0) {

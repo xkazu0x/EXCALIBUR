@@ -10,7 +10,7 @@ OS_Memory *debug_global_memory;
 #endif
 
 global OS_Work_Queue_Add_Entry *os_work_queue_add_entry;
-global OS_Work_Queue_Complete_All_Work *os_work_queue_complete_all_work;
+global OS_Work_Queue_Complete *os_work_queue_complete;
 
 struct Arena {
     memi reserve_size;
@@ -679,8 +679,7 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
         work->buffer = buffer;
         work->memory_task = memory_task;
 
-        // TODO(xkazu0x): use the low_priority_queue
-        os_work_queue_add_entry(tran_state->high_priority_queue, fill_ground_chunk_work, work);
+        os_work_queue_add_entry(tran_state->low_priority_queue, fill_ground_chunk_work, work);
     }
 }
 
@@ -891,8 +890,7 @@ load_asset(Game_Assets *assets, Game_Asset_ID id) {
             } break;
         }
 
-        // TODO(xkazu0x): use low_priority_queue!!
-        os_work_queue_add_entry(assets->tran_state->high_priority_queue, load_asset_work, work);
+        os_work_queue_add_entry(assets->tran_state->low_priority_queue, load_asset_work, work);
     }
 }
 
@@ -902,7 +900,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     debug_global_memory = memory;
 #endif
     os_work_queue_add_entry = memory->os_work_queue_add_entry;
-    os_work_queue_complete_all_work = memory->os_work_queue_complete_all_work;
+    os_work_queue_complete = memory->os_work_queue_complete;
 
     BEGIN_TIMED_BLOCK(game_update_and_render);
 
