@@ -443,7 +443,7 @@ int main(void)
     log_info("operating system: %s", string_from_operating_system(operating_system_from_context()));
     log_info("architecture: %s", string_from_architecture(architecture_from_context()));
     log_info("compiler: %s", string_from_compiler(compiler_from_context()));
-    
+
     OS_Work_Queue high_priority_queue = win32_make_queue(4);
     OS_Work_Queue low_priority_queue = win32_make_queue(2);
 

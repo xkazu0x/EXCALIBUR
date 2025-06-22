@@ -100,6 +100,7 @@ struct Render_Transform {
 };
 
 struct Render_Group {
+    struct Game_Assets *assets;
     f32 global_alpha;
         
     Vec2 monitor_half_dim_in_meters;    
@@ -113,7 +114,7 @@ struct Render_Group {
 ////////////////////////////////
 // NOTE(xkazu0x): Renderer API
 
-internal Render_Group *render_group_alloc(Arena *arena, u32 max_push_buffer_size);
+internal Render_Group *render_group_alloc(Game_Assets *assets, Arena *arena, u32 max_push_buffer_size);
 internal void render_group_draw(Render_Group *group, Bitmap *output_target);
 
 internal void render_perspective(Render_Group *render_group, s32 pixel_width, s32 pixel_height, f32 meters_to_pixels, f32 focal_length, f32 distance_above_target);

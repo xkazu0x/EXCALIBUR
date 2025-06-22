@@ -861,7 +861,7 @@ draw_bitmap(Bitmap *buffer, Bitmap *bitmap, Vec2 offset, f32 c_alpha) {
 }
 
 internal Render_Group *
-render_group_alloc(Arena *arena, u32 max_push_buffer_size) {
+render_group_alloc(Game_Assets *assets, Arena *arena, u32 max_push_buffer_size) {
     Render_Group *result = push_struct(arena, Render_Group);
     if (max_push_buffer_size == 0) {
         max_push_buffer_size = (u32)get_arena_size_remaining(arena);
@@ -870,7 +870,8 @@ render_group_alloc(Arena *arena, u32 max_push_buffer_size) {
     
     result->max_push_buffer_size = max_push_buffer_size;
     result->push_buffer_size = 0;
-    
+
+    result->assets = assets;
     result->global_alpha = 1.0f;
 
     result->transform.offset = make_vec3(0.0f);
@@ -1013,7 +1014,7 @@ struct Tile_Render_Work {
 };
 
 internal
-OS_WORK_QUEUE_CALLBACK(do_tiled_render_work) {
+OS_WORK_QUEUE_CALLBACK(render_group_draw_work) {
     Tile_Render_Work *work = (Tile_Render_Work *)data;
     render_group_draw(work->render_group, work->output_target, work->clip_rect, false);
     render_group_draw(work->render_group, work->output_target, work->clip_rect, true);
@@ -1034,7 +1035,7 @@ render_group_draw_not_tiled(Render_Group *render_group, Bitmap *output_target) {
     work.output_target = output_target;
     work.clip_rect = clip_rect;
 
-    do_tiled_render_work(0, &work);
+    render_group_draw_work(0, &work);
 }
 
 internal void
@@ -1083,7 +1084,7 @@ render_group_draw_tiled(OS_Work_Queue *render_queue, Render_Group *render_group,
             work->output_target = output_target;
             work->clip_rect = clip_rect;
 
-            os_work_queue_add_entry(render_queue, do_tiled_render_work, work);
+            os_work_queue_add_entry(render_queue, render_group_draw_work, work);
         }
     }
 
@@ -1193,6 +1194,17 @@ render_bitmap(Render_Group *group, Bitmap *bitmap, Vec3 offset, f32 height, Vec4
             entry->size = projection.scale*size;
             entry->color = group->global_alpha*color;
         }
+    }
+}
+
+// TODO(xkazu0x): put this function in the header
+internal void
+render_bitmap(Render_Group *group, Game_Asset_ID id, Vec3 offset, f32 height, Vec4 color = make_vec4(1.0f)) {
+    Bitmap *bitmap = get_game_asset_bitmap(group->assets, id);
+    if (bitmap) {
+        render_bitmap(group, bitmap, offset, height, color);
+    } else {
+        load_asset(group->assets, id);
     }
 }
 

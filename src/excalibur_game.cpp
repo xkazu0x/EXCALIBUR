@@ -598,7 +598,7 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
     
         // TODO(xkazu0x): Decide what the push_buffer size is!
         // TODO(xkazu0x): safe cast from memory_unit to u32?
-        Render_Group *render_group = render_group_alloc(&memory_task->arena, 0);
+        Render_Group *render_group = render_group_alloc(&tran_state->assets, &memory_task->arena, 0);
         render_orthographic(render_group, buffer->width, buffer->height, (buffer->width - 2) / width);
         render_clear(render_group, make_vec4(1.0f, 0.0f, 1.0f, 1.0f));
     
@@ -616,19 +616,23 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
                 random_series_t series = random_seed(464*chunk_x + 132*chunk_y + 235*chunk_z);
                 Vec2 chunk_center = make_vec2(chunk_offset_x*width, chunk_offset_y*height);
 
+#if 0
                 Vec4 color = make_vec4(1.0f, 0.0f, 0.0f, 1.0f);
                 if ((chunk_x % 2) == (chunk_y % 2)) {
                     color = make_vec4(0.0f, 0.0f, 1.0f, 1.0f);
                 }
-            
+#else
+                Vec4 color = make_vec4(1.0f);
+#endif
+                
                 for (u32 ground_index = 0;
                      ground_index < 100;
                      ++ground_index) {
                     Bitmap *sprite;
                     if (random_choice(&series, 2)) {
-                        sprite = game_state->grass_sprites + random_choice(&series, array_count(game_state->grass_sprites));
+                        sprite = tran_state->assets.grass + random_choice(&series, array_count(tran_state->assets.grass));
                     } else {
-                        sprite = game_state->stone_sprites + random_choice(&series, array_count(game_state->stone_sprites));
+                        sprite = tran_state->assets.stone + random_choice(&series, array_count(tran_state->assets.stone));
                     }
 
                     Vec2 random_offset = hadamard_product(half_dim, make_vec2(random_bilateral(&series), random_bilateral(&series)));
@@ -658,9 +662,9 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
                      ++ground_index) {
                     Bitmap *sprite;
                     if (random_choice(&series, 2)) {
-                        sprite = game_state->tuft_sprites + random_choice(&series, array_count(game_state->tuft_sprites));
+                        sprite = tran_state->assets.tuft + random_choice(&series, array_count(tran_state->assets.tuft));
                     } else {
-                        sprite = game_state->tuft_sprites + random_choice(&series, array_count(game_state->tuft_sprites));
+                        sprite = tran_state->assets.tuft + random_choice(&series, array_count(tran_state->assets.tuft));
                     }
         
                     Vec2 random_offset = hadamard_product(half_dim, make_vec2(random_bilateral(&series), random_bilateral(&series)));
@@ -832,6 +836,66 @@ make_pyramid_normal_map(Bitmap *bitmap, f32 roughness) {
     }
 }
 
+struct Load_Asset_Work {
+    Memory_Task *memory_task;
+    Game_Assets *assets;
+    Game_Asset_ID id;
+    char *filename;
+    Bitmap *bitmap;
+};
+
+internal
+OS_WORK_QUEUE_CALLBACK(load_asset_work) {
+    Load_Asset_Work *work = (Load_Asset_Work *)data;
+    
+    // TODO(xkazu0x): Get rid of this thread thing when I load through a queue instead of the debug call.
+    OS_Thread *thread = 0;
+    *work->bitmap = debug_load_bitmap(work->assets->os_read_file, thread, work->filename);
+    // TODO(xkazu0x): Fence!
+
+    work->assets->bitmaps[work->id] = work->bitmap;
+    
+    end_memory_task(work->memory_task);
+}
+
+internal void
+load_asset(Game_Assets *assets, Game_Asset_ID id) {
+    Memory_Task *memory_task = begin_memory_task(assets->tran_state);
+    if (memory_task) {
+        Load_Asset_Work *work = push_struct(&memory_task->arena, Load_Asset_Work);
+        work->memory_task = memory_task;
+        work->assets = assets;
+        work->id = id;
+        work->filename = "";
+        work->bitmap = push_struct(&assets->arena, Bitmap);
+        
+        switch (id) {
+            case GAI_Wall: {
+                work->filename = "../res/wall.bmp";
+            } break;
+
+            case GAI_Stairwell: {
+                work->filename = "../res/stair.bmp";
+            } break;
+
+            case GAI_Shadow: {
+                work->filename = "../res/shadow.bmp";
+            } break;
+
+            case GAI_Bat: {
+                work->filename = "../res/bat.bmp";
+            } break;
+
+            case GAI_Sword: {
+                work->filename = "../res/shadow.bmp";
+            } break;
+        }
+
+        // TODO(xkazu0x): use low_priority_queue!!
+        os_work_queue_add_entry(assets->tran_state->high_priority_queue, load_asset_work, work);
+    }
+}
+
 shared_function
 GAME_UPDATE_AND_RENDER(game_update_and_render) {
 #if EXCALIBUR_INTERNAL
@@ -874,56 +938,14 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
         World *world = game_state->world;
         initialize_world(world, world_chunk_dim_in_meters);
         
-        game_state->null_collision =
-            make_null_collision(game_state);
-        game_state->wall_collision =
-            make_simple_grounded_collision(game_state,
-                                           tile_side_in_meters,
-                                           tile_side_in_meters,
-                                           tile_depth_in_meters);
-        game_state->standard_room_collision =
-            make_simple_grounded_collision(game_state,
-                                           tile_count_x*tile_side_in_meters,
-                                           tile_count_y*tile_side_in_meters,
-                                           0.9f*tile_depth_in_meters);
-        game_state->stair_collision =
-            make_simple_grounded_collision(game_state,
-                                           tile_side_in_meters,
-                                           2.0f*tile_side_in_meters,
-                                           1.1f*tile_depth_in_meters);
-        game_state->sword_collision =
-            make_simple_grounded_collision(game_state,
-                                           tile_side_in_meters,
-                                           tile_side_in_meters,
-                                           0.1f);
-        game_state->player_collision =
-            make_simple_grounded_collision(game_state, 1.0f, 0.5f, 1.0f);
-        game_state->monster_collision =
-            make_simple_grounded_collision(game_state,
-                                           0.8f*tile_side_in_meters,
-                                           0.5f*tile_side_in_meters,
-                                           tile_side_in_meters);
-        game_state->familiar_collision =
-            make_simple_grounded_collision(game_state,
-                                           0.5f*tile_side_in_meters,
-                                           0.5f*tile_side_in_meters,
-                                           0.5f*tile_side_in_meters);
-        
-        game_state->wall_sprite       = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/wall.bmp");
-        game_state->stairwell_sprite  = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/stair.bmp");
-        game_state->grass_sprites[0]  = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/grass00.bmp");
-        game_state->grass_sprites[1]  = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/grass01.bmp");
-        game_state->stone_sprites[0]  = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/stone00.bmp");
-        game_state->stone_sprites[1]  = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/stone01.bmp");
-        game_state->tuft_sprites[0]   = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/tuft0.bmp");
-        game_state->tuft_sprites[1]   = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/tuft1.bmp");
-        game_state->shadow_sprite     = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/shadow.bmp");
-        game_state->player_sprites[0] = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/skull_back.bmp");
-        game_state->player_sprites[1] = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/skull_right.bmp");
-        game_state->player_sprites[2] = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/skull_front.bmp");
-        game_state->player_sprites[3] = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/skull_left.bmp");
-        game_state->bat_sprite        = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/bat.bmp");
-        game_state->sword_sprite      = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/shadow.bmp");
+        game_state->null_collision          = make_null_collision(game_state);
+        game_state->wall_collision          = make_simple_grounded_collision(game_state, tile_side_in_meters, tile_side_in_meters, tile_depth_in_meters);
+        game_state->standard_room_collision = make_simple_grounded_collision(game_state, tile_count_x*tile_side_in_meters, tile_count_y*tile_side_in_meters, 0.9f*tile_depth_in_meters);
+        game_state->stair_collision         = make_simple_grounded_collision(game_state, tile_side_in_meters, 2.0f*tile_side_in_meters, 1.1f*tile_depth_in_meters);
+        game_state->sword_collision         = make_simple_grounded_collision(game_state, tile_side_in_meters, tile_side_in_meters, 0.1f);
+        game_state->player_collision        = make_simple_grounded_collision(game_state, 1.0f, 0.5f, 1.0f);
+        game_state->monster_collision       = make_simple_grounded_collision(game_state, 0.8f*tile_side_in_meters, 0.5f*tile_side_in_meters, tile_side_in_meters);
+        game_state->familiar_collision      = make_simple_grounded_collision(game_state, 0.5f*tile_side_in_meters, 0.5f*tile_side_in_meters, 0.5f*tile_side_in_meters);
         
         add_low_entity(game_state, EntityType_Null, null_position());
 
@@ -1073,6 +1095,10 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     if (!tran_state->initialized) {
         tran_state->arena = make_arena(memory->transient_storage_size - sizeof(Transient_State), (u8 *)memory->transient_storage + sizeof(Transient_State));
 
+        tran_state->assets.arena = make_sub_arena(&tran_state->arena, MB(64));
+        tran_state->assets.os_read_file = memory->debug_os_read_file;
+        tran_state->assets.tran_state = tran_state;
+        
         for (u32 task_index = 0;
              task_index < array_count(tran_state->tasks);
              ++task_index) {
@@ -1124,6 +1150,18 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 height >>= 1;
             }
         }
+        
+        tran_state->assets.grass[0]  = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/grass00.bmp");
+        tran_state->assets.grass[1]  = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/grass01.bmp");
+        tran_state->assets.stone[0]  = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/stone00.bmp");
+        tran_state->assets.stone[1]  = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/stone01.bmp");
+        tran_state->assets.tuft[0]   = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/tuft0.bmp");
+        tran_state->assets.tuft[1]   = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/tuft1.bmp");
+        
+        tran_state->assets.player[0] = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/skull_back.bmp");
+        tran_state->assets.player[1] = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/skull_right.bmp");
+        tran_state->assets.player[2] = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/skull_front.bmp");
+        tran_state->assets.player[3] = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/skull_left.bmp");
         
         tran_state->initialized = true;
     }
@@ -1180,6 +1218,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
 
     ////////////////////////////////
     // NOTE(xkazu0x): update and render
+    
     Bitmap _draw_buffer = {};
     Bitmap *draw_buffer = &_draw_buffer;
     draw_buffer->width  = framebuffer->width;
@@ -1190,7 +1229,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     // NOTE(xkazu0x): init renderer memory
     Temp_Memory render_memory = begin_temp_memory(&tran_state->arena);
     // TODO(xkazu0x): Decide what out push buffer size is!
-    Render_Group *render_group = render_group_alloc(&tran_state->arena, MB(4));
+    Render_Group *render_group = render_group_alloc(&tran_state->assets, &tran_state->arena, MB(4));
     
     f32 width_of_monitor = 0.635f; // NOTE(xkazu0x): Horizontal measurement of monitor in meters
     f32 meters_to_pixels = ((f32)draw_buffer->width)*width_of_monitor;
@@ -1307,8 +1346,10 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     render_rect_outline(render_group, make_vec3(0.0f), get_rect_dim(sim_region->bounds).xy, make_vec4(1.0f, 0.0f, 1.0f, 1.0f));
 
     Vec3 camera_pos = subtract(world, &game_state->camera_pos, &sim_center_pos);
-    
+
+    ////////////////////////////////
     // NOTE(xkazu0x): entity type handling
+    
     // TODO(xkazu0x): move this out into excalibur_entity.cpp
     for (u32 entity_index = 0;
          entity_index < sim_region->entity_count;
@@ -1447,28 +1488,23 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     Vec2 dim = entity->collision->total_volume.dim.xy;
                     render_rect(render_group, make_vec3(0.0f), dim, make_vec4(1.0f, 0.5f, 0.2f, 1.0f));
                     
-                    Bitmap *sprite = &game_state->wall_sprite;
-                    
-                    render_bitmap(render_group, sprite, make_vec3(0.0f), dim.y);
+                    render_bitmap(render_group, GAI_Wall, make_vec3(0.0f), dim.y);
                 } break;
                     
                 case EntityType_Stairwell: {
                     render_rect(render_group, make_vec3(0.0f), entity->walkable_dim, make_vec4(1.0f, 0.0f, 1.0f, 1.0f));
                     //render_rect(render_group, make_vec3(0.0f, entity->walkable_height, 0.0f), entity->walkable_dim, make_vec4(0.0f, 1.0f, 1.0f, 1.0f));
                     
-                    Bitmap *sprite = &game_state->stairwell_sprite;
-                    
-                    render_bitmap(render_group, sprite, make_vec3(0.0f), 3.0f);
-                    //render_bitmap(render_group, sprite, make_vec3(0.0f, 0.0f, entity->walkable_height));
+                    render_bitmap(render_group, GAI_Stairwell, make_vec3(0.0f), 3.0f);
+                    //render_bitmap(render_group, GAI_Stairwell, make_vec3(0.0f, 0.0f, entity->walkable_height));
                 } break;
 
                 case EntityType_Player: {
-                    render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.5f, 0.2f, 1.0f));
-
-                    Bitmap *shadow_sprite = &game_state->shadow_sprite;
-                    Bitmap *player_sprite = &game_state->player_sprites[entity->direction];
+                    Bitmap *player_sprite = &tran_state->assets.player[entity->direction];
                     
-                    render_bitmap(render_group, shadow_sprite, make_vec3(0.0f), 1.0f, make_vec4(1.0f, 1.0f, 1.0f, shadow_alpha));
+                    render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.5f, 0.2f, 1.0f));
+                    
+                    render_bitmap(render_group, GAI_Shadow, make_vec3(0.0f), 1.0f, make_vec4(1.0f, 1.0f, 1.0f, shadow_alpha));
                     render_bitmap(render_group, player_sprite, make_vec3(0.0f), 1.0f);
                     
                     draw_hit_points(render_group, entity);
@@ -1476,11 +1512,8 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     
                 case EntityType_Sword: {
                     render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(0.0f, 1.0f, 0.0f, 1.0f));
-
-                    Bitmap *sprite = &game_state->sword_sprite;
-                    set_bitmap_align(sprite, 0.5f*make_vec2((f32)sprite->width, (f32)sprite->height));
                     
-                    render_bitmap(render_group, sprite, make_vec3(0.0f), 1.0f);
+                    render_bitmap(render_group, GAI_Sword, make_vec3(0.0f), 1.0f);
                 } break;
                     
                 case EntityType_Familiar: {
@@ -1493,26 +1526,16 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     
                     render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(0.0f, 1.0f, 0.0f, 1.0f));
 
-                    Bitmap *shadow_sprite = &game_state->shadow_sprite;
-                    Bitmap *bat_sprite = &game_state->bat_sprite;
-
-                    set_bitmap_align(shadow_sprite, 0.5f*make_vec2((f32)shadow_sprite->width, (f32)shadow_sprite->height));
-                    set_bitmap_align(bat_sprite, 0.5f*make_vec2((f32)bat_sprite->width, (f32)bat_sprite->height));
-
-                    render_bitmap(render_group, shadow_sprite, make_vec3(0.0f), 1.0f, make_vec4(1.0f, 1.0f, 1.0f, (0.5f*shadow_alpha) - bob_sin));
-                    render_bitmap(render_group, bat_sprite, make_vec3(0.0f, 0.0f, bob_sin + 0.4f), 1.0f);
+                    render_bitmap(render_group, GAI_Shadow, make_vec3(0.0f), 1.0f, make_vec4(1.0f, 1.0f, 1.0f, (0.5f*shadow_alpha) - bob_sin));
+                    render_bitmap(render_group, GAI_Bat, make_vec3(0.0f, 0.0f, bob_sin + 0.4f), 1.0f);
                 } break;
                     
                 case EntityType_Monster: {
+                    Bitmap *monster_sprite = &tran_state->assets.player[2];
+                    
                     render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.0f, 0.0f, 1.0f));
-                    
-                    Bitmap *shadow_sprite = &game_state->shadow_sprite;
-                    Bitmap *monster_sprite = &game_state->player_sprites[2];
 
-                    set_bitmap_align(shadow_sprite, 0.5f*make_vec2((f32)shadow_sprite->width, (f32)shadow_sprite->height));
-                    set_bitmap_align(monster_sprite, 0.5f*make_vec2((f32)monster_sprite->width, (f32)monster_sprite->height));
-                    
-                    render_bitmap(render_group, shadow_sprite, make_vec3(0.0f), 1.0f, make_vec4(1.0f, 1.0f, 1.0f, shadow_alpha));
+                    render_bitmap(render_group, GAI_Shadow, make_vec3(0.0f), 1.0f, make_vec4(1.0f, 1.0f, 1.0f, shadow_alpha));
                     render_bitmap(render_group, monster_sprite, make_vec3(0.0f), 1.0f);
                     
                     draw_hit_points(render_group, entity);

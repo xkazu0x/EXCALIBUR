@@ -58,16 +58,6 @@ struct Game_State {
     // TODO(xkazu0x): change the name to "stored entity"
     u32 low_entity_count;
     Low_Entity low_entities[100000];
-
-    Bitmap wall_sprite;
-    Bitmap stairwell_sprite;
-    Bitmap grass_sprites[2];
-    Bitmap stone_sprites[2];
-    Bitmap tuft_sprites[2];
-    Bitmap shadow_sprite;
-    Bitmap player_sprites[4];
-    Bitmap bat_sprite;
-    Bitmap sword_sprite;   
     
     // TODO(xkazu0x): must be power of two
     Pairwise_Collision_Rule *collision_rule_hash[256];
@@ -94,6 +84,38 @@ struct Memory_Task {
     Temp_Memory memory_flush;
 };
 
+enum Game_Asset_ID {
+    GAI_Wall,
+    GAI_Stairwell,
+    GAI_Shadow,
+    GAI_Bat,
+    GAI_Sword,
+    
+    GAI_Count,
+};
+
+struct Game_Assets {
+    struct Transient_State *tran_state;
+    Arena arena;
+    Debug_OS_Read_File *os_read_file;
+    
+    Bitmap *bitmaps[GAI_Count];
+
+    // NOTE(xkazu0x): Array'd assets
+    Bitmap grass[2];
+    Bitmap stone[2];
+    Bitmap tuft[2];
+    Bitmap player[4];
+    
+    // TODO(xkazu0x): Structured assets
+};
+
+internal Bitmap *
+get_game_asset_bitmap(Game_Assets *assets, Game_Asset_ID id) {
+    Bitmap *result = assets->bitmaps[id];
+    return(result);
+}
+
 struct Transient_State {
     b32 initialized;
     Arena arena;
@@ -110,6 +132,8 @@ struct Transient_State {
     Environment_Map env_maps[3];
 
     Memory_Task tasks[4];
+
+    Game_Assets assets;
 };
 
 internal Low_Entity *
@@ -120,5 +144,7 @@ get_low_entity(Game_State *game_state, u32 index) {
     }
     return(result);
 }
+
+internal void load_asset(Game_Assets *assets, Game_Asset_ID id);
 
 #endif // EXCALIBUR_GAME_H
