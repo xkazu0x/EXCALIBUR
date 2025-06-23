@@ -9,6 +9,7 @@
 OS_Memory *debug_global_memory;
 #endif
 
+global Debug_OS_Read_File *debug_os_read_file;
 global OS_Work_Queue_Add_Entry *os_work_queue_add_entry;
 global OS_Work_Queue_Complete *os_work_queue_complete;
 
@@ -117,17 +118,51 @@ zero_size(memi size, void *ptr) {
         *byte++ = 0;
     }
 }
-
 #define zero_struct(instance) zero_size(sizeof(instance), &(instance))
 
 #include "excalibur_render.h"
+#include "excalibur_asset.h"
+
+struct Memory_Task {
+    b32 is_being_used;
+    Arena arena;
+    Temp_Memory memory_flush;
+};
+
 #include "excalibur_game.h"
+
+internal Memory_Task *
+begin_memory_task(Transient_State *tran_state) {
+    Memory_Task *result = 0;
+
+    for (u32 task_index = 0;
+         task_index < array_count(tran_state->tasks);
+         ++task_index) {
+        Memory_Task *task = tran_state->tasks + task_index;
+        if (!task->is_being_used) {
+            result = task;
+            task->is_being_used = true;
+            task->memory_flush = begin_temp_memory(&task->arena);
+            break;
+        }
+    }
+
+    return(result);
+}
+
+inline void
+end_memory_task(Memory_Task *task) {
+    end_temp_memory(&task->memory_flush);
+    complete_previous_write_before_future_write;
+    task->is_being_used = false;
+}
 
 #include "base/excalibur_base.cpp"
 #include "excalibur_world.cpp"
 #include "excalibur_simulation.cpp"
 #include "excalibur_entity.cpp"
 #include "excalibur_render.cpp"
+#include "excalibur_asset.cpp"
 
 internal Gamepad *
 get_gamepad(OS_Input *input, u32 index) {
@@ -136,131 +171,6 @@ get_gamepad(OS_Input *input, u32 index) {
     if (index < Gamepad_Count) {
         result = &input->gamepads[index];
     }
-    return(result);
-}
-
-#pragma pack(push, 1)
-struct Bitmap_Header {
-    u16 file_type;
-    u32 file_size;
-    u16 reserved1;
-    u16 reserved2;
-    u32 bitmap_offset;
-    u32 size;
-    s32 width;
-    s32 height;
-    u16 planes;
-    u16 bits_per_pixel;
-    u32 compression;
-    u32 size_of_bitmap;
-    s32 horz_resolution;
-    s32 vert_resolution;
-    u32 colors_used;
-    u32 colors_important;
-
-    u32 red_mask;
-    u32 green_mask;
-    u32 blue_mask;
-};
-#pragma pack(pop)
-
-internal Vec2
-top_down_align(Bitmap *bitmap, Vec2 align) {
-    //align.y = (f32)(bitmap->height - 1) - align.y;
-    align.y = (f32)bitmap->height - align.y;
-    
-    align.x = safe_ratio0(align.x, (f32)bitmap->width);
-    align.y = safe_ratio0(align.y, (f32)bitmap->height);
-    
-    return(align);
-}
-
-internal void
-set_bitmap_align(Bitmap *bitmap, Vec2 align) {
-    align = top_down_align(bitmap, align);
-    bitmap->align_percentage = align;
-}
-
-internal Bitmap
-debug_load_bitmap(Debug_OS_Read_File *debug_os_read_file, OS_Thread *thread, char *filename, s32 align_x, s32 align_y) {
-    Bitmap result = {};
-    
-    Debug_OS_File file = debug_os_read_file(thread, filename);
-    if (file.size != 0) {
-        Bitmap_Header *header = (Bitmap_Header *)file.data;
-        u32 *pixels = (u32 *)((u8 *)file.data + header->bitmap_offset);
-        
-        result.memory = pixels;
-        result.width = header->width;
-        result.height = header->height;
-        result.align_percentage = top_down_align(&result, make_vec2((f32)align_x, (f32)align_y));
-        result.width_over_height = safe_ratio0((f32)result.width, (f32)result.height);
-        
-        assert(result.height >= 0);
-        assert(header->compression == 3);
-        
-        // NOTE(xkazu0x): byte order in memory is determined bu the header itself,
-        // so we have to read out the masks and convert the pixels ourselves.
-        u32 red_mask = header->red_mask;
-        u32 green_mask = header->green_mask;
-        u32 blue_mask = header->blue_mask;
-        u32 alpha_mask = ~(red_mask | green_mask | blue_mask);
-        
-        Bit_Scan red_scan = find_least_significant_set_bit(red_mask);
-        Bit_Scan green_scan = find_least_significant_set_bit(green_mask);
-        Bit_Scan blue_scan = find_least_significant_set_bit(blue_mask);
-        Bit_Scan alpha_scan = find_least_significant_set_bit(alpha_mask);
-
-        assert(red_scan.found);
-        assert(green_scan.found);
-        assert(blue_scan.found);
-        assert(alpha_scan.found);
-
-        s32 red_shift_down   = (s32)red_scan.index;
-        s32 green_shift_down = (s32)green_scan.index;
-        s32 blue_shift_down  = (s32)blue_scan.index;
-        s32 alpha_shift_down = (s32)alpha_scan.index;
-
-        u32 *source_dest = pixels;
-        for (s32 y = 0;
-             y < header->height;
-             ++y) {
-            for (s32 x = 0;
-                 x < header->width;
-                 ++x) {
-                u32 color = *source_dest;
-
-                Vec4 texel = make_vec4((f32)((color & red_mask)   >> red_shift_down),
-                                       (f32)((color & green_mask) >> green_shift_down),
-                                       (f32)((color & blue_mask)  >> blue_shift_down),
-                                       (f32)((color & alpha_mask) >> alpha_shift_down));
-                
-                texel = srgb255_to_linear1(texel);
-                texel.rgb *= texel.a;
-                texel = linear1_to_srgb255(texel);
-                
-                *source_dest++ = (((u32)(texel.a + 0.5f) << 24) |
-                                  ((u32)(texel.r + 0.5f) << 16) |
-                                  ((u32)(texel.g + 0.5f) << 8) |
-                                  ((u32)(texel.b + 0.5f) << 0));
-            }
-        }
-    }
-
-    result.pitch = result.width*BYTES_PER_PIXEL;
-
-#if 0
-    result.memory = (u8 *)result.memory + result.pitch*(result.height - 1);
-    result.pitch = -result.pitch;
-#endif
-    
-    return(result);
-}
-
-internal Bitmap
-debug_load_bitmap(Debug_OS_Read_File *debug_os_read_file, OS_Thread *thread, char *filename) {
-    Bitmap result = debug_load_bitmap(debug_os_read_file, thread, filename, 0, 0);
-    result.align_percentage = make_vec2(0.5f);
     return(result);
 }
 
@@ -538,32 +448,6 @@ make_null_collision(Game_State *game_state) {
     return(collision);
 }
 
-internal Memory_Task *
-begin_memory_task(Transient_State *tran_state) {
-    Memory_Task *result = 0;
-
-    for (u32 task_index = 0;
-         task_index < array_count(tran_state->tasks);
-         ++task_index) {
-        Memory_Task *task = tran_state->tasks + task_index;
-        if (!task->is_being_used) {
-            result = task;
-            task->is_being_used = true;
-            task->memory_flush = begin_temp_memory(&task->arena);
-            break;
-        }
-    }
-
-    return(result);
-}
-
-inline void
-end_memory_task(Memory_Task *task) {
-    end_temp_memory(&task->memory_flush);
-    complete_previous_write_before_future_write;
-    task->is_being_used = false;
-}
-
 struct Fill_Ground_Chunk_Work {
     Memory_Task *memory_task;
     Render_Group *render_group;
@@ -577,6 +461,7 @@ OS_WORK_QUEUE_CALLBACK(fill_ground_chunk_work) {
     end_memory_task(work->memory_task);
 }
 
+#if 0
 // TODO(xkazu0x):
 internal u32
 pick_best(u32 info_count, Asset_Bitmap_Info *infos, Asset_Tag *tags, f32 *match_vector, f32 *weight_vector) {
@@ -606,6 +491,7 @@ pick_best(u32 info_count, Asset_Bitmap_Info *infos, Asset_Tag *tags, f32 *match_
 
     return(best_index);
 }
+#endif
 
 internal void
 fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Buffer *ground_buffer, World_Position *position) {
@@ -626,7 +512,7 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
     
         // TODO(xkazu0x): Decide what the push_buffer size is!
         // TODO(xkazu0x): safe cast from memory_unit to u32?
-        Render_Group *render_group = render_group_alloc(&tran_state->assets, &memory_task->arena, 0);
+        Render_Group *render_group = render_group_alloc(tran_state->assets, &memory_task->arena, 0);
         render_orthographic(render_group, buffer->width, buffer->height, (buffer->width - 2) / width);
         render_clear(render_group, make_vec4(1.0f, 0.0f, 1.0f, 1.0f));
     
@@ -658,9 +544,9 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
                      ++ground_index) {
                     Bitmap *sprite;
                     if (random_choice(&series, 2)) {
-                        sprite = tran_state->assets.grass + random_choice(&series, array_count(tran_state->assets.grass));
+                        sprite = tran_state->assets->grass + random_choice(&series, array_count(tran_state->assets->grass));
                     } else {
-                        sprite = tran_state->assets.stone + random_choice(&series, array_count(tran_state->assets.stone));
+                        sprite = tran_state->assets->stone + random_choice(&series, array_count(tran_state->assets->stone));
                     }
 
                     Vec2 random_offset = hadamard_product(half_dim, make_vec2(random_bilateral(&series), random_bilateral(&series)));
@@ -690,9 +576,9 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
                      ++ground_index) {
                     Bitmap *sprite;
                     if (random_choice(&series, 2)) {
-                        sprite = tran_state->assets.tuft + random_choice(&series, array_count(tran_state->assets.tuft));
+                        sprite = tran_state->assets->tuft + random_choice(&series, array_count(tran_state->assets->tuft));
                     } else {
-                        sprite = tran_state->assets.tuft + random_choice(&series, array_count(tran_state->assets.tuft));
+                        sprite = tran_state->assets->tuft + random_choice(&series, array_count(tran_state->assets->tuft));
                     }
         
                     Vec2 random_offset = hadamard_product(half_dim, make_vec2(random_bilateral(&series), random_bilateral(&series)));
@@ -867,95 +753,17 @@ make_pyramid_normal_map(Bitmap *bitmap, f32 roughness) {
     }
 }
 
-struct Load_Asset_Work {
-    Memory_Task *memory_task;
-    Game_Assets *assets;
-    Game_Asset_ID id;
-    char *filename;
-    Bitmap *bitmap;
-
-    b32 has_alignment;
-    s32 align_x;
-    s32 align_y;
-
-    Asset_State final_state;
-};
-
-internal
-OS_WORK_QUEUE_CALLBACK(load_asset_work) {
-    Load_Asset_Work *work = (Load_Asset_Work *)data;
-    
-    // TODO(xkazu0x): Get rid of this thread thing when I load through a queue instead of the debug call.
-    OS_Thread *thread = 0;
-
-    if (work->has_alignment) {
-        *work->bitmap = debug_load_bitmap(work->assets->os_read_file, thread, work->filename, work->align_x, work->align_y);
-    } else {
-        *work->bitmap = debug_load_bitmap(work->assets->os_read_file, thread, work->filename);
-    }
-
-    complete_previous_write_before_future_write;
-
-    work->assets->bitmaps[work->id].bitmap = work->bitmap;
-    work->assets->bitmaps[work->id].state = work->final_state;
-    
-    end_memory_task(work->memory_task);
-}
-
-internal void
-load_asset(Game_Assets *assets, Game_Asset_ID id) {
-    if (atomic_compare_exchange_u32((u32 *)&assets->bitmaps[id].state, AssetState_Unloaded, AssetState_Queued) == AssetState_Unloaded) {
-        Memory_Task *memory_task = begin_memory_task(assets->tran_state);
-        if (memory_task) {
-            Load_Asset_Work *work = push_struct(&memory_task->arena, Load_Asset_Work);
-            work->memory_task = memory_task;
-            work->assets = assets;
-            work->id = id;
-            work->filename = "";
-            work->bitmap = push_struct(&assets->arena, Bitmap);
-            work->has_alignment = false;
-            work->final_state = AssetState_Loaded;
-            
-            switch (id) {
-                case GAI_Wall: {
-                    work->filename = "../res/wall.bmp";
-                } break;
-
-                case GAI_Stairwell: {
-                    work->filename = "../res/stair.bmp";
-                } break;
-
-                case GAI_Shadow: {
-                    work->filename = "../res/shadow.bmp";
-                } break;
-
-                case GAI_Bat: {
-                    work->filename = "../res/bat.bmp";
-                } break;
-
-                case GAI_Sword: {
-                    work->filename = "../res/shadow.bmp";
-                } break;
-            }
-
-            os_work_queue_add_entry(assets->tran_state->low_priority_queue, load_asset_work, work);
-        }
-    }
-}
-
 shared_function
 GAME_UPDATE_AND_RENDER(game_update_and_render) {
 #if EXCALIBUR_INTERNAL
     debug_global_memory = memory;
 #endif
+    debug_os_read_file = memory->debug_os_read_file;
     os_work_queue_add_entry = memory->os_work_queue_add_entry;
     os_work_queue_complete = memory->os_work_queue_complete;
 
-    BEGIN_TIMED_BLOCK(game_update_and_render);
-
-    assert(sizeof(Game_State) <= memory->permanent_storage_size);
-    Game_State *game_state = (Game_State *)memory->permanent_storage;
-    
+    // TODO(xkazu0x): Delete this
+    // {
     u32 tile_count_x = 17;
     u32 tile_count_y = 9;
 
@@ -964,10 +772,15 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     
     u32 ground_buffer_width = 256;
     u32 ground_buffer_height = 256;
+    // }
+
+    BEGIN_TIMED_BLOCK(game_update_and_render);
 
     ////////////////////////////////
     // NOTE(xkazu0x): init game state
-    if (!memory->initialized) {        
+    assert(sizeof(Game_State) <= memory->permanent_storage_size);
+    Game_State *game_state = (Game_State *)memory->permanent_storage;
+    if (!game_state->is_initialized) {
         game_state->typical_floor_height = 3.0f;
 
         // TODO(xkazu0x): Remove this!
@@ -1132,7 +945,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
             }
         }
             
-        memory->initialized = true;
+        game_state->is_initialized = true;
     }
 
     ////////////////////////////////
@@ -1141,10 +954,9 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     Transient_State *tran_state = (Transient_State *)memory->transient_storage;
     if (!tran_state->initialized) {
         tran_state->arena = make_arena(memory->transient_storage_size - sizeof(Transient_State), (u8 *)memory->transient_storage + sizeof(Transient_State));
-
-        tran_state->assets.arena = make_sub_arena(&tran_state->arena, MB(64));
-        tran_state->assets.os_read_file = memory->debug_os_read_file;
-        tran_state->assets.tran_state = tran_state;
+        
+        tran_state->high_priority_queue = memory->high_priority_queue;
+        tran_state->low_priority_queue = memory->low_priority_queue;
         
         for (u32 task_index = 0;
              task_index < array_count(tran_state->tasks);
@@ -1153,9 +965,8 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
             task->is_being_used = false;
             task->arena = make_sub_arena(&tran_state->arena, MB(1));
         }
-        
-        tran_state->high_priority_queue = memory->high_priority_queue;
-        tran_state->low_priority_queue = memory->low_priority_queue;
+
+        tran_state->assets = alloc_game_assets(&tran_state->arena, MB(64), tran_state);
         
         tran_state->ground_buffer_count = 256;
         tran_state->ground_buffers = push_array(&tran_state->arena,
@@ -1197,19 +1008,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 height >>= 1;
             }
         }
-        
-        tran_state->assets.grass[0]  = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/grass00.bmp");
-        tran_state->assets.grass[1]  = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/grass01.bmp");
-        tran_state->assets.stone[0]  = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/stone00.bmp");
-        tran_state->assets.stone[1]  = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/stone01.bmp");
-        tran_state->assets.tuft[0]   = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/tuft0.bmp");
-        tran_state->assets.tuft[1]   = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/tuft1.bmp");
-        
-        tran_state->assets.player[0] = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/skull_back.bmp");
-        tran_state->assets.player[1] = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/skull_right.bmp");
-        tran_state->assets.player[2] = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/skull_front.bmp");
-        tran_state->assets.player[3] = debug_load_bitmap(memory->debug_os_read_file, thread, "../res/skull_left.bmp");
-        
+                
         tran_state->initialized = true;
     }
 
@@ -1276,7 +1075,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     // NOTE(xkazu0x): init renderer memory
     Temp_Memory render_memory = begin_temp_memory(&tran_state->arena);
     // TODO(xkazu0x): Decide what out push buffer size is!
-    Render_Group *render_group = render_group_alloc(&tran_state->assets, &tran_state->arena, MB(4));
+    Render_Group *render_group = render_group_alloc(tran_state->assets, &tran_state->arena, MB(4));
     
     f32 width_of_monitor = 0.635f; // NOTE(xkazu0x): Horizontal measurement of monitor in meters
     f32 meters_to_pixels = ((f32)draw_buffer->width)*width_of_monitor;
@@ -1535,23 +1334,23 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     Vec2 dim = entity->collision->total_volume.dim.xy;
                     render_rect(render_group, make_vec3(0.0f), dim, make_vec4(1.0f, 0.5f, 0.2f, 1.0f));
                     
-                    render_bitmap(render_group, GAI_Wall, make_vec3(0.0f), dim.y);
+                    render_bitmap(render_group, get_first_bitmap_id(tran_state->assets, AssetType_Wall), make_vec3(0.0f), dim.y);
                 } break;
                     
                 case EntityType_Stairwell: {
                     render_rect(render_group, make_vec3(0.0f), entity->walkable_dim, make_vec4(1.0f, 0.0f, 1.0f, 1.0f));
                     //render_rect(render_group, make_vec3(0.0f, entity->walkable_height, 0.0f), entity->walkable_dim, make_vec4(0.0f, 1.0f, 1.0f, 1.0f));
                     
-                    render_bitmap(render_group, GAI_Stairwell, make_vec3(0.0f), 3.0f);
-                    //render_bitmap(render_group, GAI_Stairwell, make_vec3(0.0f, 0.0f, entity->walkable_height));
+                    render_bitmap(render_group, get_first_bitmap_id(tran_state->assets, AssetType_Stairwell), make_vec3(0.0f), 3.0f);
+                    //render_bitmap(render_group, AssetType_Stairwell, make_vec3(0.0f, 0.0f, entity->walkable_height));
                 } break;
 
                 case EntityType_Player: {
-                    Bitmap *player_sprite = &tran_state->assets.player[entity->direction];
+                    Bitmap *player_sprite = &tran_state->assets->player[entity->direction];
                     
                     render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.5f, 0.2f, 1.0f));
                     
-                    render_bitmap(render_group, GAI_Shadow, make_vec3(0.0f), 1.0f, make_vec4(1.0f, 1.0f, 1.0f, shadow_alpha));
+                    render_bitmap(render_group, get_first_bitmap_id(tran_state->assets, AssetType_Shadow), make_vec3(0.0f), 1.0f, make_vec4(1.0f, 1.0f, 1.0f, shadow_alpha));
                     render_bitmap(render_group, player_sprite, make_vec3(0.0f), 1.0f);
                     
                     draw_hit_points(render_group, entity);
@@ -1560,7 +1359,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 case EntityType_Sword: {
                     render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(0.0f, 1.0f, 0.0f, 1.0f));
                     
-                    render_bitmap(render_group, GAI_Sword, make_vec3(0.0f), 1.0f);
+                    render_bitmap(render_group, get_first_bitmap_id(tran_state->assets, AssetType_Sword), make_vec3(0.0f), 1.0f);
                 } break;
                     
                 case EntityType_Familiar: {
@@ -1573,16 +1372,16 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     
                     render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(0.0f, 1.0f, 0.0f, 1.0f));
 
-                    render_bitmap(render_group, GAI_Shadow, make_vec3(0.0f), 1.0f, make_vec4(1.0f, 1.0f, 1.0f, (0.5f*shadow_alpha) - bob_sin));
-                    render_bitmap(render_group, GAI_Bat, make_vec3(0.0f, 0.0f, bob_sin + 0.4f), 1.0f);
+                    render_bitmap(render_group, get_first_bitmap_id(tran_state->assets, AssetType_Shadow), make_vec3(0.0f), 1.0f, make_vec4(1.0f, 1.0f, 1.0f, (0.5f*shadow_alpha) - bob_sin));
+                    render_bitmap(render_group, get_first_bitmap_id(tran_state->assets, AssetType_Bat), make_vec3(0.0f, 0.0f, bob_sin + 0.4f), 1.0f);
                 } break;
                     
                 case EntityType_Monster: {
-                    Bitmap *monster_sprite = &tran_state->assets.player[2];
+                    Bitmap *monster_sprite = &tran_state->assets->player[2];
                     
                     render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.0f, 0.0f, 1.0f));
 
-                    render_bitmap(render_group, GAI_Shadow, make_vec3(0.0f), 1.0f, make_vec4(1.0f, 1.0f, 1.0f, shadow_alpha));
+                    render_bitmap(render_group, get_first_bitmap_id(tran_state->assets, AssetType_Shadow), make_vec3(0.0f), 1.0f, make_vec4(1.0f, 1.0f, 1.0f, shadow_alpha));
                     render_bitmap(render_group, monster_sprite, make_vec3(0.0f), 1.0f);
                     
                     draw_hit_points(render_group, entity);

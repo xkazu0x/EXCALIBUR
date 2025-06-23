@@ -45,6 +45,8 @@ struct Ground_Buffer {
 };
 
 struct Game_State {
+    b32 is_initialized;
+    
     Arena world_arena;
     World *world;
 
@@ -78,95 +80,22 @@ struct Game_State {
     Bitmap test_normal;
 };
 
-struct Memory_Task {
-    b32 is_being_used;
-    Arena arena;
-    Temp_Memory memory_flush;
-};
-
-enum Asset_State {
-    AssetState_Unloaded,
-    AssetState_Queued,
-    AssetState_Loaded,
-    AssetState_Locked,
-};
-
-struct Asset_Slot {
-    Asset_State state;
-    Bitmap *bitmap;
-};
-
-enum Game_Asset_ID {
-    GAI_Wall,
-    GAI_Stairwell,
-    GAI_Shadow,
-    GAI_Bat,
-    GAI_Sword,
-    
-    GAI_Count,
-};
-
-struct Asset_Tag {
-    u32 id;
-    f32 value;
-};
-
-struct Asset_Bitmap_Info {
-    Vec2 align_percentage;
-    f32 width_over_height;
-    s32 width;
-    s32 height;
-
-    u32 first_tag_index;
-    u32 tag_count;
-};
-
-struct Asset_Group {
-    u32 first_tag_index;
-    u32 tag_count;
-};
-
-struct Game_Assets {
-    Debug_OS_Read_File *os_read_file;
-    
-    struct Transient_State *tran_state;
-    Arena arena;
-    
-    Asset_Slot bitmaps[GAI_Count];
-
-    // NOTE(xkazu0x): Array'd assets
-    Bitmap grass[2];
-    Bitmap stone[2];
-    Bitmap tuft[2];
-    Bitmap player[4];
-    
-    // TODO(xkazu0x): Structured assets
-};
-
-internal Bitmap *
-get_game_asset_bitmap(Game_Assets *assets, Game_Asset_ID id) {
-    Bitmap *result = assets->bitmaps[id].bitmap;
-    return(result);
-}
-
 struct Transient_State {
     b32 initialized;
     Arena arena;
-
-    u32 ground_buffer_count;
-    Ground_Buffer *ground_buffers;
-    
     OS_Work_Queue *high_priority_queue;
     OS_Work_Queue *low_priority_queue;
+    Memory_Task tasks[4];
+    
+    Game_Assets *assets;
+    
+    u32 ground_buffer_count;
+    Ground_Buffer *ground_buffers;
     
     u32 env_map_width;
     u32 env_map_height;
     // NOTE(xkazu0x): 0 is bottom, 1 is middle, 2 is top
     Environment_Map env_maps[3];
-
-    Memory_Task tasks[4];
-
-    Game_Assets assets;
 };
 
 internal Low_Entity *
@@ -177,7 +106,5 @@ get_low_entity(Game_State *game_state, u32 index) {
     }
     return(result);
 }
-
-internal void load_asset(Game_Assets *assets, Game_Asset_ID id);
 
 #endif // EXCALIBUR_GAME_H

@@ -85,7 +85,7 @@ DEBUG_OS_READ_FILE(debug_os_read_file) {
                     result.data = file_memory;
                 } else {
                     // TODO(xkazu0x): logging
-                    debug_os_free_file(thread, file_memory);
+                    debug_os_free_file(file_memory);
                     file_memory = 0;
                 }
             } else {
@@ -107,8 +107,8 @@ DEBUG_OS_WRITE_FILE(debug_os_write_file) {
     HANDLE file_handle = CreateFileA(filename, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
     if (file_handle != INVALID_HANDLE_VALUE) {
         DWORD bytes_written;
-        if (WriteFile(file_handle, memory, memory_size, &bytes_written, 0)) {
-            result = (bytes_written == memory_size);
+        if (WriteFile(file_handle, memory, size, &bytes_written, 0)) {
+            result = (bytes_written == size);
         } else {
             // TODO(xkazu0x): logging
         }
@@ -785,10 +785,9 @@ int main(void)
 
         // NOTE(xkazu0x): update and render
         if (!pause) {
-            OS_Thread thread = {};
             clock.dt = target_seconds_per_frame;
             if (game.update_and_render) {
-                game.update_and_render(&framebuffer, &input, &memory, &clock, &thread);
+                game.update_and_render(&framebuffer, &input, &memory, &clock);
                 handle_debug_cycle_counters(&memory);
             }
         }

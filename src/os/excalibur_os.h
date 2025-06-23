@@ -1,11 +1,6 @@
 #ifndef EXCALIBUR_OS_H
 #define EXCALIBUR_OS_H
     
-typedef struct OS_Thread OS_Thread;
-struct OS_Thread {
-    u32 handle;
-};
-
 #if EXCALIBUR_INTERNAL
 // IMPORTANT(xkazu0x): These are NOT for doing anything in the shipping game
 // they are blocking and the write doesn't protect against lost data
@@ -16,9 +11,9 @@ struct Debug_OS_File {
     void *data;
 };
 
-# define DEBUG_OS_FREE_FILE(x)  void x(OS_Thread *thread, void *memory)
-# define DEBUG_OS_READ_FILE(x)  Debug_OS_File x(OS_Thread *thread, char *filename)
-# define DEBUG_OS_WRITE_FILE(x) b32 x(OS_Thread *thread, char *filename, u32 memory_size, void *memory)
+# define DEBUG_OS_FREE_FILE(x)  void x(void *memory)
+# define DEBUG_OS_READ_FILE(x)  Debug_OS_File x(char *filename)
+# define DEBUG_OS_WRITE_FILE(x) b32 x(char *filename, u32 size, void *memory)
 
 typedef DEBUG_OS_FREE_FILE(Debug_OS_Free_File);
 typedef DEBUG_OS_READ_FILE(Debug_OS_Read_File);
@@ -239,16 +234,12 @@ typedef void OS_Work_Queue_Complete(OS_Work_Queue *queue);
 
 typedef struct OS_Memory OS_Memory;
 struct OS_Memory {
-    b32 initialized;
-    
     u64 permanent_storage_size;
     u64 transient_storage_size;
 
     // NOTE(xkazu0x): required to be cleared to zero at startup
-    // {
     void *permanent_storage;
     void *transient_storage;
-    // }
 
     OS_Work_Queue *high_priority_queue;
     OS_Work_Queue *low_priority_queue;
@@ -270,7 +261,7 @@ struct OS_Clock {
     f32 dt;
 };
 
-#define GAME_UPDATE_AND_RENDER(x) void x(OS_Framebuffer *framebuffer, OS_Input *input, OS_Memory *memory, OS_Clock *clock, OS_Thread *thread)
+#define GAME_UPDATE_AND_RENDER(x) void x(OS_Framebuffer *framebuffer, OS_Input *input, OS_Memory *memory, OS_Clock *clock)
 typedef GAME_UPDATE_AND_RENDER(Game_Update_And_Render);
 
 #endif // EXCALIBUR_OS_H

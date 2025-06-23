@@ -1201,12 +1201,12 @@ render_bitmap(Render_Group *group, Bitmap *bitmap, Vec3 offset, f32 height, Vec4
 
 // TODO(xkazu0x): put this function in the header
 internal void
-render_bitmap(Render_Group *group, Game_Asset_ID id, Vec3 offset, f32 height, Vec4 color = make_vec4(1.0f)) {
-    Bitmap *bitmap = get_game_asset_bitmap(group->assets, id);
+render_bitmap(Render_Group *group, Bitmap_ID id, Vec3 offset, f32 height, Vec4 color = make_vec4(1.0f)) {
+    Bitmap *bitmap = get_bitmap(group->assets, id);
     if (bitmap) {
         render_bitmap(group, bitmap, offset, height, color);
     } else {
-        load_asset(group->assets, id);
+        load_bitmap(group->assets, id);
         ++group->missing_resource_count;
     }
 }
