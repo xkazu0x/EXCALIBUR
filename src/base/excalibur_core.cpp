@@ -42,59 +42,65 @@ compiler_from_context(void) {
     return(result);
 }
 
-internal char *
+internal String8
 string_from_operating_system(Operating_System os) {
+    String8 result;
     switch (os) {
         case OperatingSystem_Windows: {
-            return("windows");
+            result = string8("windows");
         } break;
         case OperatingSystem_Linux: {
-            return("linux");
+            result = string8("linux");
         } break;
         case OperatingSystem_Mac: {
-            return("mac");
+            result = string8("mac");
         } break;
         default: {
-            return("<null>");
+            result = string8("<null>");
         } break;
     }
+    return(result);
 }
 
-internal char *
+internal String8
 string_from_architecture(Architecture arch) {
+    String8 result;
     switch (arch) {
         case Architecture_x64: {
-            return("x64");
+            result = string8("x64");
         } break;
         case Architecture_x86: {
-            return("x86");
+            result = string8("x86");
         } break;
         case Architecture_arm64: {
-            return("arm64");
+            result = string8("arm64");
         } break;
         case Architecture_arm32: {
-            return("arm32");
+            result = string8("arm32");
         } break;
         default: {
-            return("<null>");
+            result = string8("<null>");
         } break;
     }
+    return(result);
 }
 
-internal char *
+internal String8
 string_from_compiler(Compiler compiler) {
+    String8 result;
     switch (compiler) {
         case Compiler_msvc: {
-            return("msvc");
+            result = string8("msvc");
         } break;
         case Compiler_gcc: {
-            return("gcc");
+            result = string8("gcc");
         } break;
         case Compiler_clang: {
-            return("clang");
+            result = string8("clang");
         } break;
         default: {
-            return("<null>");
+            result = string8("<null>");
         } break;
     }
+    return(result);
 }

@@ -15,7 +15,6 @@
   > Hardware acceleration (OpenGL)
   > ChangeDisplaySettings option
 */
-global b32 quit;
 
 global Win32_State win32_state;
 
@@ -30,37 +29,43 @@ XINPUT_SET_STATE(_xinput_set_state) {
     return(ERROR_DEVICE_NOT_CONNECTED);
 }
 
-////////////////////////////////
-// TODO(xkazu0x): temp functions
-internal inline u32
+internal u32
 safe_truncate_u64(u64 value) {
     assert(value <= u32_max);
     u32 result = (u32)value;
     return(result);
 }
 
-internal u32
-string_length(char *string) {
-    u32 count = 0;
-    while (*string++) {
-        ++count;
-    }
-    return(count);
+////////////////////////////////
+// TODO(xkazu0x): move this to excalibur_string.h
+// {
+internal u64
+cstring8_length(u8 *cstr) {
+    u8 *ptr = cstr;
+    for (; *ptr != 0; ++ptr);
+    return(ptr - cstr);
 }
 
-internal void
-cat_strings(size_t src_a_count, char *src_a,
-            size_t src_b_count, char *src_b,
-            size_t dest_count, char *dest) {
-    for (u32 i = 0; i < src_a_count; ++i) {
-        *dest++ = *src_a++;
-    }
-    for (u32 i = 0; i < src_b_count; ++i) {
-        *dest++ = *src_b++;
-    }
-    *dest++ = 0;
+internal String8
+string8_cstring(char *cstr) {
+    String8 result;
+    result.size = cstring8_length((u8 *)cstr);
+    result.str = (u8 *)cstr;
+    return(result);
 }
-////////////////////////////////
+
+internal String8
+string8_cat(String8 a, String8 b) {
+    String8 result;
+    result.size = a.size + b.size;
+    // TODO(xkazu0x): remove platform specific code.
+    result.str = (u8 *)VirtualAlloc(0, result.size + 1, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    memmove(result.str, a.str, a.size);
+    memmove(result.str + a.size, b.str, b.size);
+    result.str[result.size] = 0;
+    return(result);
+}
+// }
 
 DEBUG_OS_FREE_FILE(debug_os_free_file) {
     if (memory) {
@@ -119,16 +124,14 @@ DEBUG_OS_WRITE_FILE(debug_os_write_file) {
     return(result);
 }
 
-inline FILETIME
+internal FILETIME
 win32_get_last_write_time(char *filename) {
-    FILETIME last_write_time = {};
-    
+    FILETIME result = {};
     WIN32_FILE_ATTRIBUTE_DATA data;
     if (GetFileAttributesEx(filename, GetFileExInfoStandard, &data)) {
-        last_write_time = data.ftLastWriteTime;
+        result = data.ftLastWriteTime;
     }
-    
-    return(last_write_time);
+    return(result);
 }
 
 internal Win32_Game
@@ -169,16 +172,7 @@ win32_unload_game(Win32_Game *game) {
 }
 
 internal void
-win32_build_exe_path_filename(Win32_State *state, char *filename,
-                              u32 dest_count, char *dest) {
-    cat_strings(state->one_past_last_exe_filename_slash - state->exe_filename, state->exe_filename,
-                string_length(filename), filename,
-                dest_count, dest);
-}
-
-internal void
 win32_get_exe_filename(Win32_State *state) {
-    //DWORD size_of_filename;
     GetModuleFileName(0, state->exe_filename, sizeof(state->exe_filename));
     state->one_past_last_exe_filename_slash = state->exe_filename;
     for (char *scan = state->exe_filename;
@@ -190,14 +184,22 @@ win32_get_exe_filename(Win32_State *state) {
     }
 }
 
-inline LARGE_INTEGER
+internal char *
+win32_build_exe_path_filename(Win32_State *state, char *filename) {
+    String8 str0 = make_string8((u64)(win32_state.one_past_last_exe_filename_slash - win32_state.exe_filename), (u8 *)win32_state.exe_filename);
+    String8 str1 = string8_cstring(filename);
+    char *result = (char *)string8_cat(str0, str1).str;
+    return(result);
+}
+
+internal LARGE_INTEGER
 win32_get_time(void) {
     LARGE_INTEGER result;
     QueryPerformanceCounter(&result);
     return(result);
 }
 
-inline f32
+internal f32
 win32_get_delta_seconds(LARGE_INTEGER start, LARGE_INTEGER end) {
     f32 result = ((f32)(end.QuadPart - start.QuadPart)) / ((f32)(win32_state.time_frequency));
     return(result);
@@ -237,7 +239,6 @@ win32_get_window_size(HWND window) {
 }
 
 #define align16(x) ((x + 15) & ~15)
-
 internal void
 win32_resize_framebuffer(OS_Framebuffer *framebuffer, s32 width, s32 height) {
     if (framebuffer->memory) {
@@ -431,11 +432,16 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 int main(void)
 #endif
 {
-    log_info("operating system: %s", string_from_operating_system(operating_system_from_context()));
-    log_info("architecture: %s", string_from_architecture(architecture_from_context()));
-    log_info("compiler: %s", string_from_compiler(compiler_from_context()));
+    // NOTE(xkazu0x): context cracking
+    String8 operating_system_string = string_from_operating_system(operating_system_from_context());
+    String8 architecture_string = string_from_architecture(architecture_from_context());
+    String8 compiler_string = string_from_compiler(compiler_from_context());
+    
+    log_info("operating system: %s", operating_system_string.str);
+    log_info("architecture: %s", architecture_string.str);
+    log_info("compiler: %s", compiler_string.str);
 
-    // NOTE(xkazu0x): create threads
+    // NOTE(xkazu0x): make threads
     OS_Work_Queue high_priority_queue;
     win32_make_work_queue(&high_priority_queue, 4);
     
@@ -445,18 +451,13 @@ int main(void)
     // NOTE(xkazu0x): load game code
     win32_get_exe_filename(&win32_state);
     
-    char source_game_code_dll_fullpath[WIN32_FILENAME_MAX];
-    win32_build_exe_path_filename(&win32_state, "excalibur_game.dll",
-                                  sizeof(source_game_code_dll_fullpath),
-                                  source_game_code_dll_fullpath);
+    char *source_game_code_dll_fullpath = win32_build_exe_path_filename(&win32_state, "excalibur_game.dll");
+    char *temp_game_code_dll_fullpath = win32_build_exe_path_filename(&win32_state, "excalibur_game_temp.dll");
     
-    char temp_game_code_dll_fullpath[WIN32_FILENAME_MAX];
-    win32_build_exe_path_filename(&win32_state, "excalibur_game_temp.dll",
-                                  sizeof(temp_game_code_dll_fullpath),
-                                  temp_game_code_dll_fullpath);
-
     Win32_Game game = win32_load_game(source_game_code_dll_fullpath, temp_game_code_dll_fullpath);
-    if (!game.loaded) return(1);
+    if (!game.loaded) {
+        return(1);
+    }
     
     // NOTE(xkazu0x): monitor info
     DEVMODE monitor_info;
@@ -625,6 +626,7 @@ int main(void)
     LARGE_INTEGER last_counter = win32_get_time();
     u64 last_cycle_count = __rdtsc();
 
+    b32 quit = false;
     b32 pause = false;
     while (!quit) {
         // NOTE(xkazu0x): reload game

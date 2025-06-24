@@ -106,6 +106,26 @@ global f32 pi32 = 3.14159265359f;
 global f64 pi64 = 3.14159265359;
 
 ////////////////////////////////
+// NOTE(xkazu0x): String types
+
+struct String8 {
+    u64 size;
+    u8 *str;
+};
+
+////////////////////////////////
+// NOTE(xkazu0x): String functions
+
+#define string8(str) make_string8(sizeof(str) - 1, (u8 *)(str))
+internal String8
+make_string8(u64 size, u8 *str) {
+    String8 result;
+    result.size = size;
+    result.str = str;
+    return(result);
+}
+
+////////////////////////////////
 // NOTE(xkazu0x): Context enums
 
 enum Operating_System {
@@ -140,8 +160,8 @@ internal Operating_System operating_system_from_context(void);
 internal Architecture architecture_from_context(void);
 internal Compiler compiler_from_context(void);
 
-internal char *string_from_operating_system(Operating_System os);
-internal char *string_from_architecture(Architecture arch);
-internal char *string_from_compiler(Compiler compiler);
+internal String8 string_from_operating_system(Operating_System os);
+internal String8 string_from_architecture(Architecture arch);
+internal String8 string_from_compiler(Compiler compiler);
 
 #endif // EXCALIBUR_CORE_H
