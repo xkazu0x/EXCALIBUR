@@ -31,7 +31,8 @@ enum Asset_Type_ID {
     AssetType_Wall,
     AssetType_Stairwell,
     AssetType_Shadow,
-    AssetType_Bat,
+    AssetType_Familiar,
+    AssetType_Monster,
     AssetType_Sword,
 
     AssetType_Grass,
@@ -62,13 +63,13 @@ struct Asset_Group {
     u32 one_past_last_tag_index;
 };
 
-struct Game_Assets {
-    Arena arena;
+struct Asset_Manager {
     struct Transient_State *tran_state;
-    
+    Arena arena;
+
     u32 bitmap_count;
-    Asset_Slot *bitmaps;
     Asset_Bitmap_Info *bitmap_infos;
+    Asset_Slot *bitmaps;
 
     u32 sound_count;
     Asset_Slot *sounds;
@@ -99,9 +100,7 @@ struct Sound_ID {
     u32 value;
 };
 
-internal Bitmap *get_bitmap(Game_Assets *assets, Bitmap_ID id);
-
-internal void load_bitmap(Game_Assets *assets, Bitmap_ID id);
-internal void load_sound(Game_Assets *assets, Sound_ID id);
+internal Bitmap *asset_get_bitmap(Asset_Manager *manager, Bitmap_ID id);
+internal void asset_load_bitmap(Asset_Manager *manager, Bitmap_ID id);
 
 #endif // EXCALIBUR_ASSET_H

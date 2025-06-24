@@ -2,10 +2,9 @@
 #define EXCALIBUR_BASE_H
 
 ////////////////////////////////
-// NOTE(xkazu0x): Base includes
+// NOTE(xkazu0x): base includes
 
 #include "excalibur_context.h"
-
 #include "excalibur_core.h"
 #include "excalibur_math.h"
 #include "excalibur_log.h"

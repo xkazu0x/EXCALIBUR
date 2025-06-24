@@ -1,5 +1,5 @@
 ////////////////////////////////
-// NOTE(xkazu0x): Base includes
+// NOTE(xkazu0x): base includes
 
 #include "excalibur_core.cpp"
 #include "excalibur_math.cpp"

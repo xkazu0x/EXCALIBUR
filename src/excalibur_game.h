@@ -83,11 +83,12 @@ struct Game_State {
 struct Transient_State {
     b32 initialized;
     Arena arena;
+    
     OS_Work_Queue *high_priority_queue;
     OS_Work_Queue *low_priority_queue;
     Memory_Task tasks[4];
     
-    Game_Assets *assets;
+    Asset_Manager *asset_manager;
     
     u32 ground_buffer_count;
     Ground_Buffer *ground_buffers;

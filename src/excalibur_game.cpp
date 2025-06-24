@@ -508,7 +508,7 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
         assert(width == height);
     
         // TODO(xkazu0x): Decide what the push_buffer size is!
-        Render_Group *render_group = render_group_alloc(tran_state->assets, &memory_task->arena, 0);
+        Render_Group *render_group = render_group_alloc(tran_state->asset_manager, &memory_task->arena, 0);
         render_orthographic(render_group, buffer->width, buffer->height, (buffer->width - 2) / width);
         render_clear(render_group, make_vec4(1.0f, 0.0f, 1.0f, 1.0f));
         
@@ -545,7 +545,7 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
                 for (u32 ground_index = 0;
                      ground_index < 100;
                      ++ground_index) {
-                    Bitmap_ID sprite = random_asset_from(tran_state->assets, random_choice(&series, 2) ? AssetType_Grass : AssetType_Stone, &series);
+                    Bitmap_ID sprite = random_asset_from(tran_state->asset_manager, random_choice(&series, 2) ? AssetType_Grass : AssetType_Stone, &series);
                     
                     Vec2 random_offset = hadamard_product(half_dim, make_vec2(random_bilateral(&series), random_bilateral(&series)));
                     Vec2 sprite_offset = chunk_center + random_offset;
@@ -580,7 +580,7 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
                         sprite = tran_state->assets->tuft + random_choice(&series, array_count(tran_state->assets->tuft));
                     }
 #else
-                    Bitmap_ID sprite = random_asset_from(tran_state->assets, AssetType_Flower, &series);
+                    Bitmap_ID sprite = random_asset_from(tran_state->asset_manager, AssetType_Flower, &series);
 #endif
                     Vec2 random_offset = hadamard_product(half_dim, make_vec2(random_bilateral(&series), random_bilateral(&series)));
                     Vec2 sprite_offset = chunk_center + random_offset;
@@ -965,7 +965,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
             task->arena = make_sub_arena(&tran_state->arena, MB(1));
         }
 
-        tran_state->assets = alloc_game_assets(&tran_state->arena, MB(64), tran_state);
+        tran_state->asset_manager = asset_manager_alloc(&tran_state->arena, MB(64), tran_state);
         
         tran_state->ground_buffer_count = 256;
         tran_state->ground_buffers = push_array(&tran_state->arena,
@@ -1074,7 +1074,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     // NOTE(xkazu0x): init renderer memory
     Temp_Memory render_memory = begin_temp_memory(&tran_state->arena);
     // TODO(xkazu0x): Decide what out push buffer size is!
-    Render_Group *render_group = render_group_alloc(tran_state->assets, &tran_state->arena, MB(4));
+    Render_Group *render_group = render_group_alloc(tran_state->asset_manager, &tran_state->arena, MB(4));
     
     f32 width_of_monitor = 0.635f; // NOTE(xkazu0x): Horizontal measurement of monitor in meters
     f32 meters_to_pixels = ((f32)draw_buffer->width)*width_of_monitor;
@@ -1333,23 +1333,23 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     Vec2 dim = entity->collision->total_volume.dim.xy;
                     render_rect(render_group, make_vec3(0.0f), dim, make_vec4(1.0f, 0.5f, 0.2f, 1.0f));
                     
-                    render_bitmap(render_group, get_first_bitmap_id(tran_state->assets, AssetType_Wall), make_vec3(0.0f), dim.y);
+                    render_bitmap(render_group, first_asset_from(tran_state->asset_manager, AssetType_Wall), make_vec3(0.0f), dim.y);
                 } break;
                     
                 case EntityType_Stairwell: {
                     render_rect(render_group, make_vec3(0.0f), entity->walkable_dim, make_vec4(1.0f, 0.0f, 1.0f, 1.0f));
                     //render_rect(render_group, make_vec3(0.0f, entity->walkable_height, 0.0f), entity->walkable_dim, make_vec4(0.0f, 1.0f, 1.0f, 1.0f));
                     
-                    render_bitmap(render_group, get_first_bitmap_id(tran_state->assets, AssetType_Stairwell), make_vec3(0.0f), 3.0f);
+                    render_bitmap(render_group, first_asset_from(tran_state->asset_manager, AssetType_Stairwell), make_vec3(0.0f), 3.0f);
                     //render_bitmap(render_group, AssetType_Stairwell, make_vec3(0.0f, 0.0f, entity->walkable_height));
                 } break;
 
                 case EntityType_Player: {
-                    Bitmap *player_sprite = &tran_state->assets->player[entity->direction];
+                    Bitmap *player_sprite = &tran_state->asset_manager->player[entity->direction];
                     
                     render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.5f, 0.2f, 1.0f));
                     
-                    render_bitmap(render_group, get_first_bitmap_id(tran_state->assets, AssetType_Shadow), make_vec3(0.0f), 1.0f, make_vec4(1.0f, 1.0f, 1.0f, shadow_alpha));
+                    render_bitmap(render_group, first_asset_from(tran_state->asset_manager, AssetType_Shadow), make_vec3(0.0f), 1.0f, make_vec4(1.0f, 1.0f, 1.0f, shadow_alpha));
                     render_bitmap(render_group, player_sprite, make_vec3(0.0f), 1.0f);
                     
                     draw_hit_points(render_group, entity);
@@ -1358,7 +1358,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 case EntityType_Sword: {
                     render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(0.0f, 1.0f, 0.0f, 1.0f));
                     
-                    render_bitmap(render_group, get_first_bitmap_id(tran_state->assets, AssetType_Sword), make_vec3(0.0f), 1.0f);
+                    render_bitmap(render_group, first_asset_from(tran_state->asset_manager, AssetType_Sword), make_vec3(0.0f), 1.0f);
                 } break;
                     
                 case EntityType_Familiar: {
@@ -1371,17 +1371,15 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     
                     render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(0.0f, 1.0f, 0.0f, 1.0f));
 
-                    render_bitmap(render_group, get_first_bitmap_id(tran_state->assets, AssetType_Shadow), make_vec3(0.0f), 1.0f, make_vec4(1.0f, 1.0f, 1.0f, (0.5f*shadow_alpha) - bob_sin));
-                    render_bitmap(render_group, get_first_bitmap_id(tran_state->assets, AssetType_Bat), make_vec3(0.0f, 0.0f, bob_sin + 0.4f), 1.0f);
+                    render_bitmap(render_group, first_asset_from(tran_state->asset_manager, AssetType_Shadow), make_vec3(0.0f), 1.0f, make_vec4(1.0f, 1.0f, 1.0f, (0.5f*shadow_alpha) - bob_sin));
+                    render_bitmap(render_group, first_asset_from(tran_state->asset_manager, AssetType_Familiar), make_vec3(0.0f, 0.0f, bob_sin + 0.4f), 1.0f);
                 } break;
                     
                 case EntityType_Monster: {
-                    Bitmap *monster_sprite = &tran_state->assets->player[2];
-                    
                     render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.0f, 0.0f, 1.0f));
 
-                    render_bitmap(render_group, get_first_bitmap_id(tran_state->assets, AssetType_Shadow), make_vec3(0.0f), 1.0f, make_vec4(1.0f, 1.0f, 1.0f, shadow_alpha));
-                    render_bitmap(render_group, monster_sprite, make_vec3(0.0f), 1.0f);
+                    render_bitmap(render_group, first_asset_from(tran_state->asset_manager, AssetType_Shadow), make_vec3(0.0f), 1.0f, make_vec4(1.0f, 1.0f, 1.0f, shadow_alpha));
+                    render_bitmap(render_group, first_asset_from(tran_state->asset_manager, AssetType_Monster), make_vec3(0.0f), 1.0f);
                     
                     draw_hit_points(render_group, entity);
                 } break;

@@ -23,6 +23,7 @@ struct Bitmap_Header {
 };
 #pragma pack(pop)
 
+#if 0
 internal Vec2
 top_down_align(Bitmap *bitmap, Vec2 align) {
     //align.y = (f32)(bitmap->height - 1) - align.y;
@@ -39,6 +40,7 @@ set_bitmap_align(Bitmap *bitmap, Vec2 align) {
     align = top_down_align(bitmap, align);
     bitmap->align_percentage = align;
 }
+#endif
 
 internal Bitmap
 debug_load_bitmap(char *filename, Vec2 align_percentage = make_vec2(0.5f)) {
@@ -116,12 +118,16 @@ debug_load_bitmap(char *filename, Vec2 align_percentage = make_vec2(0.5f)) {
     return(result);
 }
 
+//
+//
+//
+
 internal Bitmap_ID
-debug_add_bitmap_info(Game_Assets *assets, char *filename, Vec2 align_percentage)  {
-    assert(assets->debug_used_bitmap_count < assets->bitmap_count);
-    Bitmap_ID id = {assets->debug_used_bitmap_count++};
+debug_asset_add_bitmap_info(Asset_Manager *manager, char *filename, Vec2 align_percentage)  {
+    assert(manager->debug_used_bitmap_count < manager->bitmap_count);
+    Bitmap_ID id = {manager->debug_used_bitmap_count++};
     
-    Asset_Bitmap_Info *info = assets->bitmap_infos + id.value;
+    Asset_Bitmap_Info *info = manager->bitmap_infos + id.value;
     info->filename = filename;
     info->align_percentage = align_percentage;
     
@@ -129,131 +135,137 @@ debug_add_bitmap_info(Game_Assets *assets, char *filename, Vec2 align_percentage
 }
 
 internal void
-begin_asset_type(Game_Assets *assets, Asset_Type_ID type_id) {
-    assert(assets->debug_asset_type == 0);
-    assets->debug_asset_type = assets->asset_types + type_id;
-    assets->debug_asset_type->first_asset_index = assets->debug_used_asset_count;
-    assets->debug_asset_type->one_past_last_asset_index = assets->debug_asset_type->first_asset_index;
+begin_asset_type(Asset_Manager *manager, Asset_Type_ID type_id) {
+    assert(manager->debug_asset_type == 0);
+    manager->debug_asset_type = manager->asset_types + type_id;
+    manager->debug_asset_type->first_asset_index = manager->debug_used_asset_count;
+    manager->debug_asset_type->one_past_last_asset_index = manager->debug_asset_type->first_asset_index;
 }
 
 internal void
-asset_add_bitmap(Game_Assets *assets, char *filename, Vec2 align_percentage = make_vec2(0.5f)) {
-    assert(assets->debug_asset_type);
-    Asset *asset = assets->assets + assets->debug_asset_type->one_past_last_asset_index++;
+asset_add_bitmap(Asset_Manager *manager, char *filename, Vec2 align_percentage = make_vec2(0.5f)) {
+    assert(manager->debug_asset_type);
+    Asset *asset = manager->assets + manager->debug_asset_type->one_past_last_asset_index++;
     asset->first_tag_index = 0;
     asset->one_past_last_tag_index = 0;
-    asset->slot_id = debug_add_bitmap_info(assets, filename, align_percentage).value;
+    asset->slot_id = debug_asset_add_bitmap_info(manager, filename, align_percentage).value;
 }
 
 internal void
-end_asset_type(Game_Assets *assets) {
-    assert(assets->debug_asset_type);
-    assets->debug_used_asset_count = assets->debug_asset_type->one_past_last_asset_index;
-    assets->debug_asset_type = 0;
+end_asset_type(Asset_Manager *manager) {
+    assert(manager->debug_asset_type);
+    manager->debug_used_asset_count = manager->debug_asset_type->one_past_last_asset_index;
+    manager->debug_asset_type = 0;
 }
 
-internal Game_Assets *
-alloc_game_assets(Arena *arena, memi size, Transient_State *tran_state) {
-    Game_Assets *result = push_struct(arena, Game_Assets);
-    result->arena = make_sub_arena(arena, size);
-    result->tran_state = tran_state;
+internal Asset_Manager *
+asset_manager_alloc(Arena *arena, memi size, Transient_State *tran_state) {
+    Asset_Manager *manager = push_struct(arena, Asset_Manager);
+    manager->tran_state = tran_state;
+    manager->arena = make_sub_arena(arena, size);
     
-    result->debug_used_bitmap_count = 1;
+    manager->bitmap_count = 256*AssetType_Count;
+    manager->bitmap_infos = push_array(arena, Asset_Bitmap_Info, manager->bitmap_count);
+    manager->bitmaps = push_array(arena, Asset_Slot, manager->bitmap_count);
     
-    result->bitmap_count = 256*AssetType_Count;
-    result->bitmaps = push_array(arena, Asset_Slot, result->bitmap_count);
-    result->bitmap_infos = push_array(arena, Asset_Bitmap_Info, result->bitmap_count);
+    manager->sound_count = 1;
+    manager->sounds = push_array(arena, Asset_Slot, manager->sound_count);
     
-    result->sound_count = 1;
-    result->sounds = push_array(arena, Asset_Slot, result->sound_count);
-    
-    result->asset_count = result->bitmap_count + result->sound_count;
-    result->assets = push_array(arena, Asset, result->asset_count);
+    manager->asset_count = manager->bitmap_count + manager->sound_count;
+    manager->assets = push_array(arena, Asset, manager->asset_count);
 
-    result->debug_used_bitmap_count = 1;
-    result->debug_used_asset_count = 1;
+    manager->debug_used_bitmap_count = 1;
+    manager->debug_used_asset_count = 1;
     
-    begin_asset_type(result, AssetType_Wall);
-    asset_add_bitmap(result, "../res/wall.bmp");
-    end_asset_type(result);
+    begin_asset_type(manager, AssetType_Wall);
+    asset_add_bitmap(manager, "../res/wall.bmp");
+    end_asset_type(manager);
 
-    begin_asset_type(result, AssetType_Stairwell);
-    asset_add_bitmap(result, "../res/stair.bmp");
-    end_asset_type(result);
+    begin_asset_type(manager, AssetType_Stairwell);
+    asset_add_bitmap(manager, "../res/stair.bmp");
+    end_asset_type(manager);
 
-    begin_asset_type(result, AssetType_Shadow);
-    asset_add_bitmap(result, "../res/shadow.bmp");
-    end_asset_type(result);
+    begin_asset_type(manager, AssetType_Shadow);
+    asset_add_bitmap(manager, "../res/shadow.bmp");
+    end_asset_type(manager);
 
-    begin_asset_type(result, AssetType_Bat);
-    asset_add_bitmap(result, "../res/bat.bmp");
-    end_asset_type(result);
+    begin_asset_type(manager, AssetType_Familiar);
+    asset_add_bitmap(manager, "../res/bat.bmp");
+    end_asset_type(manager);
 
-    begin_asset_type(result, AssetType_Sword);
-    asset_add_bitmap(result, "../res/shadow.bmp");
-    end_asset_type(result);
+    begin_asset_type(manager, AssetType_Monster);
+    asset_add_bitmap(manager, "../res/skull_front.bmp");
+    end_asset_type(manager);
+
+    begin_asset_type(manager, AssetType_Sword);
+    asset_add_bitmap(manager, "../res/shadow.bmp");
+    end_asset_type(manager);
     
-    begin_asset_type(result, AssetType_Grass);
-    asset_add_bitmap(result, "../res/grass0.bmp");
-    asset_add_bitmap(result, "../res/grass1.bmp");
-    end_asset_type(result);
+    begin_asset_type(manager, AssetType_Grass);
+    asset_add_bitmap(manager, "../res/grass0.bmp");
+    asset_add_bitmap(manager, "../res/grass1.bmp");
+    end_asset_type(manager);
 
-    begin_asset_type(result, AssetType_Stone);
-    asset_add_bitmap(result, "../res/stone0.bmp");
-    asset_add_bitmap(result, "../res/stone1.bmp");
-    end_asset_type(result);
+    begin_asset_type(manager, AssetType_Stone);
+    asset_add_bitmap(manager, "../res/stone0.bmp");
+    asset_add_bitmap(manager, "../res/stone1.bmp");
+    end_asset_type(manager);
     
-    begin_asset_type(result, AssetType_Flower);
-    asset_add_bitmap(result, "../res/flower0.bmp");
-    asset_add_bitmap(result, "../res/flower1.bmp");
-    end_asset_type(result);
+    begin_asset_type(manager, AssetType_Flower);
+    asset_add_bitmap(manager, "../res/flower0.bmp");
+    asset_add_bitmap(manager, "../res/flower1.bmp");
+    end_asset_type(manager);
     
-    result->player[0] = debug_load_bitmap("../res/skull_back.bmp");
-    result->player[1] = debug_load_bitmap("../res/skull_right.bmp");
-    result->player[2] = debug_load_bitmap("../res/skull_front.bmp");
-    result->player[3] = debug_load_bitmap("../res/skull_left.bmp");
+    manager->player[0] = debug_load_bitmap("../res/skull_back.bmp");
+    manager->player[1] = debug_load_bitmap("../res/skull_right.bmp");
+    manager->player[2] = debug_load_bitmap("../res/skull_front.bmp");
+    manager->player[3] = debug_load_bitmap("../res/skull_left.bmp");
     
-    return(result);
+    return(manager);
 }
+
+//
+//
+//
 
 internal Bitmap_ID
-random_asset_from(Game_Assets *assets, Asset_Type_ID type_id, Random_Series *series) {
-    Bitmap_ID result = {};
+random_asset_from(Asset_Manager *manager, Asset_Type_ID type_id, Random_Series *series) {
+    Bitmap_ID id = {};
     
-    Asset_Type *type = assets->asset_types + type_id;
+    Asset_Type *type = manager->asset_types + type_id;
     if (type->first_asset_index != type->one_past_last_asset_index) {
         u32 count = type->one_past_last_asset_index - type->first_asset_index;
         u32 choice = random_choice(series, count);
         
-        Asset *asset = assets->assets + type->first_asset_index + choice;
-        result.value = asset->slot_id;
+        Asset *asset = manager->assets + type->first_asset_index + choice;
+        id.value = asset->slot_id;
     }
     
-    return(result);
+    return(id);
 }
 
 internal Bitmap_ID
-get_first_bitmap_id(Game_Assets *assets, Asset_Type_ID type_id) {
-    Bitmap_ID result = {};
+first_asset_from(Asset_Manager *manager, Asset_Type_ID type_id) {
+    Bitmap_ID id = {};
     
-    Asset_Type *type = assets->asset_types + type_id;
+    Asset_Type *type = manager->asset_types + type_id;
     if (type->first_asset_index != type->one_past_last_asset_index) {
-        Asset *asset = assets->assets + type->first_asset_index;
-        result.value = asset->slot_id;
+        Asset *asset = manager->assets + type->first_asset_index;
+        id.value = asset->slot_id;
     }
     
-    return(result);
+    return(id);
 }
 
 internal Bitmap *
-get_bitmap(Game_Assets *assets, Bitmap_ID id) {
-    Bitmap *result = assets->bitmaps[id.value].bitmap;
+asset_get_bitmap(Asset_Manager *manager, Bitmap_ID id) {
+    Bitmap *result = manager->bitmaps[id.value].bitmap;
     return(result);
 }
 
 struct Load_Bitmap_Work {
     Memory_Task *memory_task;
-    Game_Assets *assets;
+    Asset_Manager *manager;
     Bitmap_ID id;
     Bitmap *bitmap;
     Asset_State final_state;
@@ -262,32 +274,30 @@ struct Load_Bitmap_Work {
 internal
 OS_WORK_QUEUE_CALLBACK(load_bitmap_work) {
     Load_Bitmap_Work *work = (Load_Bitmap_Work *)data;
-    Asset_Bitmap_Info *info = work->assets->bitmap_infos + work->id.value;
+    Asset_Bitmap_Info *info = work->manager->bitmap_infos + work->id.value;
     *work->bitmap = debug_load_bitmap(info->filename, info->align_percentage);
 
     complete_previous_write_before_future_write;
 
-    work->assets->bitmaps[work->id.value].bitmap = work->bitmap;
-    work->assets->bitmaps[work->id.value].state = work->final_state;
+    work->manager->bitmaps[work->id.value].bitmap = work->bitmap;
+    work->manager->bitmaps[work->id.value].state = work->final_state;
     
     end_memory_task(work->memory_task);
 }
 
 internal void
-load_bitmap(Game_Assets *assets, Bitmap_ID id) {
-    if (id.value && (atomic_compare_exchange_u32((u32 *)&assets->bitmaps[id.value].state, AssetState_Unloaded, AssetState_Queued) == AssetState_Unloaded)) {
-        Memory_Task *memory_task = begin_memory_task(assets->tran_state);
+asset_load_bitmap(Asset_Manager *manager, Bitmap_ID id) {
+    if (id.value && (atomic_compare_exchange_u32((u32 *)&manager->bitmaps[id.value].state, AssetState_Unloaded, AssetState_Queued) == AssetState_Unloaded)) {
+        Memory_Task *memory_task = begin_memory_task(manager->tran_state);
         if (memory_task) {
             Load_Bitmap_Work *work = push_struct(&memory_task->arena, Load_Bitmap_Work);
             work->memory_task = memory_task;
-            work->assets = assets;
+            work->manager = manager;
             work->id = id;
-            work->bitmap = push_struct(&assets->arena, Bitmap);
+            work->bitmap = push_struct(&manager->arena, Bitmap);
             work->final_state = AssetState_Loaded;
 
-            os_work_queue_add_entry(assets->tran_state->low_priority_queue, load_bitmap_work, work);
+            os_work_queue_add_entry(manager->tran_state->low_priority_queue, load_bitmap_work, work);
         }
     }
 }
-
-// TODO(xkazu0x): load_sound();
