@@ -10,7 +10,6 @@
 
 /*
   TODO(xkazu0x):
-  > key codes for keyboard input
   > sound system
   > Hardware acceleration (OpenGL)
   > ChangeDisplaySettings option
@@ -94,6 +93,30 @@ string8_cat(Arena *arena, String8 a, String8 b) {
 }
 // }
 
+////////////////////////////////
+// NOTE(xkazu0x): debug code only
+// {
+internal void
+handle_debug_cycle_counters(OS_Memory *memory) {
+#if EXCALIBUR_INTERNAL
+    log_info("DEBUG CYCLE COUNTS:");
+    for (u32 counter_index = 0;
+         counter_index < array_count(memory->counters);
+         ++counter_index) {
+        Debug_Cycle_Counter *counter = memory->counters + counter_index;
+        if (counter->hit_count > 0) {
+            log_info("index %d: %I64ucy, %uh, %I64ucy/h",
+                     counter_index,
+                     counter->cycle_count,
+                     counter->hit_count,
+                     counter->cycle_count / counter->hit_count);
+            counter->cycle_count = 0;
+            counter->hit_count = 0;
+        }
+    }
+#endif
+}
+
 DEBUG_OS_FREE_FILE(debug_os_free_file) {
     if (memory) {
         VirtualFree(memory, 0, MEM_RELEASE);
@@ -150,6 +173,7 @@ DEBUG_OS_WRITE_FILE(debug_os_write_file) {
     }
     return(result);
 }
+// }
 
 internal FILETIME
 win32_get_last_write_time(char *filename) {
@@ -220,27 +244,6 @@ internal f32
 win32_get_delta_seconds(LARGE_INTEGER start, LARGE_INTEGER end) {
     f32 result = ((f32)(end.QuadPart - start.QuadPart)) / ((f32)(win32_state.time_frequency));
     return(result);
-}
-
-internal void
-handle_debug_cycle_counters(OS_Memory *memory) {
-#if EXCALIBUR_INTERNAL
-    log_info("DEBUG CYCLE COUNTS:");
-    for (u32 counter_index = 0;
-         counter_index < array_count(memory->counters);
-         ++counter_index) {
-        Debug_Cycle_Counter *counter = memory->counters + counter_index;
-        if (counter->hit_count > 0) {
-            log_info("index %d: %I64ucy, %uh, %I64ucy/h",
-                     counter_index,
-                     counter->cycle_count,
-                     counter->hit_count,
-                     counter->cycle_count / counter->hit_count);
-            counter->cycle_count = 0;
-            counter->hit_count = 0;
-        }
-    }
-#endif
 }
 
 internal Win32_Window_Size
@@ -406,7 +409,7 @@ win32_work_queue_complete(OS_Work_Queue *queue) {
     while (queue->completion_goal != queue->completion_count) {
         win32_work_queue_do_next_entry(queue);
     }
-
+    
     queue->completion_goal = 0;
     queue->completion_count = 0;
 }
@@ -414,13 +417,11 @@ win32_work_queue_complete(OS_Work_Queue *queue) {
 DWORD WINAPI
 win32_thread_proc(LPVOID data) {
     OS_Work_Queue *queue = (OS_Work_Queue *)data;
-    
     for (;;) {
         if (win32_work_queue_do_next_entry(queue)) {
             WaitForSingleObjectEx(queue->semaphore_handle, INFINITE, FALSE);
         }
     }
-    
     //return(0);
 }
 
@@ -442,7 +443,87 @@ win32_make_work_queue(OS_Work_Queue *queue, u32 thread_count) {
     }
 }
 
-// NOTE(xkazu0x): When building with WinMain, It is not possible to print in the terminal. Build with the default main function if you want to print in the terminal :).
+internal u32
+win32_convert_key_code(u32 key_code) {
+    switch (key_code) {
+        case VK_ESCAPE: key_code = Key_Escape; break;
+        case VK_RETURN: key_code = Key_Enter; break;
+        case VK_SHIFT: key_code = Key_Shift; break;
+        case VK_SPACE: key_code = Key_Space; break;
+                            
+        case VK_UP: key_code = Key_Up; break;
+        case VK_DOWN: key_code = Key_Down; break;
+        case VK_LEFT: key_code = Key_Left; break;
+        case VK_RIGHT: key_code = Key_Right; break;
+                            
+        case '0': key_code = Key_0; break;
+        case '1': key_code = Key_1; break;
+        case '2': key_code = Key_2; break;
+        case '3': key_code = Key_3; break;
+        case '4': key_code = Key_4; break;
+        case '5': key_code = Key_5; break;
+        case '6': key_code = Key_6; break;
+        case '7': key_code = Key_7; break;
+        case '8': key_code = Key_8; break;
+        case '9': key_code = Key_9; break;
+
+        case 'A': key_code = Key_A; break;
+        case 'B': key_code = Key_B; break;
+        case 'C': key_code = Key_C; break;
+        case 'D': key_code = Key_D; break;
+        case 'E': key_code = Key_E; break;
+        case 'F': key_code = Key_F; break;
+        case 'G': key_code = Key_G; break;
+        case 'H': key_code = Key_H; break;
+        case 'I': key_code = Key_I; break;
+        case 'J': key_code = Key_J; break;
+        case 'K': key_code = Key_K; break;
+        case 'L': key_code = Key_L; break;
+        case 'M': key_code = Key_M; break;
+        case 'N': key_code = Key_N; break;
+        case 'O': key_code = Key_O; break;
+        case 'P': key_code = Key_P; break;
+        case 'Q': key_code = Key_Q; break;
+        case 'R': key_code = Key_R; break;
+        case 'S': key_code = Key_S; break;
+        case 'T': key_code = Key_T; break;
+        case 'U': key_code = Key_U; break;
+        case 'V': key_code = Key_V; break;
+        case 'W': key_code = Key_W; break;
+        case 'X': key_code = Key_X; break;
+        case 'Y': key_code = Key_Y; break;
+        case 'Z': key_code = Key_Z; break;
+                            
+        case VK_F1: key_code = Key_F1; break;
+        case VK_F2: key_code = Key_F2; break;
+        case VK_F3: key_code = Key_F3; break;
+        case VK_F4: key_code = Key_F4; break;
+        case VK_F5: key_code = Key_F5; break;
+        case VK_F6: key_code = Key_F6; break;
+        case VK_F7: key_code = Key_F7; break;
+        case VK_F8: key_code = Key_F8; break;
+        case VK_F9: key_code = Key_F9; break;
+        case VK_F10: key_code = Key_F10; break;
+        case VK_F11: key_code = Key_F11; break;
+        case VK_F12: key_code = Key_F12; break;
+        case VK_F13: key_code = Key_F13; break;
+        case VK_F14: key_code = Key_F14; break;
+        case VK_F15: key_code = Key_F15; break;
+        case VK_F16: key_code = Key_F16; break;
+        case VK_F17: key_code = Key_F17; break;
+        case VK_F18: key_code = Key_F18; break;
+        case VK_F19: key_code = Key_F19; break;
+        case VK_F20: key_code = Key_F20; break;
+        case VK_F21: key_code = Key_F21; break;
+        case VK_F22: key_code = Key_F22; break;
+        case VK_F23: key_code = Key_F23; break;
+        case VK_F24: key_code = Key_F24; break;
+
+        default: key_code = Key_Null; break;
+    }
+    return(key_code);
+}
+
 #if 0
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 #else
@@ -693,6 +774,7 @@ int main(void)
                 case WM_KEYUP: {
                     u32 key_code = (u32)message.wParam;
                     b32 down = ((message.lParam & (1 << 31)) == 0);
+                    key_code = win32_convert_key_code(key_code);
                     os_process_digital_button(&input.keyboard[key_code], down);
                     TranslateMessage(&message);
                     DispatchMessageA(&message);
@@ -747,7 +829,7 @@ int main(void)
                 }
             }
         }
-
+        
         // NOTE(xkazu0x): mouse update
         input.mouse.wheel += input.mouse.delta_wheel;
 
