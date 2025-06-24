@@ -33,6 +33,10 @@ enum Asset_Type_ID {
     AssetType_Shadow,
     AssetType_Bat,
     AssetType_Sword,
+
+    AssetType_Grass,
+    AssetType_Stone,
+    AssetType_Flower,
     
     AssetType_Count,
 };
@@ -49,13 +53,8 @@ struct Asset {
 };
 
 struct Asset_Bitmap_Info {
+    char *filename;
     Vec2 align_percentage;
-    f32 width_over_height;
-    s32 width;
-    s32 height;
-
-    u32 first_tag_index;
-    u32 tag_count;
 };
 
 struct Asset_Group {
@@ -66,9 +65,10 @@ struct Asset_Group {
 struct Game_Assets {
     Arena arena;
     struct Transient_State *tran_state;
-
+    
     u32 bitmap_count;
     Asset_Slot *bitmaps;
+    Asset_Bitmap_Info *bitmap_infos;
 
     u32 sound_count;
     Asset_Slot *sounds;
@@ -82,12 +82,13 @@ struct Game_Assets {
     Asset_Type asset_types[AssetType_Count];
 
     // NOTE(xkazu0x): Array'd assets
-    Bitmap grass[2];
-    Bitmap stone[2];
-    Bitmap tuft[2];
+    // TODO(xkazu0x): Structured assets
     Bitmap player[4];
     
-    // TODO(xkazu0x): Structured assets
+    // TODO(xkazu0x): these should go away once we actually load a asset pack file
+    u32 debug_used_bitmap_count;
+    u32 debug_used_asset_count;
+    Asset_Type *debug_asset_type;
 };
 
 struct Bitmap_ID {

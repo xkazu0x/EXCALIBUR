@@ -507,14 +507,17 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
         f32 height = game_state->world->chunk_dim_in_meters.y;
         assert(width == height);
     
-        Vec2 half_dim = 0.5f*make_vec2(width, height);
-        //half_dim *= 0.5f;
-    
         // TODO(xkazu0x): Decide what the push_buffer size is!
-        // TODO(xkazu0x): safe cast from memory_unit to u32?
         Render_Group *render_group = render_group_alloc(tran_state->assets, &memory_task->arena, 0);
         render_orthographic(render_group, buffer->width, buffer->height, (buffer->width - 2) / width);
         render_clear(render_group, make_vec4(1.0f, 0.0f, 1.0f, 1.0f));
+        
+        work->memory_task = memory_task;
+        work->render_group = render_group;
+        work->buffer = buffer;
+    
+        Vec2 half_dim = 0.5f*make_vec2(width, height);
+        //half_dim *= 0.5f;
     
         for (s32 chunk_offset_y = -1;
              chunk_offset_y <= 1;
@@ -542,13 +545,8 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
                 for (u32 ground_index = 0;
                      ground_index < 100;
                      ++ground_index) {
-                    Bitmap *sprite;
-                    if (random_choice(&series, 2)) {
-                        sprite = tran_state->assets->grass + random_choice(&series, array_count(tran_state->assets->grass));
-                    } else {
-                        sprite = tran_state->assets->stone + random_choice(&series, array_count(tran_state->assets->stone));
-                    }
-
+                    Bitmap_ID sprite = random_asset_from(tran_state->assets, random_choice(&series, 2) ? AssetType_Grass : AssetType_Stone, &series);
+                    
                     Vec2 random_offset = hadamard_product(half_dim, make_vec2(random_bilateral(&series), random_bilateral(&series)));
                     Vec2 sprite_offset = chunk_center + random_offset;
         
@@ -574,16 +572,19 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
                 for (u32 ground_index = 0;
                      ground_index < 8;
                      ++ground_index) {
+#if 0
                     Bitmap *sprite;
                     if (random_choice(&series, 2)) {
                         sprite = tran_state->assets->tuft + random_choice(&series, array_count(tran_state->assets->tuft));
                     } else {
                         sprite = tran_state->assets->tuft + random_choice(&series, array_count(tran_state->assets->tuft));
                     }
-        
+#else
+                    Bitmap_ID sprite = random_asset_from(tran_state->assets, AssetType_Flower, &series);
+#endif
                     Vec2 random_offset = hadamard_product(half_dim, make_vec2(random_bilateral(&series), random_bilateral(&series)));
                     Vec2 sprite_offset = chunk_center + random_offset;
-        
+
                     render_bitmap(render_group, sprite, make_vec3(sprite_offset, 0.0f), 1.0f);
                 }
             }
@@ -591,12 +592,10 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
 
         if (all_resources_present(render_group)) {
             ground_buffer->position = *position;
-        
-            work->memory_task = memory_task;
-            work->render_group = render_group;
-            work->buffer = buffer;
-
+            
             os_work_queue_add_entry(tran_state->low_priority_queue, fill_ground_chunk_work, work);
+        } else {
+            end_memory_task(work->memory_task);
         }
     }
 }
