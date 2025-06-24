@@ -17,7 +17,6 @@ struct Win32_Window_Size {
 };
 
 struct Win32_Game {
-    b32 loaded;
     HMODULE library;
     FILETIME last_write_time;
 
@@ -35,8 +34,8 @@ struct Win32_State {
     u64 game_memory_size;
     void *game_memory_block;
     
-    char exe_filename[WIN32_FILENAME_MAX];
-    char *one_past_last_exe_filename_slash;
+    char *exe_fullpath;
+    char *exe_filename;
 };
 
 #define WIN32_GET_PROC_ADDR(v, m, s) (*(PROC*)(&(v))) = GetProcAddress((m), (s))

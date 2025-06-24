@@ -37,6 +37,34 @@ safe_truncate_u64(u64 value) {
 }
 
 ////////////////////////////////
+// TODO(xkazu0x): move this to excalibur_arena.h
+struct Arena {
+    u64 size;
+    u64 used;
+    u8 *base_memory;
+};
+
+internal Arena
+make_arena(u64 size, void *base_memory) {
+    Arena result;
+    result.size = size;
+    result.used = 0;
+    result.base_memory = (u8 *)base_memory;
+    return(result);
+}
+
+#define push_struct(arena, type) (type *)arena_push_(arena, sizeof(type));
+#define push_array(arena, count, type) (type *)arena_push_(arena, (count)*sizeof(type));
+internal void *
+arena_push_(Arena *arena, u64 size) {
+    assert((arena->used + size) <= arena->size);
+    void *result = (void *)(arena->base_memory + arena->used);
+    arena->used += size;
+    return(result);
+}
+// {
+
+////////////////////////////////
 // TODO(xkazu0x): move this to excalibur_string.h
 // {
 internal u64
@@ -55,11 +83,10 @@ string8_cstring(char *cstr) {
 }
 
 internal String8
-string8_cat(String8 a, String8 b) {
+string8_cat(Arena *arena, String8 a, String8 b) {
     String8 result;
     result.size = a.size + b.size;
-    // TODO(xkazu0x): remove platform specific code.
-    result.str = (u8 *)VirtualAlloc(0, result.size + 1, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    result.str = push_array(arena, result.size + 1, u8);
     memmove(result.str, a.str, a.size);
     memmove(result.str + a.size, b.str, b.size);
     result.str[result.size] = 0;
@@ -138,22 +165,12 @@ internal Win32_Game
 win32_load_game(char *source_dll_name, char *temp_dll_name) {
     CopyFile(source_dll_name, temp_dll_name, FALSE);
     
-    Win32_Game result = {};
+    Win32_Game result = {};    
     result.last_write_time = win32_get_last_write_time(source_dll_name);
     result.library = LoadLibraryA(temp_dll_name);
     if (result.library) {
         WIN32_GET_PROC_ADDR(result.update_and_render, result.library, "game_update_and_render");
-        if (result.update_and_render) {
-            result.loaded = true;
-            log_debug("game code loaded");
-        }
     } else {
-        log_error("failed to load game dll");
-        //win32_load_game(source_dll_name, temp_dll_name);
-    }
-    
-    if (!result.loaded) {
-        result.update_and_render = 0;
         log_error("failed to load game code");
     }
     
@@ -165,30 +182,30 @@ win32_unload_game(Win32_Game *game) {
     if (game->library) {
         FreeLibrary(game->library);
         game->library = 0;
-        log_debug("game code unloaded");
     }
-    game->loaded = false;
     game->update_and_render = 0;
 }
 
 internal void
-win32_get_exe_filename(Win32_State *state) {
-    GetModuleFileName(0, state->exe_filename, sizeof(state->exe_filename));
-    state->one_past_last_exe_filename_slash = state->exe_filename;
-    for (char *scan = state->exe_filename;
+win32_get_exe_filename(Arena *arena, Win32_State *state) {
+    state->exe_fullpath = push_array(arena, WIN32_FILENAME_MAX, char);
+    GetModuleFileName(0, state->exe_fullpath, WIN32_FILENAME_MAX);
+
+    state->exe_filename = state->exe_fullpath;
+    for (char *scan = state->exe_fullpath;
          *scan;
          ++scan) {
         if (*scan == '\\') {
-            state->one_past_last_exe_filename_slash = scan + 1;
+            state->exe_filename = scan + 1;
         }
     }
 }
 
 internal char *
-win32_build_exe_path_filename(Win32_State *state, char *filename) {
-    String8 str0 = make_string8((u64)(win32_state.one_past_last_exe_filename_slash - win32_state.exe_filename), (u8 *)win32_state.exe_filename);
+win32_build_exe_path_filename(Arena *arena, Win32_State *state, char *filename) {
+    String8 str0 = make_string8((u64)(win32_state.exe_filename - win32_state.exe_fullpath), (u8 *)win32_state.exe_fullpath);
     String8 str1 = string8_cstring(filename);
-    char *result = (char *)string8_cat(str0, str1).str;
+    char *result = (char *)string8_cat(arena, str0, str1).str;
     return(result);
 }
 
@@ -449,15 +466,20 @@ int main(void)
     win32_make_work_queue(&low_priority_queue, 2);
     
     // NOTE(xkazu0x): load game code
-    win32_get_exe_filename(&win32_state);
+    u64 string_arena_size = MB(1);
+    void *string_arena_base_memory = VirtualAlloc(0, string_arena_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    Arena string_arena = make_arena(string_arena_size, string_arena_base_memory);
+
+    win32_get_exe_filename(&string_arena, &win32_state);
+    log_info("exec filename: %s", win32_state.exe_filename);
+    log_info("exec fullpath: %s", win32_state.exe_fullpath);
     
-    char *source_game_code_dll_fullpath = win32_build_exe_path_filename(&win32_state, "excalibur_game.dll");
-    char *temp_game_code_dll_fullpath = win32_build_exe_path_filename(&win32_state, "excalibur_game_temp.dll");
+    char *source_game_code_dll_fullpath = win32_build_exe_path_filename(&string_arena, &win32_state, "excalibur_game.dll");
+    char *temp_game_code_dll_fullpath = win32_build_exe_path_filename(&string_arena, &win32_state, "excalibur_game_temp.dll");
+    log_info("src dll fullpath: %s", source_game_code_dll_fullpath);
+    log_info("tmp dll fullpath: %s", temp_game_code_dll_fullpath);
     
     Win32_Game game = win32_load_game(source_game_code_dll_fullpath, temp_game_code_dll_fullpath);
-    if (!game.loaded) {
-        return(1);
-    }
     
     // NOTE(xkazu0x): monitor info
     DEVMODE monitor_info;
