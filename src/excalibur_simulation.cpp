@@ -616,17 +616,10 @@ move_entity(Game_State *state, Sim_Region *region, Sim_Entity *entity, f32 delta
     // TODO(xkazu0x): change to using the acceleration vector
     if ((entity->d_pos.x == 0.0f) && (entity->d_pos.y == 0.0f)) {
         // NOTE(xkazu0x): leave direction whatever it was
-    } else if (abs_f32(entity->d_pos.x) > abs_f32(entity->d_pos.y)) {
-        if (entity->d_pos.x > 0) {
-            entity->direction = 1;
-        } else {
-            entity->direction = 3;
-        }
-    } else if (abs_f32(entity->d_pos.x) < abs_f32(entity->d_pos.y)) {
-        if (entity->d_pos.y > 0) {
-            entity->direction = 0;
-        } else {
-            entity->direction = 2;
+    } else {
+        entity->facing_direction = atan2_f32(entity->d_pos.y, entity->d_pos.x);
+        if (entity->facing_direction < 0.0f) {
+            entity->facing_direction += 2.0f*pi32;
         }
     }
 }

@@ -14,6 +14,7 @@
 #define sin_f32(x) sinf(x)
 #define cos_f32(x) cosf(x)
 #define tan_f32(x) tanf(x)
+#define atan2_f32(y, x) atan2f(y, x)
 
 #define square(x) ((x)*(x))
 #define square_root(x) sqrt_f32(x)

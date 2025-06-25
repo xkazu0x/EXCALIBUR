@@ -52,10 +52,9 @@ make_arena(u64 size, void *base_memory) {
     return(result);
 }
 
-#define push_struct(arena, type) (type *)arena_push_(arena, sizeof(type));
-#define push_array(arena, count, type) (type *)arena_push_(arena, (count)*sizeof(type));
+#define push_array(arena, count, type) (type *)arena_push(arena, (count)*sizeof(type));
 internal void *
-arena_push_(Arena *arena, u64 size) {
+arena_push(Arena *arena, u64 size) {
     assert((arena->used + size) <= arena->size);
     void *result = (void *)(arena->base_memory + arena->used);
     arena->used += size;

@@ -70,7 +70,7 @@ struct Sim_Entity {
     
     Sim_Entity_Collision_Volume_Group *collision;
     
-    u32 direction;
+    f32 facing_direction;
     f32 t_bob;
     
     s32 d_tile_z; // note(xkazu0x): this is for "stairs"

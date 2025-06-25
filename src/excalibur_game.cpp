@@ -461,38 +461,6 @@ OS_WORK_QUEUE_CALLBACK(fill_ground_chunk_work) {
     end_memory_task(work->memory_task);
 }
 
-#if 0
-// TODO(xkazu0x):
-internal u32
-pick_best(u32 info_count, Asset_Bitmap_Info *infos, Asset_Tag *tags, f32 *match_vector, f32 *weight_vector) {
-    f32 best_diff = f32_max;
-    u32 best_index = 0;
-    
-    for (u32 info_index = 0;
-         info_index < info_count;
-         ++info_index) {
-        Asset_Bitmap_Info *info = infos + info_index;
-
-        f32 total_weighted_diff = 0.0f;
-        for (u32 tag_index = info->first_tag_index;
-             tag_index < info->tag_count;
-             ++tag_index) {
-            Asset_Tag *tag = tags + tag_index;
-            f32 difference = match_vector[tag->id] - tag->value;
-            f32 weighted = weight_vector[tag->id]*abs_f32(difference);
-            total_weighted_diff += weighted;
-        }
-
-        if (best_diff > total_weighted_diff) {
-            best_diff = total_weighted_diff;
-            best_index = info_index;
-        }
-    }
-
-    return(best_index);
-}
-#endif
-
 internal void
 fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Buffer *ground_buffer, World_Position *position) {
     Memory_Task *memory_task = begin_memory_task(tran_state);
@@ -1302,7 +1270,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     move_spec.drag = 5.0f;
     
                     if (dd_pos.x == 0.0f && dd_pos.y == 0.0f) {
-                        entity->direction = 2;
+                        entity->facing_direction = 2;
                     }
                 } break;
             }
@@ -1345,7 +1313,13 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 } break;
 
                 case EntityType_Player: {
-                    Bitmap *player_sprite = &tran_state->asset_manager->player[entity->direction];
+                    Asset_Vector match_vector = {};
+                    match_vector.e[AssetTag_FacingDirection] = entity->facing_direction;
+                    
+                    Asset_Vector weight_vector = {};
+                    weight_vector.e[AssetTag_FacingDirection] = 1.0f;
+                    
+                    Bitmap_ID player_sprite = asset_best_match(tran_state->asset_manager, AssetType_Skull, &match_vector, &weight_vector);
                     
                     render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.5f, 0.2f, 1.0f));
                     
@@ -1358,7 +1332,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 case EntityType_Sword: {
                     render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(0.0f, 1.0f, 0.0f, 1.0f));
                     
-                    render_bitmap(render_group, first_asset_from(tran_state->asset_manager, AssetType_Sword), make_vec3(0.0f), 1.0f);
+                    render_bitmap(render_group, first_asset_from(tran_state->asset_manager, AssetType_Shadow), make_vec3(0.0f), 1.0f);
                 } break;
                     
                 case EntityType_Familiar: {
@@ -1372,14 +1346,22 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(0.0f, 1.0f, 0.0f, 1.0f));
 
                     render_bitmap(render_group, first_asset_from(tran_state->asset_manager, AssetType_Shadow), make_vec3(0.0f), 1.0f, make_vec4(1.0f, 1.0f, 1.0f, (0.5f*shadow_alpha) - bob_sin));
-                    render_bitmap(render_group, first_asset_from(tran_state->asset_manager, AssetType_Familiar), make_vec3(0.0f, 0.0f, bob_sin + 0.4f), 1.0f);
+                    render_bitmap(render_group, first_asset_from(tran_state->asset_manager, AssetType_Bat), make_vec3(0.0f, 0.0f, bob_sin + 0.4f), 1.0f);
                 } break;
                     
                 case EntityType_Monster: {
+                    Asset_Vector match_vector = {};
+                    match_vector.e[AssetTag_FacingDirection] = entity->facing_direction;
+                    
+                    Asset_Vector weight_vector = {};
+                    weight_vector.e[AssetTag_FacingDirection] = 1.0f;
+                    
+                    Bitmap_ID monster_sprite = asset_best_match(tran_state->asset_manager, AssetType_Skull, &match_vector, &weight_vector);
+
                     render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.0f, 0.0f, 1.0f));
 
                     render_bitmap(render_group, first_asset_from(tran_state->asset_manager, AssetType_Shadow), make_vec3(0.0f), 1.0f, make_vec4(1.0f, 1.0f, 1.0f, shadow_alpha));
-                    render_bitmap(render_group, first_asset_from(tran_state->asset_manager, AssetType_Monster), make_vec3(0.0f), 1.0f);
+                    render_bitmap(render_group, monster_sprite, make_vec3(0.0f), 1.0f);
                     
                     draw_hit_points(render_group, entity);
                 } break;

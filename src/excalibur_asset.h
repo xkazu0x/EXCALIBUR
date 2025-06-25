@@ -14,32 +14,31 @@ struct Asset_Slot {
 };
 
 enum Asset_Tag_ID {
-    AssetTag_Smooth,
-    AssetTag_Flat,
+    AssetTag_FacingDirection, // NOTE(xkazu0x): angle in radians off of due right
 
     AssetTag_Count,
 };
 
-struct Asset_Tag {
-    u32 id;
-    f32 value;
-};
-
 enum Asset_Type_ID {
-    AssetType_None,
+    AssetType_Null,
     
     AssetType_Wall,
     AssetType_Stairwell,
     AssetType_Shadow,
-    AssetType_Familiar,
-    AssetType_Monster,
-    AssetType_Sword,
+    AssetType_Bat,
 
     AssetType_Grass,
     AssetType_Stone,
     AssetType_Flower,
     
+    AssetType_Skull,
+    
     AssetType_Count,
+};
+
+struct Asset_Tag {
+    u32 id;
+    f32 value;
 };
 
 struct Asset_Type {
@@ -53,14 +52,13 @@ struct Asset {
     u32 slot_id;
 };
 
+struct Asset_Vector {
+    f32 e[AssetTag_Count];
+};
+
 struct Asset_Bitmap_Info {
     char *filename;
     Vec2 align_percentage;
-};
-
-struct Asset_Group {
-    u32 first_tag_index;
-    u32 one_past_last_tag_index;
 };
 
 struct Asset_Manager {
@@ -84,12 +82,14 @@ struct Asset_Manager {
 
     // NOTE(xkazu0x): Array'd assets
     // TODO(xkazu0x): Structured assets
-    Bitmap player[4];
+    //Bitmap player[4];
     
     // TODO(xkazu0x): these should go away once we actually load a asset pack file
     u32 debug_used_bitmap_count;
     u32 debug_used_asset_count;
+    u32 debug_used_tag_count;
     Asset_Type *debug_asset_type;
+    Asset *debug_asset;
 };
 
 struct Bitmap_ID {

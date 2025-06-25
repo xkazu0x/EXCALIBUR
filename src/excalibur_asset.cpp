@@ -125,6 +125,7 @@ debug_load_bitmap(char *filename, Vec2 align_percentage = make_vec2(0.5f)) {
 internal Bitmap_ID
 debug_asset_add_bitmap_info(Asset_Manager *manager, char *filename, Vec2 align_percentage)  {
     assert(manager->debug_used_bitmap_count < manager->bitmap_count);
+    
     Bitmap_ID id = {manager->debug_used_bitmap_count++};
     
     Asset_Bitmap_Info *info = manager->bitmap_infos + id.value;
@@ -137,6 +138,7 @@ debug_asset_add_bitmap_info(Asset_Manager *manager, char *filename, Vec2 align_p
 internal void
 begin_asset_type(Asset_Manager *manager, Asset_Type_ID type_id) {
     assert(manager->debug_asset_type == 0);
+    
     manager->debug_asset_type = manager->asset_types + type_id;
     manager->debug_asset_type->first_asset_index = manager->debug_used_asset_count;
     manager->debug_asset_type->one_past_last_asset_index = manager->debug_asset_type->first_asset_index;
@@ -145,17 +147,33 @@ begin_asset_type(Asset_Manager *manager, Asset_Type_ID type_id) {
 internal void
 asset_add_bitmap(Asset_Manager *manager, char *filename, Vec2 align_percentage = make_vec2(0.5f)) {
     assert(manager->debug_asset_type);
+    assert(manager->debug_asset_type->one_past_last_asset_index < manager->asset_count);
+    
     Asset *asset = manager->assets + manager->debug_asset_type->one_past_last_asset_index++;
-    asset->first_tag_index = 0;
-    asset->one_past_last_tag_index = 0;
+    asset->first_tag_index = manager->debug_used_tag_count;
+    asset->one_past_last_tag_index = asset->first_tag_index;
     asset->slot_id = debug_asset_add_bitmap_info(manager, filename, align_percentage).value;
+    
+    manager->debug_asset = asset;
+}
+
+internal void
+asset_add_tag(Asset_Manager *manager, Asset_Tag_ID id, f32 value) {
+    assert(manager->debug_asset);
+
+    ++manager->debug_asset->one_past_last_tag_index;
+    Asset_Tag *tag = manager->tags + manager->debug_used_tag_count++;
+    tag->id = id;
+    tag->value = value;
 }
 
 internal void
 end_asset_type(Asset_Manager *manager) {
     assert(manager->debug_asset_type);
+    
     manager->debug_used_asset_count = manager->debug_asset_type->one_past_last_asset_index;
     manager->debug_asset_type = 0;
+    manager->debug_asset = 0;
 }
 
 internal Asset_Manager *
@@ -174,6 +192,9 @@ asset_manager_alloc(Arena *arena, memi size, Transient_State *tran_state) {
     manager->asset_count = manager->bitmap_count + manager->sound_count;
     manager->assets = push_array(arena, Asset, manager->asset_count);
 
+    manager->tag_count = 1024*AssetType_Count;
+    manager->tags = push_array(arena, Asset_Tag, manager->tag_count);
+    
     manager->debug_used_bitmap_count = 1;
     manager->debug_used_asset_count = 1;
     
@@ -189,16 +210,8 @@ asset_manager_alloc(Arena *arena, memi size, Transient_State *tran_state) {
     asset_add_bitmap(manager, "../res/shadow.bmp");
     end_asset_type(manager);
 
-    begin_asset_type(manager, AssetType_Familiar);
+    begin_asset_type(manager, AssetType_Bat);
     asset_add_bitmap(manager, "../res/bat.bmp");
-    end_asset_type(manager);
-
-    begin_asset_type(manager, AssetType_Monster);
-    asset_add_bitmap(manager, "../res/skull_front.bmp");
-    end_asset_type(manager);
-
-    begin_asset_type(manager, AssetType_Sword);
-    asset_add_bitmap(manager, "../res/shadow.bmp");
     end_asset_type(manager);
     
     begin_asset_type(manager, AssetType_Grass);
@@ -215,11 +228,25 @@ asset_manager_alloc(Arena *arena, memi size, Transient_State *tran_state) {
     asset_add_bitmap(manager, "../res/flower0.bmp");
     asset_add_bitmap(manager, "../res/flower1.bmp");
     end_asset_type(manager);
+
+    f32 angle_right = 0.0f*pi32;
+    f32 angle_back = 0.5f*pi32;
+    f32 angle_left = 1.0f*pi32;
+    f32 angle_front = 1.5f*pi32;
     
-    manager->player[0] = debug_load_bitmap("../res/skull_back.bmp");
-    manager->player[1] = debug_load_bitmap("../res/skull_right.bmp");
-    manager->player[2] = debug_load_bitmap("../res/skull_front.bmp");
-    manager->player[3] = debug_load_bitmap("../res/skull_left.bmp");
+    begin_asset_type(manager, AssetType_Skull);
+    asset_add_bitmap(manager, "../res/skull_right.bmp");
+    asset_add_tag(manager, AssetTag_FacingDirection, angle_right);
+    
+    asset_add_bitmap(manager, "../res/skull_back.bmp");
+    asset_add_tag(manager, AssetTag_FacingDirection, angle_back);
+    
+    asset_add_bitmap(manager, "../res/skull_left.bmp");
+    asset_add_tag(manager, AssetTag_FacingDirection, angle_left);
+    
+    asset_add_bitmap(manager, "../res/skull_front.bmp");
+    asset_add_tag(manager, AssetTag_FacingDirection, angle_front);
+    end_asset_type(manager);
     
     return(manager);
 }
@@ -227,10 +254,42 @@ asset_manager_alloc(Arena *arena, memi size, Transient_State *tran_state) {
 //
 //
 //
+internal Bitmap_ID
+asset_best_match(Asset_Manager *manager, Asset_Type_ID type_id, Asset_Vector *match_vector, Asset_Vector *weight_vector) {
+    Bitmap_ID result = {};
+
+    f32 best_diff = f32_max;
+    
+    Asset_Type *type = manager->asset_types + type_id;
+    if (type->first_asset_index != type->one_past_last_asset_index) {
+        for (u32 asset_index = type->first_asset_index;
+             asset_index < type->one_past_last_asset_index;
+             ++asset_index) {
+            Asset *asset = manager->assets + asset_index;
+            
+            f32 total_weighted_diff = 0.0f;
+            for (u32 tag_index = asset->first_tag_index;
+                 tag_index < asset->one_past_last_tag_index;
+                 ++tag_index) {
+                Asset_Tag *tag = manager->tags + tag_index;
+                f32 difference = match_vector->e[tag->id] - tag->value;
+                f32 weighted = weight_vector->e[tag->id]*abs_f32(difference);
+                total_weighted_diff += weighted;
+            }
+
+            if (best_diff > total_weighted_diff) {
+                best_diff = total_weighted_diff;
+                result.value = asset->slot_id;
+            }
+        }
+    }
+    
+    return(result);
+}
 
 internal Bitmap_ID
 random_asset_from(Asset_Manager *manager, Asset_Type_ID type_id, Random_Series *series) {
-    Bitmap_ID id = {};
+    Bitmap_ID result = {};
     
     Asset_Type *type = manager->asset_types + type_id;
     if (type->first_asset_index != type->one_past_last_asset_index) {
@@ -238,23 +297,23 @@ random_asset_from(Asset_Manager *manager, Asset_Type_ID type_id, Random_Series *
         u32 choice = random_choice(series, count);
         
         Asset *asset = manager->assets + type->first_asset_index + choice;
-        id.value = asset->slot_id;
+        result.value = asset->slot_id;
     }
     
-    return(id);
+    return(result);
 }
 
 internal Bitmap_ID
 first_asset_from(Asset_Manager *manager, Asset_Type_ID type_id) {
-    Bitmap_ID id = {};
+    Bitmap_ID result = {};
     
     Asset_Type *type = manager->asset_types + type_id;
     if (type->first_asset_index != type->one_past_last_asset_index) {
         Asset *asset = manager->assets + type->first_asset_index;
-        id.value = asset->slot_id;
+        result.value = asset->slot_id;
     }
     
-    return(id);
+    return(result);
 }
 
 internal Bitmap *

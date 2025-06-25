@@ -105,6 +105,8 @@ global f32 f32_min = -FLT_MAX;
 global f32 pi32 = 3.14159265359f;
 global f64 pi64 = 3.14159265359;
 
+// TODO(xkazu0x): implement tau32
+
 ////////////////////////////////
 // NOTE(xkazu0x): string types
 
