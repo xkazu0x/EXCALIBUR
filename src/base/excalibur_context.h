@@ -2,7 +2,7 @@
 #define EXCALIBUR_CONTEXT_H
 
 ////////////////////////////////
-// NOTE(xkazu0x): clang context cracking
+// NOTE(xkazu0x): Clang context cracking
 
 #if defined(__clang__)
 # define COMPILER_CLANG 1
@@ -30,7 +30,7 @@
 # endif
 
 ////////////////////////////////
-// NOTE(xkazu0x): msvc context cracking
+// NOTE(xkazu0x): MSVC context cracking
 
 #elif defined(_MSC_VER)
 # define COMPILER_MSVC 1
@@ -54,7 +54,7 @@
 # endif
 
 ////////////////////////////////
-// NOTE(xkazu0x): gcc context cracking
+// NOTE(xkazu0x): GCC context cracking
 
 #elif defined(__GNUC__)
 # define COMPILER_GCC 1
@@ -86,7 +86,7 @@
 #endif
 
 ////////////////////////////////
-// NOTE(xkazu0x): arch context cracking
+// NOTE(xkazu0x): Arch context cracking
 
 #if defined(ARCH_X64)
 # define ARCH_64BIT 1
@@ -101,7 +101,7 @@
 #endif
 
 ////////////////////////////////
-// NOTE(xkazu0x): language context cracking
+// NOTE(xkazu0x): Language context cracking
 
 #if defined(__cplusplus)
 # define LANG_CPP 1
@@ -110,14 +110,14 @@
 #endif
 
 ////////////////////////////////
-// NOTE(xkazu0x): build option cracking
+// NOTE(xkazu0x): Build option cracking
 
 #if !defined(EXCALIBUR_DEBUG)
 # define EXCALIBUR_DEBUG 1
 #endif
 
 ////////////////////////////////
-// NOTE(xkazu0x): zero all undefined options
+// NOTE(xkazu0x): Zero all undefined options
 
 #if !defined(ARCH_32BIT)
 # define ARCH_32BIT 0
@@ -157,7 +157,7 @@
 #endif
 
 ////////////////////////////////
-// NOTE(xkazu0x): unsupported errors
+// NOTE(xkazu0x): Unsupported errors
 
 #if ARCH_X86
 # error You tried to build in x86 (32 bit) mode, but currently, only building in x64 (64 bit) mode is supported.

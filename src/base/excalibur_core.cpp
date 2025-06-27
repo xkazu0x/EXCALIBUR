@@ -1,4 +1,28 @@
 ////////////////////////////////
+// NOTE(xkazu0x): Safe casts
+
+internal u16
+safe_cast_u16(u32 value) {
+    assert_always(value <= u16_max);
+    u16 result = (u16)value;
+    return(result);
+}
+
+internal u32
+safe_cast_u32(u64 value) {
+    assert_always(value <= u32_max);
+    u32 result = (u32)value;
+    return(result);
+}
+
+internal s32
+safe_cast_s32(s64 value) {
+    assert_always(value <= s32_max);
+    s32 result = (s32)value;
+    return(result);
+}
+
+////////////////////////////////
 // NOTE(xkazu0x): Context functions
 
 internal Operating_System

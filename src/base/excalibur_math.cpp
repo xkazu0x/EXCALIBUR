@@ -1,17 +1,5 @@
 ////////////////////////////////
-// NOTE(xkazu0x): intrinsics
-
-internal inline s32
-round_f32_to_s32(f32 x) {
-    s32 result = (s32)roundf(x);
-    return(result);
-}
-
-internal inline u32
-round_f32_to_u32(f32 x) {
-    u32 result = (u32)roundf(x);
-    return(result);
-}
+// NOTE(xkazu0x): Intrinsics
 
 internal inline s32
 truncate_f32_to_s32(f32 x) {
@@ -709,7 +697,9 @@ rect_intersect(Rect3 a, Rect3 b) {
     return(result);
 }
 
-////////////////////////////////
+//
+// TODO(xkazu0x) To be defined!
+//
 
 internal inline f32
 lerp(f32 a, f32 t, f32 b) {

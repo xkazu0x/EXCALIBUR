@@ -6,8 +6,6 @@
 #include "base/excalibur_base.cpp"
 #include "os/excalibur_os_helper.cpp"
 
-#include <malloc.h>
-
 /*
   TODO(xkazu0x):
   > sound system
@@ -28,27 +26,20 @@ XINPUT_SET_STATE(_xinput_set_state) {
     return(ERROR_DEVICE_NOT_CONNECTED);
 }
 
-internal u32
-safe_truncate_u64(u64 value) {
-    assert(value <= u32_max);
-    u32 result = (u32)value;
-    return(result);
-}
-
 ////////////////////////////////
 // TODO(xkazu0x): move this to excalibur_arena.h
 struct Arena {
     u64 size;
     u64 used;
-    u8 *base_memory;
+    u8 *memory;
 };
 
 internal Arena
-make_arena(u64 size, void *base_memory) {
+make_arena(u64 size, void *memory) {
     Arena result;
     result.size = size;
     result.used = 0;
-    result.base_memory = (u8 *)base_memory;
+    result.memory = (u8 *)memory;
     return(result);
 }
 
@@ -56,7 +47,7 @@ make_arena(u64 size, void *base_memory) {
 internal void *
 arena_push(Arena *arena, u64 size) {
     assert((arena->used + size) <= arena->size);
-    void *result = (void *)(arena->base_memory + arena->used);
+    void *result = (void *)(arena->memory + arena->used);
     arena->used += size;
     return(result);
 }
@@ -129,7 +120,7 @@ DEBUG_OS_READ_FILE(debug_os_read_file) {
     if (file_handle != INVALID_HANDLE_VALUE) {
         LARGE_INTEGER file_size;
         if (GetFileSizeEx(file_handle, &file_size)) {
-            u32 file_size32 = safe_truncate_u64(file_size.QuadPart);
+            u32 file_size32 = safe_cast_u32(file_size.QuadPart);
             void *file_memory = VirtualAlloc(0, file_size32, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
             if (file_memory) {
                 DWORD bytes_read;

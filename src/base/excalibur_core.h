@@ -2,7 +2,7 @@
 #define EXCALIBUR_CORE_H
 
 ////////////////////////////////
-// NOTE(xkazu0x): linkage keyword macros
+// NOTE(xkazu0x): Linkage keyword macros
 
 #if LANG_CPP
 # define C_LINKAGE_BEGIN extern "C"{
@@ -21,7 +21,7 @@
 #endif
 
 ////////////////////////////////
-// NOTE(xkazu0x): helper macros
+// NOTE(xkazu0x): Helper macros
 
 #if COMPILER_MSVC
 # define trap() __debugbreak()
@@ -59,7 +59,7 @@
 #define local    static
 
 ////////////////////////////////
-// NOTE(xkazu0x): base types
+// NOTE(xkazu0x): Base types
 
 #include <stdint.h>
 typedef uint8_t  u8;
@@ -81,7 +81,7 @@ typedef double   f64;
 typedef size_t memi;
 
 ////////////////////////////////
-// NOTE(xkazu0x): constants
+// NOTE(xkazu0x): Constants
 
 global s8  s8_min  = (s8) 0x80;
 global s16 s16_min = (s16)0x8000;
@@ -109,7 +109,14 @@ global f32 tau32 = 6.283185307179586f;
 global f64 tau64 = 6.283185307179586;
 
 ////////////////////////////////
-// NOTE(xkazu0x): string types
+// NOTE(xkazu0x): Safe casts
+
+internal u16 safe_cast_u16(u32 value);
+internal u32 safe_cast_u32(u64 value);
+internal s32 safe_cast_s32(s64 value);
+
+////////////////////////////////
+// NOTE(xkazu0x): String types
 
 struct String8 {
     u64 size;
@@ -117,7 +124,7 @@ struct String8 {
 };
 
 ////////////////////////////////
-// NOTE(xkazu0x): string functions
+// NOTE(xkazu0x): String functions
 
 #define string8(str) make_string8(sizeof(str) - 1, (u8 *)(str))
 internal String8
@@ -129,7 +136,7 @@ make_string8(u64 size, u8 *str) {
 }
 
 ////////////////////////////////
-// NOTE(xkazu0x): context enums
+// NOTE(xkazu0x): Context enums
 
 enum Operating_System {
     OperatingSystem_Null,
@@ -157,7 +164,7 @@ enum Compiler {
 };
 
 ////////////////////////////////
-// NOTE(xkazu0x): context functions
+// NOTE(xkazu0x): Context functions
 
 internal Operating_System operating_system_from_context(void);
 internal Architecture architecture_from_context(void);

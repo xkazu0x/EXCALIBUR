@@ -765,17 +765,17 @@ draw_rect_quickly(Bitmap *buffer, Vec2 origin, Vec2 x_axis, Vec2 y_axis, Vec4 co
 
 internal void
 draw_rect(Bitmap *buffer, Vec2 min, Vec2 max, Vec4 color, Rect2i clip_rect, b32 even) {
-    Rect2i fill_rect = make_rect2i(round_f32_to_s32(min.x),
-                                   round_f32_to_s32(min.y),
-                                   round_f32_to_s32(max.x),
-                                   round_f32_to_s32(max.y));
+    Rect2i fill_rect = make_rect2i((s32)round_f32(min.x),
+                                   (s32)round_f32(min.y),
+                                   (s32)round_f32(max.x),
+                                   (s32)round_f32(max.y));
     fill_rect = rect2i_intersect(fill_rect, clip_rect);
     if (!even == (fill_rect.min_y & 1)) fill_rect.min_y += 1;
     
-    u32 color32 = ((round_f32_to_u32(color.a*255.0f) << 24) |
-                   (round_f32_to_u32(color.r*255.0f) << 16) |
-                   (round_f32_to_u32(color.g*255.0f) << 8) |
-                   (round_f32_to_u32(color.b*255.0f) << 0));
+    u32 color32 = (((u32)round_f32(color.a*255.0f) << 24) |
+                   ((u32)round_f32(color.r*255.0f) << 16) |
+                   ((u32)round_f32(color.g*255.0f) << 8) |
+                   ((u32)round_f32(color.b*255.0f) << 0));
     
     u8 *row = ((u8 *)buffer->memory +
                (fill_rect.min_x*BYTES_PER_PIXEL) +
@@ -796,8 +796,8 @@ draw_rect(Bitmap *buffer, Vec2 min, Vec2 max, Vec4 color, Rect2i clip_rect, b32 
 
 internal void
 draw_bitmap(Bitmap *buffer, Bitmap *bitmap, Vec2 offset, f32 c_alpha) {
-    s32 min_x = round_f32_to_s32(offset.x);
-    s32 min_y = round_f32_to_s32(offset.y);
+    s32 min_x = (s32)round_f32(offset.x);
+    s32 min_y = (s32)round_f32(offset.y);
     
     s32 max_x = min_x + bitmap->width;
     s32 max_y = min_y + bitmap->height;

@@ -105,7 +105,7 @@ recanonicalize_coord(f32 chunk_dim, s32 *tile, f32 *tile_rel) {
     // to be within the safe margin
     // TODO(xkazu0x): assert that we are nowhere near the edges of the world
     
-    s32 offset = round_f32_to_s32(*tile_rel/chunk_dim);
+    s32 offset = (s32)round_f32(*tile_rel/chunk_dim);
     *tile += offset;
     *tile_rel -= offset*chunk_dim;
 

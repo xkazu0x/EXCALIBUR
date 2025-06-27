@@ -2,7 +2,7 @@
 #define EXCALIBUR_MATH_H
 
 ////////////////////////////////
-// NOTE(xkazu0x): math functions
+// NOTE(xkazu0x): Math functions
 
 #include <math.h>
 #define sqrt_f32(x) sqrtf(x)
@@ -20,10 +20,7 @@
 #define square_root(x) sqrt_f32(x)
 
 ////////////////////////////////
-// NOTE(xkazu0x): intrinsics
-
-internal inline s32 round_f32_to_s32(f32 x);
-internal inline u32 round_f32_to_u32(f32 x);
+// NOTE(xkazu0x): Intrinsics
 
 internal inline s32 truncate_f32_to_s32(f32 x);
 internal inline u32 truncate_f32_to_u32(f32 x);
@@ -42,7 +39,7 @@ struct Bit_Scan {
 internal inline Bit_Scan find_least_significant_set_bit(u32 value);
 
 ////////////////////////////////
-// NOTE(xkazu0x): vector types
+// NOTE(xkazu0x): Vector types
 
 union Vec2 {
     struct {
@@ -112,7 +109,7 @@ union Vec4 {
 };
 
 ////////////////////////////////
-// NOTE(xkazu0x): vector functions
+// NOTE(xkazu0x): Vector functions
 
 internal inline Vec2 make_vec2(f32 f);
 internal inline Vec3 make_vec3(f32 f);
@@ -193,7 +190,7 @@ internal inline Vec4 normalize(Vec4 v);
 internal inline Vec2 perp(Vec2 v);
 
 ////////////////////////////////
-// NOTE(xkazu0x): rectangle types
+// NOTE(xkazu0x): Rectangle types
 
 struct Rect2 {
     Vec2 min;
@@ -281,7 +278,7 @@ rect2i_inverted_infinity(void) {
 }
 
 ////////////////////////////////
-// NOTE(xkazu0x): rectangle functions
+// NOTE(xkazu0x): Rectangle functions
 
 internal inline Rect2 make_rect2_min_max(Vec2 min, Vec2 max);
 internal inline Rect3 make_rect3_min_max(Vec3 min, Vec3 max);
@@ -319,7 +316,7 @@ internal inline b32 is_in_rect(Rect3 rect, Vec3 test);
 internal inline b32 rect_intersect(Rect3 a, Rect3 b);
 
 //
-// TODO(xkazu0x): to be defined.
+// TODO(xkazu0x): To be defined!
 //
 
 internal inline f32 lerp(f32 a, f32 t, f32 b);

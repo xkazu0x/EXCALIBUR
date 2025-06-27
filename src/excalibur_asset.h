@@ -92,10 +92,6 @@ struct Asset_Manager {
     Asset_Type asset_types[AssetType_Count];
     f32 tag_range[AssetTag_Count];
     
-    // NOTE(xkazu0x): Array'd assets
-    // TODO(xkazu0x): Structured assets
-    //Bitmap player[4];
-    
     // TODO(xkazu0x): these should go away once we actually load a asset pack file
     u32 debug_used_bitmap_count;
     u32 debug_used_asset_count;
