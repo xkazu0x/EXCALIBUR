@@ -1,10 +1,8 @@
 #ifndef EXCALIBUR_ASSET_H
 #define EXCALIBUR_ASSET_H
 
-struct Sound {
-    s32 sample_count;
-    void *memory;
-};
+////////////////////////////////
+// NOTE(xkazu0x): Asset types
 
 enum Asset_State {
     AssetState_Unloaded,
@@ -113,8 +111,5 @@ struct Bitmap_ID {
 struct Sound_ID {
     u32 value;
 };
-
-internal Bitmap *asset_get_bitmap(Asset_Manager *manager, Bitmap_ID id);
-internal void asset_load_bitmap(Asset_Manager *manager, Bitmap_ID id);
 
 #endif // EXCALIBUR_ASSET_H

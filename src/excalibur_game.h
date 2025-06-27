@@ -78,6 +78,14 @@ struct Game_State {
 
     Bitmap test_diffuse;
     Bitmap test_normal;
+
+    Sound test_sound;
+};
+
+struct Memory_Task {
+    b32 is_being_used;
+    Arena arena;
+    Temp_Memory memory_flush;
 };
 
 struct Transient_State {
@@ -107,5 +115,42 @@ get_low_entity(Game_State *game_state, u32 index) {
     }
     return(result);
 }
+
+internal Memory_Task *
+begin_memory_task(Transient_State *tran_state) {
+    Memory_Task *result = 0;
+
+    for (u32 task_index = 0;
+         task_index < array_count(tran_state->tasks);
+         ++task_index) {
+        Memory_Task *task = tran_state->tasks + task_index;
+        if (!task->is_being_used) {
+            result = task;
+            task->is_being_used = true;
+            task->memory_flush = begin_temp_memory(&task->arena);
+            break;
+        }
+    }
+
+    return(result);
+}
+
+inline void
+end_memory_task(Memory_Task *task) {
+    end_temp_memory(&task->memory_flush);
+    complete_previous_write_before_future_write;
+    task->is_being_used = false;
+}
+
+////////////////////////////////
+// NOTE(xkazu0x): Global variables from operating system layer
+
+#if EXCALIBUR_INTERNAL
+OS_Memory *debug_global_memory;
+#endif
+
+global Debug_OS_Read_File *debug_os_read_file;
+global OS_Work_Queue_Add_Entry *os_work_queue_add_entry;
+global OS_Work_Queue_Complete *os_work_queue_complete;
 
 #endif // EXCALIBUR_GAME_H

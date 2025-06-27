@@ -1,168 +1,22 @@
 #include "base/excalibur_base.h"
 #include "os/excalibur_os.h"
-#include "excalibur_random.h"
+#include "excalibur_random.h" // TODO(xkazu0x): temporary!
 #include "excalibur_world.h"
 #include "excalibur_simulation.h"
 #include "excalibur_entity.h"
-
-#if EXCALIBUR_INTERNAL
-OS_Memory *debug_global_memory;
-#endif
-
-global Debug_OS_Read_File *debug_os_read_file;
-global OS_Work_Queue_Add_Entry *os_work_queue_add_entry;
-global OS_Work_Queue_Complete *os_work_queue_complete;
-
-struct Arena {
-    memi reserve_size;
-    memi used;
-    u8 *base_memory;
-
-    s32 temp_count;
-};
-
-internal Arena
-make_arena(memi reserve_size, void *base_memory) {
-    Arena result;
-    result.reserve_size = reserve_size;
-    result.used = 0;
-    result.base_memory = (u8 *)base_memory;
-    result.temp_count = 0;
-    return(result);
-}
-
-internal memi
-get_alignment_offset(Arena *arena, memi alignment) {
-    memi result = 0;
-
-    memi arena_ptr = (memi)arena->base_memory + arena->used;
-    memi alignment_mask = alignment - 1;
-
-    if (arena_ptr & alignment_mask) {
-        result = alignment - (arena_ptr & alignment_mask);
-    }
-    
-    return(result);
-}
-
-internal memi
-get_arena_size_remaining(Arena *arena, memi alignment = 4) {
-    memi result = arena->reserve_size - (arena->used + get_alignment_offset(arena, alignment));
-    return(result);
-}
-
-internal void *
-arena_push_(Arena *arena, memi size_init, memi alignment = 4) {
-    memi size = size_init;
-    
-    memi alignment_offset = get_alignment_offset(arena, alignment);
-    size += alignment_offset;
-    
-    assert((arena->used + size) <= arena->reserve_size);
-    void *result = (void *)(arena->base_memory + arena->used + alignment_offset);
-    arena->used += size;
-
-    assert(size >= size_init);
-    
-    return(result);
-}
-
-#define push_struct(arena, type, ...) (type *)arena_push_(arena, sizeof(type), ##__VA_ARGS__)
-#define push_array(arena, type, count, ...) (type *)arena_push_(arena, sizeof(type)*(count), ##__VA_ARGS__)
-#define push_size(arena, size, ...) arena_push_(arena, size, ##__VA_ARGS__)
-
-internal Arena
-make_sub_arena(Arena *arena, memi reserve_size, memi alignment = 16) {
-    Arena result;
-    result.reserve_size = reserve_size;
-    result.used = 0;
-    result.base_memory = (u8 *)push_size(arena, reserve_size, alignment);
-    result.temp_count = 0;
-    return(result);
-}
-
-struct Temp_Memory {
-    Arena *arena;
-    memi used;
-};
-
-internal Temp_Memory
-begin_temp_memory(Arena *arena) {
-    Temp_Memory result;
-    result.arena = arena;
-    result.used = arena->used;
-    ++arena->temp_count;
-    return(result);
-}
-
-internal void
-end_temp_memory(Temp_Memory *temp) {
-    Arena *arena = temp->arena;
-    
-    assert(arena->used >= temp->used);
-    arena->used = temp->used;
-
-    assert(arena->temp_count > 0);
-    --arena->temp_count;
-}
-
-internal void
-check_arena(Arena *arena) {
-    assert(arena->temp_count == 0);
-}
-
-internal inline void
-zero_size(memi size, void *ptr) {
-    u8 *byte = (u8 *)ptr;
-    while (size--) {
-        *byte++ = 0;
-    }
-}
-#define zero_struct(instance) zero_size(sizeof(instance), &(instance))
-
-#include "excalibur_render.h"
+#include "excalibur_memory.h" // TODO(xkazu0x): temporary!
+#include "excalibur_multimedia.h"
 #include "excalibur_asset.h"
-
-struct Memory_Task {
-    b32 is_being_used;
-    Arena arena;
-    Temp_Memory memory_flush;
-};
-
+#include "excalibur_render.h"
 #include "excalibur_game.h"
-
-internal Memory_Task *
-begin_memory_task(Transient_State *tran_state) {
-    Memory_Task *result = 0;
-
-    for (u32 task_index = 0;
-         task_index < array_count(tran_state->tasks);
-         ++task_index) {
-        Memory_Task *task = tran_state->tasks + task_index;
-        if (!task->is_being_used) {
-            result = task;
-            task->is_being_used = true;
-            task->memory_flush = begin_temp_memory(&task->arena);
-            break;
-        }
-    }
-
-    return(result);
-}
-
-inline void
-end_memory_task(Memory_Task *task) {
-    end_temp_memory(&task->memory_flush);
-    complete_previous_write_before_future_write;
-    task->is_being_used = false;
-}
 
 #include "base/excalibur_base.cpp"
 #include "excalibur_world.cpp"
 #include "excalibur_simulation.cpp"
 #include "excalibur_entity.cpp"
-#include "excalibur_render.cpp"
+#include "excalibur_multimedia.cpp"
 #include "excalibur_asset.cpp"
+#include "excalibur_render.cpp"
 
 internal Gamepad *
 get_gamepad(OS_Input *input, u32 index) {
@@ -728,7 +582,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     debug_os_read_file = memory->debug_os_read_file;
     os_work_queue_add_entry = memory->os_work_queue_add_entry;
     os_work_queue_complete = memory->os_work_queue_complete;
-
+    
     // TODO(xkazu0x): Delete this
     // {
     u32 tile_count_x = 17;
@@ -740,15 +594,17 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     u32 ground_buffer_width = 256;
     u32 ground_buffer_height = 256;
     // }
-
+    
     BEGIN_TIMED_BLOCK(game_update_and_render);
-
+    
     ////////////////////////////////
     // NOTE(xkazu0x): init game state
     assert(sizeof(Game_State) <= memory->permanent_storage_size);
     Game_State *game_state = (Game_State *)memory->permanent_storage;
     if (!game_state->is_initialized) {
         game_state->typical_floor_height = 3.0f;
+        
+        game_state->test_sound = load_wav("../res/hit0.wav");
 
         // TODO(xkazu0x): Remove this!
         //f32 pixels_to_meters = 1.0f / 11.4285714286f; // tile_size_in_pixels/1.4f (tile_size_in_meters);

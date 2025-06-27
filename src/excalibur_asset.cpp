@@ -1,28 +1,3 @@
-#pragma pack(push, 1)
-struct Bitmap_Header {
-    u16 file_type;
-    u32 file_size;
-    u16 reserved1;
-    u16 reserved2;
-    u32 bitmap_offset;
-    u32 size;
-    s32 width;
-    s32 height;
-    u16 planes;
-    u16 bits_per_pixel;
-    u32 compression;
-    u32 size_of_bitmap;
-    s32 horz_resolution;
-    s32 vert_resolution;
-    u32 colors_used;
-    u32 colors_important;
-
-    u32 red_mask;
-    u32 green_mask;
-    u32 blue_mask;
-};
-#pragma pack(pop)
-
 internal Vec2
 top_down_align(Bitmap *bitmap, Vec2 align) {
     //align.y = (f32)(bitmap->height - 1) - align.y;
@@ -33,133 +8,6 @@ top_down_align(Bitmap *bitmap, Vec2 align) {
     
     return(align);
 }
-
-internal Bitmap
-debug_load_bitmap(char *filename, Vec2 align_percentage = make_vec2(0.5f)) {
-    Bitmap result = {};
-    
-    Debug_OS_File file = debug_os_read_file(filename);
-    if (file.size != 0) {
-        Bitmap_Header *header = (Bitmap_Header *)file.data;
-        u32 *pixels = (u32 *)((u8 *)file.data + header->bitmap_offset);
-        
-        result.memory = pixels;
-        result.width = header->width;
-        result.height = header->height;
-        result.align_percentage = align_percentage;
-        result.width_over_height = safe_ratio0((f32)result.width, (f32)result.height);
-        
-        assert(result.height >= 0);
-        assert(header->compression == 3);
-        
-        // NOTE(xkazu0x): byte order in memory is determined bu the header itself,
-        // so we have to read out the masks and convert the pixels ourselves.
-        u32 red_mask = header->red_mask;
-        u32 green_mask = header->green_mask;
-        u32 blue_mask = header->blue_mask;
-        u32 alpha_mask = ~(red_mask | green_mask | blue_mask);
-        
-        Bit_Scan red_scan = find_least_significant_set_bit(red_mask);
-        Bit_Scan green_scan = find_least_significant_set_bit(green_mask);
-        Bit_Scan blue_scan = find_least_significant_set_bit(blue_mask);
-        Bit_Scan alpha_scan = find_least_significant_set_bit(alpha_mask);
-
-        assert(red_scan.found);
-        assert(green_scan.found);
-        assert(blue_scan.found);
-        assert(alpha_scan.found);
-
-        s32 red_shift_down   = (s32)red_scan.index;
-        s32 green_shift_down = (s32)green_scan.index;
-        s32 blue_shift_down  = (s32)blue_scan.index;
-        s32 alpha_shift_down = (s32)alpha_scan.index;
-
-        u32 *source_dest = pixels;
-        for (s32 y = 0;
-             y < header->height;
-             ++y) {
-            for (s32 x = 0;
-                 x < header->width;
-                 ++x) {
-                u32 color = *source_dest;
-
-                Vec4 texel = make_vec4((f32)((color & red_mask)   >> red_shift_down),
-                                       (f32)((color & green_mask) >> green_shift_down),
-                                       (f32)((color & blue_mask)  >> blue_shift_down),
-                                       (f32)((color & alpha_mask) >> alpha_shift_down));
-                
-                texel = srgb255_to_linear1(texel);
-                texel.rgb *= texel.a;
-                texel = linear1_to_srgb255(texel);
-                
-                *source_dest++ = (((u32)(texel.a + 0.5f) << 24) |
-                                  ((u32)(texel.r + 0.5f) << 16) |
-                                  ((u32)(texel.g + 0.5f) << 8) |
-                                  ((u32)(texel.b + 0.5f) << 0));
-            }
-        }
-    }
-
-    result.pitch = result.width*BYTES_PER_PIXEL;
-
-#if 0
-    result.memory = (u8 *)result.memory + result.pitch*(result.height - 1);
-    result.pitch = -result.pitch;
-#endif
-    
-    return(result);
-}
-
-struct Wave_Header {
-    u32 riff_id;
-    u32 size;
-    u32 wave_id;
-};
-
-#define RIFF_CODE(a, b, c, d) (((u32)(a)<<0)|((u32)(b)<<8)|((u32)(c)<<16)|((u32)(d)<<24))
-enum {
-    WaveChunkID_fmt  = RIFF_CODE('f', 'm', 't', ' '),
-    WaveChunkID_RIFF = RIFF_CODE('R', 'I', 'F', 'F'),
-    WaveChunkID_WAVE = RIFF_CODE('W', 'A', 'V', 'E'),
-};
-
-struct Wave_Chunk {
-    u32 id;
-    u32 size;
-};
-
-struct Wave_Fmt {
-    u16 format_tag;
-    u16 channels;
-    u32 samples_per_sec;
-    u32 avg_bytes_per_sec;
-    u16 block_align;
-    u16 bits_per_sample;
-    u16 size;
-    u16 valid_bits_per_sample;
-    u32 channels_mask;
-    u8 sub_format[16];
-};
-
-internal Sound
-debug_load_wav(char *filename) {
-    Sound result = {};
-    
-    Debug_OS_File file = debug_os_read_file(filename);
-    if (file.size != 0) {
-        Wave_Header *header = (Wave_Header *)file.data;
-        assert(header->riff_id == WaveChunkID_RIFF);
-        assert(header->wave_id == WaveChunkID_WAVE);
-
-        
-    }
-
-    return(result);
-}
-
-//
-//
-//
 
 internal Bitmap_ID
 debug_asset_add_bitmap_info(Asset_Manager *manager, char *filename, Vec2 align_percentage)  {
@@ -388,7 +236,7 @@ OS_WORK_QUEUE_CALLBACK(load_bitmap_work) {
     Load_Bitmap_Work *work = (Load_Bitmap_Work *)data;
     
     Asset_Bitmap_Info *info = work->manager->bitmap_infos + work->id.value;
-    *work->bitmap = debug_load_bitmap(info->filename, info->align_percentage);
+    *work->bitmap = load_bitmap(info->filename, info->align_percentage);
 
     complete_previous_write_before_future_write;
 
@@ -429,7 +277,7 @@ OS_WORK_QUEUE_CALLBACK(load_sound_work) {
     Load_Sound_Work *work = (Load_Sound_Work *)data;
     
     Asset_Sound_Info *info = work->manager->sound_infos + work->id.value;
-    *work->sound = debug_load_wav(info->filename);
+    *work->sound = load_wav(info->filename);
 
     complete_previous_write_before_future_write;
 

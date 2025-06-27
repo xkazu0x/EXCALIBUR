@@ -23,17 +23,6 @@
 //    NON-premultiplied alpha.
 //
 
-#define BITMAP_BYTES_PER_PIXEL 4
-struct Bitmap {
-    Vec2 align_percentage;
-    f32 width_over_height;
-    
-    s32 width;
-    s32 height;
-    s32 pitch;
-    void *memory;
-};
-
 struct Environment_Map {
     Bitmap lod[4]; // NOTE(xkazu0x): levels of detail
     f32 pos_z;
@@ -112,5 +101,9 @@ struct Render_Group {
 
     u32 missing_resource_count;
 };
+
+internal Vec4 srgb255_to_linear1(Vec4 color);
+internal Vec4 linear1_to_srgb255(Vec4 color);
+
 
 #endif // EXCALIBUR_RENDER_H
