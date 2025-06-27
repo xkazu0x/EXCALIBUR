@@ -6,15 +6,12 @@
 #include <windows.h>
 #include <timeapi.h>
 #include <xinput.h>
+#include <mmreg.h>
+#include <dsound.h>
 
 #pragma comment(lib, "user32")
 #pragma comment(lib, "gdi32")
 #pragma comment(lib, "winmm")
-
-struct Win32_Window_Size {
-    s32 x;
-    s32 y;
-};
 
 struct Win32_Game {
     HMODULE library;
@@ -40,10 +37,12 @@ struct Win32_State {
 
 #define WIN32_GET_PROC_ADDR(v, m, s) (*(PROC*)(&(v))) = GetProcAddress((m), (s))
 
-#define XINPUT_GET_STATE(x) DWORD WINAPI x(DWORD, XINPUT_STATE *)
-#define XINPUT_SET_STATE(x) DWORD WINAPI x(DWORD, XINPUT_VIBRATION *)
-
+#define XINPUT_GET_STATE(name) DWORD WINAPI name(DWORD, XINPUT_STATE *)
+#define XINPUT_SET_STATE(name) DWORD WINAPI name(DWORD, XINPUT_VIBRATION *)
 typedef XINPUT_GET_STATE(XInput_Get_State);
 typedef XINPUT_SET_STATE(XInput_Set_State);
+
+#define DIRECT_SOUND_CREATE(name) HRESULT WINAPI name(LPGUID lpGuid, LPDIRECTSOUND *ppDS, LPUNKNOWN  pUnkOuter);
+typedef DIRECT_SOUND_CREATE(Direct_Sound_Create);
 
 #endif // EXCALIBUR_WIN32_H
