@@ -23,7 +23,6 @@ struct Bitmap_Header {
 };
 #pragma pack(pop)
 
-#if 0
 internal Vec2
 top_down_align(Bitmap *bitmap, Vec2 align) {
     //align.y = (f32)(bitmap->height - 1) - align.y;
@@ -34,13 +33,6 @@ top_down_align(Bitmap *bitmap, Vec2 align) {
     
     return(align);
 }
-
-internal void
-set_bitmap_align(Bitmap *bitmap, Vec2 align) {
-    align = top_down_align(bitmap, align);
-    bitmap->align_percentage = align;
-}
-#endif
 
 internal Bitmap
 debug_load_bitmap(char *filename, Vec2 align_percentage = make_vec2(0.5f)) {
@@ -118,6 +110,53 @@ debug_load_bitmap(char *filename, Vec2 align_percentage = make_vec2(0.5f)) {
     return(result);
 }
 
+struct Wave_Header {
+    u32 riff_id;
+    u32 size;
+    u32 wave_id;
+};
+
+#define RIFF_CODE(a, b, c, d) (((u32)(a)<<0)|((u32)(b)<<8)|((u32)(c)<<16)|((u32)(d)<<24))
+enum {
+    WaveChunkID_fmt  = RIFF_CODE('f', 'm', 't', ' '),
+    WaveChunkID_RIFF = RIFF_CODE('R', 'I', 'F', 'F'),
+    WaveChunkID_WAVE = RIFF_CODE('W', 'A', 'V', 'E'),
+};
+
+struct Wave_Chunk {
+    u32 id;
+    u32 size;
+};
+
+struct Wave_Fmt {
+    u16 format_tag;
+    u16 channels;
+    u32 samples_per_sec;
+    u32 avg_bytes_per_sec;
+    u16 block_align;
+    u16 bits_per_sample;
+    u16 size;
+    u16 valid_bits_per_sample;
+    u32 channels_mask;
+    u8 sub_format[16];
+};
+
+internal Sound
+debug_load_wav(char *filename) {
+    Sound result = {};
+    
+    Debug_OS_File file = debug_os_read_file(filename);
+    if (file.size != 0) {
+        Wave_Header *header = (Wave_Header *)file.data;
+        assert(header->riff_id == WaveChunkID_RIFF);
+        assert(header->wave_id == WaveChunkID_WAVE);
+
+        
+    }
+
+    return(result);
+}
+
 //
 //
 //
@@ -181,12 +220,20 @@ asset_manager_alloc(Arena *arena, memi size, Transient_State *tran_state) {
     Asset_Manager *manager = push_struct(arena, Asset_Manager);
     manager->tran_state = tran_state;
     manager->arena = make_sub_arena(arena, size);
+
+    for (u32 tag_type = 0;
+         tag_type < AssetTag_Count;
+         ++tag_type) {
+        manager->tag_range[tag_type] = million(1.0f);
+    }
+    manager->tag_range[AssetTag_FacingDirection] = tau32;
     
     manager->bitmap_count = 256*AssetType_Count;
     manager->bitmap_infos = push_array(arena, Asset_Bitmap_Info, manager->bitmap_count);
     manager->bitmaps = push_array(arena, Asset_Slot, manager->bitmap_count);
     
     manager->sound_count = 1;
+    manager->sound_infos = push_array(arena, Asset_Sound_Info, manager->sound_count);
     manager->sounds = push_array(arena, Asset_Slot, manager->sound_count);
     
     manager->asset_count = manager->bitmap_count + manager->sound_count;
@@ -229,10 +276,10 @@ asset_manager_alloc(Arena *arena, memi size, Transient_State *tran_state) {
     asset_add_bitmap(manager, "../res/flower1.bmp");
     end_asset_type(manager);
 
-    f32 angle_right = 0.0f*pi32;
-    f32 angle_back = 0.5f*pi32;
-    f32 angle_left = 1.0f*pi32;
-    f32 angle_front = 1.5f*pi32;
+    f32 angle_right = 0.0f*tau32;
+    f32 angle_back = 0.25f*tau32;
+    f32 angle_left = 0.5f*tau32;
+    f32 angle_front = 0.75f*tau32;
     
     begin_asset_type(manager, AssetType_Skull);
     asset_add_bitmap(manager, "../res/skull_right.bmp");
@@ -272,8 +319,14 @@ asset_best_match(Asset_Manager *manager, Asset_Type_ID type_id, Asset_Vector *ma
                  tag_index < asset->one_past_last_tag_index;
                  ++tag_index) {
                 Asset_Tag *tag = manager->tags + tag_index;
-                f32 difference = match_vector->e[tag->id] - tag->value;
-                f32 weighted = weight_vector->e[tag->id]*abs_f32(difference);
+
+                f32 a = match_vector->e[tag->id];
+                f32 b = tag->value;
+                f32 d0 = abs_f32(a - b);
+                f32 d1 = abs_f32((a - manager->tag_range[tag->id]*sign_of(a)) - b);
+                f32 difference = min(d0, d1);
+                    
+                f32 weighted = weight_vector->e[tag->id]*difference;
                 total_weighted_diff += weighted;
             }
 
@@ -333,6 +386,7 @@ struct Load_Bitmap_Work {
 internal
 OS_WORK_QUEUE_CALLBACK(load_bitmap_work) {
     Load_Bitmap_Work *work = (Load_Bitmap_Work *)data;
+    
     Asset_Bitmap_Info *info = work->manager->bitmap_infos + work->id.value;
     *work->bitmap = debug_load_bitmap(info->filename, info->align_percentage);
 
@@ -350,6 +404,7 @@ asset_load_bitmap(Asset_Manager *manager, Bitmap_ID id) {
         Memory_Task *memory_task = begin_memory_task(manager->tran_state);
         if (memory_task) {
             Load_Bitmap_Work *work = push_struct(&memory_task->arena, Load_Bitmap_Work);
+            
             work->memory_task = memory_task;
             work->manager = manager;
             work->id = id;
@@ -357,6 +412,47 @@ asset_load_bitmap(Asset_Manager *manager, Bitmap_ID id) {
             work->final_state = AssetState_Loaded;
 
             os_work_queue_add_entry(manager->tran_state->low_priority_queue, load_bitmap_work, work);
+        }
+    }
+}
+
+struct Load_Sound_Work {
+    Memory_Task *memory_task;
+    Asset_Manager *manager;
+    Sound_ID id;
+    Sound *sound;
+    Asset_State final_state;
+};
+
+internal
+OS_WORK_QUEUE_CALLBACK(load_sound_work) {
+    Load_Sound_Work *work = (Load_Sound_Work *)data;
+    
+    Asset_Sound_Info *info = work->manager->sound_infos + work->id.value;
+    *work->sound = debug_load_wav(info->filename);
+
+    complete_previous_write_before_future_write;
+
+    work->manager->sounds[work->id.value].sound = work->sound;
+    work->manager->sounds[work->id.value].state = work->final_state;
+    
+    end_memory_task(work->memory_task);
+}
+
+internal void
+asset_load_sound(Asset_Manager *manager, Sound_ID id) {
+    if (id.value && (atomic_compare_exchange_u32((u32 *)&manager->sounds[id.value].state, AssetState_Unloaded, AssetState_Queued) == AssetState_Unloaded)) {
+        Memory_Task *memory_task = begin_memory_task(manager->tran_state);
+        if (memory_task) {
+            Load_Sound_Work *work = push_struct(&memory_task->arena, Load_Sound_Work);
+            
+            work->memory_task = memory_task;
+            work->manager = manager;
+            work->id = id;
+            work->sound = push_struct(&manager->arena, Sound);
+            work->final_state = AssetState_Loaded;
+
+            os_work_queue_add_entry(manager->tran_state->low_priority_queue, load_sound_work, work);
         }
     }
 }

@@ -31,6 +31,12 @@ sign_of(s32 x) {
     return(result);
 }
 
+internal inline f32
+sign_of(f32 x) {
+    f32 result = (x >= 0.0f) ? 1.0f : -1.0f;
+    return(result);
+}
+
 internal inline u32
 rotate_left(u32 value, s32 amount) {
 #if COMPILER_CL

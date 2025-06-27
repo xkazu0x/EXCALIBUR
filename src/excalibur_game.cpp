@@ -1337,8 +1337,8 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     
                 case EntityType_Familiar: {
                     entity->t_bob += dt;
-                    if (entity->t_bob > (2.0f*pi32)) {
-                        entity->t_bob -= (2.0f*pi32);
+                    if (entity->t_bob > (tau32)) {
+                        entity->t_bob -= (tau32);
                     }
                     
                     f32 bob_sin = 0.3f*sin_f32(5.0f*entity->t_bob);

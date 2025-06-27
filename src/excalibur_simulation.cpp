@@ -619,7 +619,7 @@ move_entity(Game_State *state, Sim_Region *region, Sim_Entity *entity, f32 delta
     } else {
         entity->facing_direction = atan2_f32(entity->d_pos.y, entity->d_pos.x);
         if (entity->facing_direction < 0.0f) {
-            entity->facing_direction += 2.0f*pi32;
+            entity->facing_direction += tau32;
         }
     }
 }

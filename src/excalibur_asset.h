@@ -1,6 +1,11 @@
 #ifndef EXCALIBUR_ASSET_H
 #define EXCALIBUR_ASSET_H
 
+struct Sound {
+    s32 sample_count;
+    void *memory;
+};
+
 enum Asset_State {
     AssetState_Unloaded,
     AssetState_Queued,
@@ -10,7 +15,10 @@ enum Asset_State {
 
 struct Asset_Slot {
     Asset_State state;
-    Bitmap *bitmap;
+    union {
+        Bitmap *bitmap;
+        Sound *sound;
+    };
 };
 
 enum Asset_Tag_ID {
@@ -61,6 +69,10 @@ struct Asset_Bitmap_Info {
     Vec2 align_percentage;
 };
 
+struct Asset_Sound_Info {
+    char *filename;
+};
+
 struct Asset_Manager {
     struct Transient_State *tran_state;
     Arena arena;
@@ -70,6 +82,7 @@ struct Asset_Manager {
     Asset_Slot *bitmaps;
 
     u32 sound_count;
+    Asset_Sound_Info *sound_infos;
     Asset_Slot *sounds;
 
     u32 tag_count;
@@ -79,7 +92,8 @@ struct Asset_Manager {
     Asset *assets;
     
     Asset_Type asset_types[AssetType_Count];
-
+    f32 tag_range[AssetTag_Count];
+    
     // NOTE(xkazu0x): Array'd assets
     // TODO(xkazu0x): Structured assets
     //Bitmap player[4];
