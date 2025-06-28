@@ -1,7 +1,7 @@
 #include "base/excalibur_base.h"
 #include "os/excalibur_os.h"
 #include "os/excalibur_os_helper.h"
-#include "os/excalibur_win32.h"
+#include "os/excalibur_os_win32.h"
 
 #include "base/excalibur_base.cpp"
 #include "os/excalibur_os_helper.cpp"
@@ -105,6 +105,50 @@ win32_init_dsound(HWND window, s32 samples_per_second, s32 buffer_size, LPDIRECT
         }
     } else {
         log_error("failed to load 'dsound.dll'");
+    }
+}
+
+internal void
+win32_fill_sound_buffer(Win32_Sound_Output *sound_output, DWORD byte_to_lock, DWORD bytes_to_write) {
+    VOID *region1;
+    DWORD region1_size;
+    VOID *region2;
+    DWORD region2_size;
+                        
+    if (SUCCEEDED(sound_output->buffer->Lock(byte_to_lock, bytes_to_write, &region1, &region1_size, &region2, &region2_size, 0))) {
+        DWORD sample_count = region1_size/sound_output->bytes_per_sample;
+        s16 *sample_out = (s16 *)region1;
+                            
+        for (DWORD sample_index = 0;
+             sample_index < sample_count;
+             ++sample_index) {
+            f32 t = tau32*(f32)sound_output->running_sample_index/(f32)sound_output->wave_period;
+            f32 sine_value = sin_f32(t);
+            s16 sample_value = (s16)(sine_value*sound_output->wave_tone_volume);
+                                
+            *sample_out++ = sample_value;
+            *sample_out++ = sample_value;
+                                
+            ++sound_output->running_sample_index;
+        }
+
+        sample_count = region2_size/sound_output->bytes_per_sample;
+        sample_out = (s16 *)region2;
+        
+        for (DWORD sample_index = 0;
+             sample_index < sample_count;
+             ++sample_index) {
+            f32 t = tau32*(f32)sound_output->running_sample_index/(f32)sound_output->wave_period;
+            f32 sine_value = sin_f32(t);
+            s16 sample_value = (s16)(sine_value*sound_output->wave_tone_volume);
+                                
+            *sample_out++ = sample_value;
+            *sample_out++ = sample_value;
+                                
+            ++sound_output->running_sample_index;
+        }
+
+        sound_output->buffer->Unlock(region1, region1_size, region2, region2_size);
     }
 }
 
@@ -486,7 +530,7 @@ win32_thread_proc(LPVOID data) {
 }
 
 internal void
-win32_make_work_queue(OS_Work_Queue *queue, u32 thread_count) {
+win32_init_work_queue(OS_Work_Queue *queue, u32 thread_count) {
     queue->completion_goal = 0;
     queue->completion_count = 0;
     queue->next_entry_to_write = 0;
@@ -590,7 +634,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 int main(void)
 #endif
 {
-    // NOTE(xkazu0x): context cracking
+    ////////////////////////////////
+    // NOTE(xkazu0x): Context cracking
+    
     String8 operating_system_string = string_from_operating_system(operating_system_from_context());
     String8 architecture_string = string_from_architecture(architecture_from_context());
     String8 compiler_string = string_from_compiler(compiler_from_context());
@@ -599,17 +645,20 @@ int main(void)
     log_info("architecture: %s", architecture_string.str);
     log_info("compiler: %s", compiler_string.str);
 
-    // NOTE(xkazu0x): make threads
+    ////////////////////////////////
+    // NOTE(xkazu0x): Init threads
+    
     OS_Work_Queue high_priority_queue;
-    win32_make_work_queue(&high_priority_queue, 4);
+    win32_init_work_queue(&high_priority_queue, 4);
     
     OS_Work_Queue low_priority_queue;
-    win32_make_work_queue(&low_priority_queue, 2);
-    
-    // NOTE(xkazu0x): load game code
+    win32_init_work_queue(&low_priority_queue, 2);
+
+    ////////////////////////////////
+    // NOTE(xkazu0x): Load game code
     u64 string_arena_size = MB(1);
-    void *string_arena_base_memory = VirtualAlloc(0, string_arena_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-    Arena string_arena = make_arena(string_arena_size, string_arena_base_memory);
+    void *string_arena_memory = VirtualAlloc(0, string_arena_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    Arena string_arena = make_arena(string_arena_size, string_arena_memory);
 
     win32_get_exe_filename(&string_arena, &win32_state);
     log_debug("exec filename: %s", win32_state.exe_filename);
@@ -621,8 +670,10 @@ int main(void)
     log_debug("tmp dll fullpath: %s", temp_game_code_dll_fullpath);
     
     Win32_Game game = win32_load_game(source_game_code_dll_fullpath, temp_game_code_dll_fullpath);
+
+    ////////////////////////////////
+    // NOTE(xkazu0x): Monitor info
     
-    // NOTE(xkazu0x): monitor info
     DEVMODE monitor_info;
     monitor_info.dmSize = sizeof(DEVMODE);
     EnumDisplaySettings(0, ENUM_CURRENT_SETTINGS, &monitor_info);
@@ -632,16 +683,20 @@ int main(void)
     s32 monitor_frame_rate = monitor_info.dmDisplayFrequency;
     log_info("monitor size: %dx%d", monitor_width, monitor_height);
     log_info("monitor refresh rate: %dHz", monitor_frame_rate);
+
+    ////////////////////////////////
+    // NOTE(xkazu0x): Init framebuffer
     
-    // NOTE(xkazu0x): init framebuffer
     OS_Framebuffer framebuffer = {};
     //win32_resize_framebuffer(&framebuffer, 320, 180);
     win32_resize_framebuffer(&framebuffer, 960, 540);
     //win32_resize_framebuffer(&framebuffer, 1920, 1080);
     //win32_resize_framebuffer(&framebuffer, 1279, 719);
     log_info("framebuffer size: %dx%d", framebuffer.width, framebuffer.height);
+
+    ////////////////////////////////
+    // NOTE(xkazu0x): Init window
     
-    // NOTE(xkazu0x): init window 
     s32 window_width = 1280;
     s32 window_height = 720;
     s32 window_x = (monitor_width - window_width)/2;
@@ -686,8 +741,9 @@ int main(void)
                                              0, 0, window_instance, 0);
         if (window_handle) {
             ShowWindow(window_handle, SW_SHOW);            
-                        
-            // NOTE(xkazu0x): register mouse as raw input device
+
+            ////////////////////////////
+            // NOTE(xkazu0x): Init input
             OS_Input input = {};
     
             RAWINPUTDEVICE raw_input_device = {};
@@ -699,25 +755,30 @@ int main(void)
             }
             log_debug("mouse registered as raw input device");
 
-            // NOTE(xkazu0x): init xinput
             win32_init_xinput();
 
-            // NOTE(xkazu0x): init dsound
-            s32 samples_per_second = 48000;
-            s32 bytes_per_sample = sizeof(s16)*2;
-            s32 direct_sound_buffer_size = samples_per_second*bytes_per_sample;
+            ////////////////////////////
+            // NOTE(xkazu0x): Init sound
             
-            LPDIRECTSOUNDBUFFER direct_sound_buffer;
-            win32_init_dsound(window_handle, samples_per_second, direct_sound_buffer_size, &direct_sound_buffer);
-            direct_sound_buffer->Play(0, 0, DSBPLAY_LOOPING);
+            Win32_Sound_Output sound_output = {};
+            sound_output.samples_per_second = 48000;
+            sound_output.bytes_per_sample = sizeof(s16)*2;
+            sound_output.buffer_size = sound_output.samples_per_second*sound_output.bytes_per_sample;
+
+            win32_init_dsound(window_handle, sound_output.samples_per_second, sound_output.buffer_size, &sound_output.buffer);
             
-            u32 running_sample_index = 0;
-            s16 square_wave_tone_volume = 2000;
-            s32 square_wave_tone_hz = 256;
-            s32 square_wave_period = samples_per_second/square_wave_tone_hz;
-            s32 square_wave_half_period = square_wave_period/2;
+            sound_output.running_sample_index = 0;
+            sound_output.latency_sample_count = sound_output.samples_per_second/10;
+            sound_output.wave_tone_volume = 2000;
+            sound_output.wave_tone_hz = 256;
+            sound_output.wave_period = sound_output.samples_per_second/sound_output.wave_tone_hz;
+
+            win32_fill_sound_buffer(&sound_output, 0, sound_output.latency_sample_count*sound_output.bytes_per_sample);
+            sound_output.buffer->Play(0, 0, DSBPLAY_LOOPING);
+
+            ////////////////////////////////
+            // NOTE(xkazu0x): Init memory
             
-            // NOTE(xkazu0x): init memory
             OS_Memory memory = {};
             
 #if EXCALIBUR_INTERNAL
@@ -744,10 +805,9 @@ int main(void)
             memory.permanent_storage = win32_state.game_memory_block;
             memory.transient_storage = ((u8 *)memory.permanent_storage + memory.permanent_storage_size);
             if (memory.permanent_storage) {
-                log_debug("permanent storage size: %llu", memory.permanent_storage_size);
-                log_debug("transient storage size: %llu", memory.transient_storage_size);
-    
-                // NOTE(xkazu0x): init clock
+                ////////////////////////////
+                // NOTE(xkazu0x): Init clock
+                
                 OS_Clock clock = {};
     
                 //f32 game_update_hz = 30.0f;
@@ -759,8 +819,7 @@ int main(void)
                 QueryPerformanceFrequency(&large_integer);
                 win32_state.time_frequency = large_integer.QuadPart;
 
-                // NOTE(xkazu0x): set the windows scheduler granularity to 1ms
-                // so that our Sleep() can be more granular
+                // NOTE(xkazu0x): Set the windows scheduler granularity to 1ms so that our Sleep() can be more granular.
                 UINT desired_scheduler_ms = 1;
                 b32 sleep_is_granular = (timeBeginPeriod(desired_scheduler_ms) == TIMERR_NOERROR);
     
@@ -770,7 +829,9 @@ int main(void)
                 b32 quit = false;
                 b32 pause = false;
                 while (!quit) {
-                    // NOTE(xkazu0x): reload game
+                    ////////////////////////////
+                    // NOTE(xkazu0x): Reload game
+                    
                     input.executable_reloaded = false;
                     FILETIME game_new_write_time = win32_get_last_write_time(source_game_code_dll_fullpath);
                     if (CompareFileTime(&game_new_write_time, &game.last_write_time) != 0) {
@@ -778,8 +839,10 @@ int main(void)
                         game = win32_load_game(source_game_code_dll_fullpath, temp_game_code_dll_fullpath);
                         input.executable_reloaded = true;
                     }
-                
-                    // NOTE(xkazu0x): input reset
+
+                    ////////////////////////////
+                    // NOTE(xkazu0x): Input reset
+                    
                     for (u32 i = 0; i < Key_Count; ++i) {
                         input.keyboard[i].pressed = false;
                         input.keyboard[i].released = false;
@@ -799,7 +862,9 @@ int main(void)
                     input.mouse.dx = 0;
                     input.mouse.dy = 0;
 
-                    // NOTE(xkazu0x): window message loop
+                    ////////////////////////////
+                    // NOTE(xkazu0x): Window message loop
+                    
                     MSG message;
                     while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
                         switch (message.message) {
@@ -867,8 +932,10 @@ int main(void)
                             }
                         }
                     }
-        
-                    // NOTE(xkazu0x): mouse update
+
+                    ////////////////////////////
+                    // NOTE(xkazu0x): Mouse update
+                    
                     input.mouse.wheel += input.mouse.delta_wheel;
 
                     POINT mouse_position;
@@ -878,14 +945,16 @@ int main(void)
                     if (mouse_position.x < 0) mouse_position.x = 0;
                     if (mouse_position.y < 0) mouse_position.y = 0;
         
-                    // TODO(xkazu0x): query new window size before this happens
+                    // TODO(xkazu0x): Query new window size before this happens
                     if (mouse_position.x > window_width) mouse_position.x = window_width;
                     if (mouse_position.y > window_height) mouse_position.y = window_height;
         
                     input.mouse.x = mouse_position.x;
                     input.mouse.y = mouse_position.y;
-        
-                    // NOTE(xkazu0x): gamepad update
+
+                    ////////////////////////////
+                    // NOTE(xkazu0x): Gamepad update
+                    
                     u32 max_gamepad_count = XUSER_MAX_COUNT;
                     if (max_gamepad_count > array_count(input.gamepads)) {
                         max_gamepad_count = array_count(input.gamepads);
@@ -922,12 +991,13 @@ int main(void)
                         }
                     }
 
-                    // NOTE(xkazu0x): key presses
+                    ////////////////////////////
+                    // NOTE(xkazu0x): Update and render
+
                     if (input.keyboard[Key_Escape].pressed) quit = true;
                     if (input.keyboard[Key_F1].pressed) pause = !pause;
                     if (input.keyboard[Key_F11].pressed) win32_window_toggle_fullscreen(window_handle, &win32_state.window_placement);
-
-                    // NOTE(xkazu0x): update and render
+                    
                     if (!pause) {
                         clock.dt = target_seconds_per_frame;
                         if (game.update_and_render) {
@@ -935,8 +1005,10 @@ int main(void)
                             handle_debug_cycle_counters(&memory);
                         }
                     }
-        
-                    // NOTE(xkazu0x): limit frame rate
+
+                    ////////////////////////////
+                    // NOTE(xkazu0x): Limit frame rate
+                    
                     u64 raw_end_cycle_count = __rdtsc();
                     u64 raw_cycles_per_frame = raw_end_cycle_count - last_cycle_count;
                     f32 raw_mega_cycles_per_frame = ((f32)raw_cycles_per_frame/(1000.0f*1000.0f));
@@ -968,8 +1040,10 @@ int main(void)
                     } else {
                         // TODO(xkazu0x): MISSED FRAME RATE
                     }
-        
-                    // NOTE(xkazu0x): compute time
+
+                    ////////////////////////////
+                    // NOTE(xkazu0x): Compute time
+                    
                     u64 end_cycle_count = __rdtsc();
                     u64 cycles_per_frame = end_cycle_count - last_cycle_count;
                     f32 mega_cycles_per_frame = ((f32)cycles_per_frame/(1000.0f*1000.0f));
@@ -981,53 +1055,34 @@ int main(void)
                     last_counter = end_counter;
                     last_cycle_count = end_cycle_count;
 
-                    // NOTE(xkazu0x): output sound
+                    ////////////////////////////
+                    // NOTE(xkazu0x): Output sound
+                    
                     DWORD play_cursor;
                     DWORD write_cursor;
-                    if (SUCCEEDED(direct_sound_buffer->GetCurrentPosition(&play_cursor, &write_cursor))) {
-                        DWORD byte_to_lock = running_sample_index*bytes_per_sample % direct_sound_buffer_size;
+                    
+                    if (SUCCEEDED(sound_output.buffer->GetCurrentPosition(&play_cursor, &write_cursor))) {
+                        DWORD byte_to_lock = ((sound_output.running_sample_index*sound_output.bytes_per_sample) % sound_output.buffer_size);
+                        DWORD target_cursor = ((play_cursor + (sound_output.latency_sample_count*sound_output.bytes_per_sample)) % sound_output.buffer_size);
+                        
                         DWORD bytes_to_write;
-                        if (byte_to_lock > play_cursor) {
+                        // TODO(xkazu0x): Change this to using a lower latency offset from the play_cursor when we actually start having sound effects.
+                        if (byte_to_lock == target_cursor) {
+                            bytes_to_write = 0;
+                        } else if (byte_to_lock > target_cursor) {
                             //bytes_to_write = direct_sound_buffer_size - byte_to_lock;
                             //bytes_to_write += play_cursor;
-                            bytes_to_write = direct_sound_buffer_size - (byte_to_lock - play_cursor);
+                            bytes_to_write = sound_output.buffer_size - (byte_to_lock - target_cursor);
                         } else {
-                            bytes_to_write = play_cursor - byte_to_lock;
+                            bytes_to_write = target_cursor - byte_to_lock;
                         }
-                        
-                        VOID *region1;
-                        DWORD region1_size;
-                        VOID *region2;
-                        DWORD region2_size;
-                        
-                        if (SUCCEEDED(direct_sound_buffer->Lock(byte_to_lock, bytes_to_write, &region1, &region1_size, &region2, &region2_size, 0))) {
-                            DWORD sample_count = region1_size/bytes_per_sample;
-                            s16 *sample_out = (s16 *)region1;
-                            
-                            for (DWORD sample_index = 0;
-                                 sample_index < sample_count;
-                                 ++sample_index) {
-                                s16 sample_value = ((running_sample_index++/square_wave_half_period) % 2) ? square_wave_tone_volume : -square_wave_tone_volume;
-                                *sample_out++ = sample_value;
-                                *sample_out++ = sample_value;
-                            }
 
-                            sample_count = region2_size/bytes_per_sample;
-                            sample_out = (s16 *)region2;
-                            
-                            for (DWORD sample_index = 0;
-                                 sample_index < sample_count;
-                                 ++sample_index) {
-                                s16 sample_value = ((running_sample_index++/square_wave_half_period) % 2) ? square_wave_tone_volume : -square_wave_tone_volume;
-                                *sample_out++ = sample_value;
-                                *sample_out++ = sample_value;
-                            }
-
-                            direct_sound_buffer->Unlock(region1, region1_size, region2, region2_size);
-                        }
+                        win32_fill_sound_buffer(&sound_output, byte_to_lock, bytes_to_write);
                     }
+
+                    ////////////////////////////
+                    // NOTE(xkazu0x): Display framebuffer
                     
-                    // NOTE(xkazu0x): display framebuffer
                     RECT client_rectangle;
                     GetClientRect(window_handle, &client_rectangle);
                     window_width = client_rectangle.right - client_rectangle.left;
@@ -1036,14 +1091,18 @@ int main(void)
                     win32_display_framebuffer(framebuffer, window_handle, window_width, window_height);
                     
 #if 1
-                    // NOTE(xkazu0x): log time
-                    // TODO(xkazu0x): this is debug code only
+                    ////////////////////////////
+                    // TODO(xkazu0x): Debug time logging
+                    
                     local f64 time_ms = 0.0;
                     local f64 last_print_time = 0.0;
                     time_ms += ms_per_frame;
                     if (time_ms - last_print_time > 500.0f) {
                         char new_window_title[512];
-                        sprintf(new_window_title, "%s [fixed: %.02ffps, %.02fms, %.02fmc] [raw: %.02ffps, %.02fms, %.02fmc]", window_title, frames_per_second, ms_per_frame, mega_cycles_per_frame, raw_frames_per_second, raw_ms_per_frame, raw_mega_cycles_per_frame);
+                        sprintf(new_window_title, "%s [fixed: %.02ffps, %.02fms, %.02fmc] [raw: %.02ffps, %.02fms, %.02fmc]",
+                                window_title,
+                                frames_per_second, ms_per_frame, mega_cycles_per_frame,
+                                raw_frames_per_second, raw_ms_per_frame, raw_mega_cycles_per_frame);
                         SetWindowTextA(window_handle, new_window_title);
                         last_print_time = time_ms;
                     }

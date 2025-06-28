@@ -46,5 +46,5 @@ if not exist build mkdir build
 :: --- Build Everything ----------------------------------------
 pushd build
 %compile% ..\src\excalibur_game.cpp %compile_link% %link_dll% %compile_out%excalibur_game.dll || exit /b 1
-%compile% ..\src\os\excalibur_win32.cpp %compile_link% %compile_out%excalibur.exe || exit /b 1
+%compile% ..\src\os\excalibur_os_win32.cpp %compile_link% %compile_out%excalibur.exe || exit /b 1
 popd

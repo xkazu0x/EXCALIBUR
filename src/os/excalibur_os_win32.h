@@ -1,5 +1,5 @@
-#ifndef EXCALIBUR_WIN32_H
-#define EXCALIBUR_WIN32_H
+#ifndef EXCALIBUR_OS_WIN32_H
+#define EXCALIBUR_OS_WIN32_H
 
 #define NO_MIN_MAX
 #define WIN32_LEAN_AND_MEAN
@@ -12,6 +12,19 @@
 #pragma comment(lib, "user32")
 #pragma comment(lib, "gdi32")
 #pragma comment(lib, "winmm")
+
+struct Win32_Sound_Output {
+    s32 samples_per_second;
+    s32 bytes_per_sample;
+    s32 buffer_size;
+    LPDIRECTSOUNDBUFFER buffer;
+    
+    u32 running_sample_index;
+    s32 latency_sample_count;
+    s16 wave_tone_volume;
+    s32 wave_tone_hz;
+    s32 wave_period;
+};
 
 struct Win32_Game {
     HMODULE library;
@@ -45,4 +58,4 @@ typedef XINPUT_SET_STATE(XInput_Set_State);
 #define DIRECT_SOUND_CREATE(name) HRESULT WINAPI name(LPGUID lpGuid, LPDIRECTSOUND *ppDS, LPUNKNOWN  pUnkOuter);
 typedef DIRECT_SOUND_CREATE(Direct_Sound_Create);
 
-#endif // EXCALIBUR_WIN32_H
+#endif // EXCALIBUR_OS_WIN32_H
