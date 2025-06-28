@@ -21,9 +21,6 @@ struct Win32_Sound_Output {
     
     u32 running_sample_index;
     s32 latency_sample_count;
-    s16 wave_tone_volume;
-    s32 wave_tone_hz;
-    s32 wave_period;
 };
 
 struct Win32_Game {

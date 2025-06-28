@@ -574,8 +574,31 @@ make_pyramid_normal_map(Bitmap *bitmap, f32 roughness) {
     }
 }
 
+internal void
+game_output_sound(OS_Sound_Buffer *sound_buffer) {
+    local f32 t;
+    s16 wave_tone_volume = 2000;
+    s32 wave_tone_hz = 256;
+    s32 wave_period = sound_buffer->samples_per_second/wave_tone_hz;
+
+    s16 *sample_out = sound_buffer->samples;
+    for (s32 sample_index = 0;
+         sample_index < sound_buffer->sample_count;
+         ++sample_index) {
+        f32 sine_value = sin_f32(t);
+        s16 sample_value = (s16)(sine_value*wave_tone_volume);
+        
+        *sample_out++ = sample_value;
+        *sample_out++ = sample_value;
+        
+        t += tau32*1.0f/(f32)wave_period;
+    }
+}
+
 shared_function
 GAME_UPDATE_AND_RENDER(game_update_and_render) {
+    game_output_sound(sound_buffer);
+        
 #if EXCALIBUR_INTERNAL
     debug_global_memory = memory;
 #endif

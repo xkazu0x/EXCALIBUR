@@ -109,42 +109,62 @@ win32_init_dsound(HWND window, s32 samples_per_second, s32 buffer_size, LPDIRECT
 }
 
 internal void
-win32_fill_sound_buffer(Win32_Sound_Output *sound_output, DWORD byte_to_lock, DWORD bytes_to_write) {
+win32_clear_sound_buffer(Win32_Sound_Output *sound_output) {
+    VOID *region1;
+    DWORD region1_size;
+    VOID *region2;
+    DWORD region2_size;
+                        
+    if (SUCCEEDED(sound_output->buffer->Lock(0, sound_output->buffer_size, &region1, &region1_size, &region2, &region2_size, 0))) {
+        u8 *dest_sample = (u8 *)region1;
+        
+        for (DWORD byte_index = 0;
+             byte_index < region1_size;
+             ++byte_index) {
+            *dest_sample++ = 0;
+        }
+        
+        dest_sample = (u8 *)region2;
+        
+        for (DWORD byte_index = 0;
+             byte_index < region2_size;
+             ++byte_index) {
+            *dest_sample++ = 0;
+        }
+
+        sound_output->buffer->Unlock(region1, region1_size, region2, region2_size);
+    }    
+}
+
+internal void
+win32_fill_sound_buffer(Win32_Sound_Output *sound_output, DWORD byte_to_lock, DWORD bytes_to_write, OS_Sound_Buffer *sound_buffer) {
     VOID *region1;
     DWORD region1_size;
     VOID *region2;
     DWORD region2_size;
                         
     if (SUCCEEDED(sound_output->buffer->Lock(byte_to_lock, bytes_to_write, &region1, &region1_size, &region2, &region2_size, 0))) {
+        s16 *src_sample = sound_buffer->samples;
+        
         DWORD sample_count = region1_size/sound_output->bytes_per_sample;
-        s16 *sample_out = (s16 *)region1;
-                            
-        for (DWORD sample_index = 0;
-             sample_index < sample_count;
-             ++sample_index) {
-            f32 t = tau32*(f32)sound_output->running_sample_index/(f32)sound_output->wave_period;
-            f32 sine_value = sin_f32(t);
-            s16 sample_value = (s16)(sine_value*sound_output->wave_tone_volume);
-                                
-            *sample_out++ = sample_value;
-            *sample_out++ = sample_value;
-                                
-            ++sound_output->running_sample_index;
-        }
-
-        sample_count = region2_size/sound_output->bytes_per_sample;
-        sample_out = (s16 *)region2;
+        s16 *dest_sample = (s16 *)region1;
         
         for (DWORD sample_index = 0;
              sample_index < sample_count;
              ++sample_index) {
-            f32 t = tau32*(f32)sound_output->running_sample_index/(f32)sound_output->wave_period;
-            f32 sine_value = sin_f32(t);
-            s16 sample_value = (s16)(sine_value*sound_output->wave_tone_volume);
-                                
-            *sample_out++ = sample_value;
-            *sample_out++ = sample_value;
-                                
+            *dest_sample++ = *src_sample++;
+            *dest_sample++ = *src_sample++;
+            ++sound_output->running_sample_index;
+        }
+
+        sample_count = region2_size/sound_output->bytes_per_sample;
+        dest_sample = (s16 *)region2;
+        
+        for (DWORD sample_index = 0;
+             sample_index < sample_count;
+             ++sample_index) {
+            *dest_sample++ = *src_sample++;
+            *dest_sample++ = *src_sample++;
             ++sound_output->running_sample_index;
         }
 
@@ -769,12 +789,11 @@ int main(void)
             
             sound_output.running_sample_index = 0;
             sound_output.latency_sample_count = sound_output.samples_per_second/10;
-            sound_output.wave_tone_volume = 2000;
-            sound_output.wave_tone_hz = 256;
-            sound_output.wave_period = sound_output.samples_per_second/sound_output.wave_tone_hz;
-
-            win32_fill_sound_buffer(&sound_output, 0, sound_output.latency_sample_count*sound_output.bytes_per_sample);
+            
+            win32_clear_sound_buffer(&sound_output);
             sound_output.buffer->Play(0, 0, DSBPLAY_LOOPING);
+            
+            s16 *sound_samples = (s16 *)VirtualAlloc(0, sound_output.buffer_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
             ////////////////////////////////
             // NOTE(xkazu0x): Init memory
@@ -810,9 +829,9 @@ int main(void)
                 
                 OS_Clock clock = {};
     
-                //f32 game_update_hz = 30.0f;
+                f32 game_update_hz = 30.0f;
                 //f32 game_update_hz = 60.0f;
-                f32 game_update_hz = (f32)monitor_frame_rate;
+                //f32 game_update_hz = (f32)monitor_frame_rate;
                 f32 target_seconds_per_frame = 1.0f / game_update_hz;
 
                 LARGE_INTEGER large_integer;
@@ -994,6 +1013,32 @@ int main(void)
                     ////////////////////////////
                     // NOTE(xkazu0x): Update and render
 
+                    DWORD byte_to_lock = 0;
+                    DWORD target_cursor = 0;
+                    DWORD bytes_to_write = 0;
+                    DWORD play_cursor = 0;
+                    DWORD write_cursor = 0;
+                    
+                    b32 sound_is_valid = false;
+                    if (SUCCEEDED(sound_output.buffer->GetCurrentPosition(&play_cursor, &write_cursor))) {
+                        byte_to_lock = ((sound_output.running_sample_index*sound_output.bytes_per_sample) % sound_output.buffer_size);
+                        target_cursor = ((play_cursor + (sound_output.latency_sample_count*sound_output.bytes_per_sample)) % sound_output.buffer_size);
+                        
+                        if (byte_to_lock > target_cursor) {
+                            bytes_to_write = sound_output.buffer_size - byte_to_lock;
+                            bytes_to_write += target_cursor;
+                        } else {
+                            bytes_to_write = target_cursor - byte_to_lock;
+                        }
+                        
+                        sound_is_valid = true;
+                    }
+
+                    OS_Sound_Buffer sound_buffer = {};
+                    sound_buffer.samples_per_second = sound_output.samples_per_second;
+                    sound_buffer.sample_count = bytes_to_write/sound_output.bytes_per_sample;
+                    sound_buffer.samples = sound_samples;
+
                     if (input.keyboard[Key_Escape].pressed) quit = true;
                     if (input.keyboard[Key_F1].pressed) pause = !pause;
                     if (input.keyboard[Key_F11].pressed) win32_window_toggle_fullscreen(window_handle, &win32_state.window_placement);
@@ -1001,9 +1046,16 @@ int main(void)
                     if (!pause) {
                         clock.dt = target_seconds_per_frame;
                         if (game.update_and_render) {
-                            game.update_and_render(&framebuffer, &input, &memory, &clock);
+                            game.update_and_render(&framebuffer, &input, &memory, &clock, &sound_buffer);
                             handle_debug_cycle_counters(&memory);
                         }
+                    }
+
+                    ////////////////////////////
+                    // NOTE(xkazu0x): Output sound
+
+                    if (sound_is_valid) {
+                        win32_fill_sound_buffer(&sound_output, byte_to_lock, bytes_to_write, &sound_buffer);
                     }
 
                     ////////////////////////////
@@ -1054,31 +1106,6 @@ int main(void)
 
                     last_counter = end_counter;
                     last_cycle_count = end_cycle_count;
-
-                    ////////////////////////////
-                    // NOTE(xkazu0x): Output sound
-                    
-                    DWORD play_cursor;
-                    DWORD write_cursor;
-                    
-                    if (SUCCEEDED(sound_output.buffer->GetCurrentPosition(&play_cursor, &write_cursor))) {
-                        DWORD byte_to_lock = ((sound_output.running_sample_index*sound_output.bytes_per_sample) % sound_output.buffer_size);
-                        DWORD target_cursor = ((play_cursor + (sound_output.latency_sample_count*sound_output.bytes_per_sample)) % sound_output.buffer_size);
-                        
-                        DWORD bytes_to_write;
-                        // TODO(xkazu0x): Change this to using a lower latency offset from the play_cursor when we actually start having sound effects.
-                        if (byte_to_lock == target_cursor) {
-                            bytes_to_write = 0;
-                        } else if (byte_to_lock > target_cursor) {
-                            //bytes_to_write = direct_sound_buffer_size - byte_to_lock;
-                            //bytes_to_write += play_cursor;
-                            bytes_to_write = sound_output.buffer_size - (byte_to_lock - target_cursor);
-                        } else {
-                            bytes_to_write = target_cursor - byte_to_lock;
-                        }
-
-                        win32_fill_sound_buffer(&sound_output, byte_to_lock, bytes_to_write);
-                    }
 
                     ////////////////////////////
                     // NOTE(xkazu0x): Display framebuffer
