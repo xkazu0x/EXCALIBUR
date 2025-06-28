@@ -52,7 +52,7 @@ win32_init_xinput(void) {
 }
 
 internal void
-win32_init_dsound(HWND window, s32 samples_per_second, s32 buffer_size) {
+win32_init_dsound(HWND window, s32 samples_per_second, s32 buffer_size, LPDIRECTSOUNDBUFFER *buffer) {
     HMODULE dsound_library = LoadLibraryA("dsound.dll");
     if (dsound_library) {
         log_debug("successfully loaded 'dsound.dll'");
@@ -95,8 +95,7 @@ win32_init_dsound(HWND window, s32 samples_per_second, s32 buffer_size) {
             buffer_description.dwBufferBytes = buffer_size;
             buffer_description.lpwfxFormat = &wave_format;
 
-            LPDIRECTSOUNDBUFFER secondary_buffer;
-            if (SUCCEEDED(direct_sound->CreateSoundBuffer(&buffer_description, &secondary_buffer, 0))) {
+            if (SUCCEEDED(direct_sound->CreateSoundBuffer(&buffer_description, buffer, 0))) {
                 log_debug("direct sound: secondary buffer created");
             } else {
                 log_error("direct sound: FAILED to create secondary buffer");
@@ -688,7 +687,7 @@ int main(void)
         if (window_handle) {
             ShowWindow(window_handle, SW_SHOW);            
                         
-            // NOTE(xkazu0x): init input
+            // NOTE(xkazu0x): register mouse as raw input device
             OS_Input input = {};
     
             RAWINPUTDEVICE raw_input_device = {};
@@ -700,8 +699,23 @@ int main(void)
             }
             log_debug("mouse registered as raw input device");
 
+            // NOTE(xkazu0x): init xinput
             win32_init_xinput();
-            win32_init_dsound(window_handle, 48000, 48000*sizeof(s16)*2);
+
+            // NOTE(xkazu0x): init dsound
+            s32 samples_per_second = 48000;
+            s32 bytes_per_sample = sizeof(s16)*2;
+            s32 direct_sound_buffer_size = samples_per_second*bytes_per_sample;
+            
+            LPDIRECTSOUNDBUFFER direct_sound_buffer;
+            win32_init_dsound(window_handle, samples_per_second, direct_sound_buffer_size, &direct_sound_buffer);
+            direct_sound_buffer->Play(0, 0, DSBPLAY_LOOPING);
+            
+            u32 running_sample_index = 0;
+            s16 square_wave_tone_volume = 2000;
+            s32 square_wave_tone_hz = 256;
+            s32 square_wave_period = samples_per_second/square_wave_tone_hz;
+            s32 square_wave_half_period = square_wave_period/2;
             
             // NOTE(xkazu0x): init memory
             OS_Memory memory = {};
@@ -967,13 +981,60 @@ int main(void)
                     last_counter = end_counter;
                     last_cycle_count = end_cycle_count;
 
+                    // NOTE(xkazu0x): output sound
+                    DWORD play_cursor;
+                    DWORD write_cursor;
+                    if (SUCCEEDED(direct_sound_buffer->GetCurrentPosition(&play_cursor, &write_cursor))) {
+                        DWORD byte_to_lock = running_sample_index*bytes_per_sample % direct_sound_buffer_size;
+                        DWORD bytes_to_write;
+                        if (byte_to_lock > play_cursor) {
+                            //bytes_to_write = direct_sound_buffer_size - byte_to_lock;
+                            //bytes_to_write += play_cursor;
+                            bytes_to_write = direct_sound_buffer_size - (byte_to_lock - play_cursor);
+                        } else {
+                            bytes_to_write = play_cursor - byte_to_lock;
+                        }
+                        
+                        VOID *region1;
+                        DWORD region1_size;
+                        VOID *region2;
+                        DWORD region2_size;
+                        
+                        if (SUCCEEDED(direct_sound_buffer->Lock(byte_to_lock, bytes_to_write, &region1, &region1_size, &region2, &region2_size, 0))) {
+                            DWORD sample_count = region1_size/bytes_per_sample;
+                            s16 *sample_out = (s16 *)region1;
+                            
+                            for (DWORD sample_index = 0;
+                                 sample_index < sample_count;
+                                 ++sample_index) {
+                                s16 sample_value = ((running_sample_index++/square_wave_half_period) % 2) ? square_wave_tone_volume : -square_wave_tone_volume;
+                                *sample_out++ = sample_value;
+                                *sample_out++ = sample_value;
+                            }
+
+                            sample_count = region2_size/bytes_per_sample;
+                            sample_out = (s16 *)region2;
+                            
+                            for (DWORD sample_index = 0;
+                                 sample_index < sample_count;
+                                 ++sample_index) {
+                                s16 sample_value = ((running_sample_index++/square_wave_half_period) % 2) ? square_wave_tone_volume : -square_wave_tone_volume;
+                                *sample_out++ = sample_value;
+                                *sample_out++ = sample_value;
+                            }
+
+                            direct_sound_buffer->Unlock(region1, region1_size, region2, region2_size);
+                        }
+                    }
+                    
                     // NOTE(xkazu0x): display framebuffer
                     RECT client_rectangle;
                     GetClientRect(window_handle, &client_rectangle);
                     window_width = client_rectangle.right - client_rectangle.left;
                     window_height = client_rectangle.bottom - client_rectangle.top;
-
+                    
                     win32_display_framebuffer(framebuffer, window_handle, window_width, window_height);
+                    
 #if 1
                     // NOTE(xkazu0x): log time
                     // TODO(xkazu0x): this is debug code only
