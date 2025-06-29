@@ -228,6 +228,13 @@ struct OS_Framebuffer {
     void *memory;
 };
 
+typedef struct OS_Sound_Buffer OS_Sound_Buffer;
+struct OS_Sound_Buffer {
+    s32 samples_per_second;
+    s32 sample_count;
+    s16 *samples;
+};
+
 typedef struct OS_Work_Queue OS_Work_Queue;
 
 #define OS_WORK_QUEUE_CALLBACK(x) void x(OS_Work_Queue *queue, void *data)
@@ -265,14 +272,7 @@ struct OS_Clock {
     f32 dt;
 };
 
-typedef struct OS_Sound_Buffer OS_Sound_Buffer;
-struct OS_Sound_Buffer {
-    s32 samples_per_second;
-    s32 sample_count;
-    s16 *samples;
-};
-
-#define GAME_UPDATE_AND_RENDER(x) void x(OS_Framebuffer *framebuffer, OS_Input *input, OS_Memory *memory, OS_Clock *clock, OS_Sound_Buffer *sound_buffer)
+#define GAME_UPDATE_AND_RENDER(x) void x(OS_Framebuffer *framebuffer, OS_Sound_Buffer *sound_buffer, OS_Input *input, OS_Memory *memory, OS_Clock *clock)
 typedef GAME_UPDATE_AND_RENDER(Game_Update_And_Render);
 
 #endif // EXCALIBUR_OS_H

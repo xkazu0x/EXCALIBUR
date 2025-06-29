@@ -89,7 +89,7 @@ struct Memory_Task {
 };
 
 struct Transient_State {
-    b32 initialized;
+    b32 is_initialized;
     Arena arena;
     
     OS_Work_Queue *high_priority_queue;

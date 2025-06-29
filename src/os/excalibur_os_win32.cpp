@@ -6,6 +6,8 @@
 #include "base/excalibur_base.cpp"
 #include "os/excalibur_os_helper.cpp"
 
+global b32 quit;
+
 global Win32_State win32_state;
 
 global XInput_Get_State *xinput_get_state;
@@ -321,24 +323,22 @@ win32_get_last_write_time(char *filename) {
     return(result);
 }
 
-internal Win32_Game
-win32_load_game(char *source_dll_name, char *temp_dll_name) {
+internal void
+win32_load_game_code(Win32_Game_Code *game, char *source_dll_name, char *temp_dll_name) {
     CopyFile(source_dll_name, temp_dll_name, FALSE);
     
-    Win32_Game result = {};    
-    result.last_write_time = win32_get_last_write_time(source_dll_name);
-    result.library = LoadLibraryA(temp_dll_name);
-    if (result.library) {
-        WIN32_GET_PROC_ADDR(result.update_and_render, result.library, "game_update_and_render");
+    game->last_write_time = win32_get_last_write_time(source_dll_name);
+    game->library = LoadLibraryA(temp_dll_name);
+    
+    if (game->library) {
+        WIN32_GET_PROC_ADDR(game->update_and_render, game->library, "game_update_and_render");
     } else {
         log_error("failed to load game code");
     }
-    
-    return(result);
 }
 
 internal void
-win32_unload_game(Win32_Game *game) {
+win32_unload_game_code(Win32_Game_Code *game) {
     if (game->library) {
         FreeLibrary(game->library);
         game->library = 0;
@@ -370,7 +370,7 @@ win32_build_exe_path_filename(Arena *arena, Win32_State *state, char *filename) 
 }
 
 internal LARGE_INTEGER
-win32_get_time(void) {
+win32_get_wall_clock(void) {
     LARGE_INTEGER result;
     QueryPerformanceCounter(&result);
     return(result);
@@ -379,6 +379,18 @@ win32_get_time(void) {
 internal f32
 win32_get_delta_seconds(LARGE_INTEGER start, LARGE_INTEGER end) {
     f32 result = ((f32)(end.QuadPart - start.QuadPart)) / ((f32)(win32_state.time_frequency));
+    return(result);
+}
+
+internal Win32_Window_Size
+win32_get_window_size(HWND window) {
+    Win32_Window_Size result;
+    
+    RECT client_rectangle;
+    GetClientRect(window, &client_rectangle);
+    result.x = client_rectangle.right - client_rectangle.left;
+    result.y = client_rectangle.bottom - client_rectangle.top;
+
     return(result);
 }
 
@@ -648,6 +660,161 @@ win32_convert_key_code(u32 key_code) {
     return(key_code);
 }
 
+internal void
+win32_update_window_events(OS_Input *input) {
+    MSG message;
+    while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
+        switch (message.message) {
+            case WM_QUIT: {
+                quit = true;
+            } break;
+            case WM_SYSKEYDOWN:
+            case WM_SYSKEYUP:
+            case WM_KEYDOWN:
+            case WM_KEYUP: {
+                u32 key_code = (u32)message.wParam;
+                b32 is_down = ((message.lParam & (1 << 31)) == 0);
+                key_code = win32_convert_key_code(key_code);
+                os_process_digital_button(&input->keyboard[key_code], is_down);
+                TranslateMessage(&message);
+                DispatchMessageA(&message);
+            } break;
+            case WM_INPUT: {
+                UINT size;
+                GetRawInputData((HRAWINPUT)message.lParam, RID_INPUT, 0, &size, sizeof(RAWINPUTHEADER));
+                char *buffer = (char *)_malloca(size);
+                if (GetRawInputData((HRAWINPUT)message.lParam, RID_INPUT, buffer, &size, sizeof(RAWINPUTHEADER)) == size) {
+                    RAWINPUT *raw_input = (RAWINPUT *)buffer;
+                    if (raw_input->header.dwType == RIM_TYPEMOUSE && raw_input->data.mouse.usFlags == MOUSE_MOVE_RELATIVE){
+                        input->mouse.dx += raw_input->data.mouse.lLastX;
+                        input->mouse.dy += raw_input->data.mouse.lLastY;
+
+                        USHORT button_flags = raw_input->data.mouse.usButtonFlags;
+                        b32 left_button_is_down = input->mouse.left.down;
+                        if (button_flags & RI_MOUSE_LEFT_BUTTON_DOWN) left_button_is_down = true;
+                        if (button_flags & RI_MOUSE_LEFT_BUTTON_UP) left_button_is_down = false;
+                        os_process_digital_button(&input->mouse.left, left_button_is_down);
+
+                        b32 right_button_is_down = input->mouse.right.down;
+                        if (button_flags & RI_MOUSE_RIGHT_BUTTON_DOWN) right_button_is_down = true;
+                        if (button_flags & RI_MOUSE_RIGHT_BUTTON_UP) right_button_is_down = false;
+                        os_process_digital_button(&input->mouse.right, right_button_is_down);
+                            
+                        b32 middle_button_is_down = input->mouse.middle.down;
+                        if (button_flags & RI_MOUSE_MIDDLE_BUTTON_DOWN) middle_button_is_down = true;
+                        if (button_flags & RI_MOUSE_MIDDLE_BUTTON_UP) middle_button_is_down = false;
+                        os_process_digital_button(&input->mouse.middle, middle_button_is_down);
+
+                        b32 x1_button_is_down = input->mouse.x1.down;
+                        if (button_flags & RI_MOUSE_BUTTON_4_DOWN) x1_button_is_down = true;
+                        if (button_flags & RI_MOUSE_BUTTON_4_UP) x1_button_is_down = false;
+                        os_process_digital_button(&input->mouse.x1, x1_button_is_down);
+                            
+                        b32 x2_button_is_down = input->mouse.x2.down;
+                        if (button_flags & RI_MOUSE_BUTTON_5_DOWN) x2_button_is_down = true;
+                        if (button_flags & RI_MOUSE_BUTTON_5_UP) x2_button_is_down = false;
+                        os_process_digital_button(&input->mouse.x2, x2_button_is_down);
+                            
+                        if (raw_input->data.mouse.usButtonFlags & RI_MOUSE_WHEEL) {
+                            input->mouse.delta_wheel += ((SHORT)raw_input->data.mouse.usButtonData) / WHEEL_DELTA;
+                        }
+                    }
+                }
+                TranslateMessage(&message);
+                DispatchMessageA(&message);
+            } break;
+            default: {
+                TranslateMessage(&message);
+                DispatchMessageA(&message);
+            }
+        }
+    }
+}
+
+internal void
+win32_reset_input(OS_Input *input) {
+    for (u32 i = 0; i < Key_Count; ++i) {
+        input->keyboard[i].pressed = false;
+        input->keyboard[i].released = false;
+    }
+
+    input->mouse.left.pressed = false;
+    input->mouse.left.released = false;
+    input->mouse.right.pressed = false;
+    input->mouse.right.released = false;
+    input->mouse.middle.pressed = false;
+    input->mouse.middle.released = false;
+    input->mouse.x1.pressed = false;
+    input->mouse.x1.released = false;
+    input->mouse.x2.pressed = false;
+    input->mouse.x2.released = false;
+    input->mouse.delta_wheel = 0;
+    input->mouse.dx = 0;
+    input->mouse.dy = 0;
+}
+
+internal void
+win32_update_input(OS_Input *input, HWND window) {
+    ////////////////////////////
+    // NOTE(xkazu0x): upate mouse
+    
+    POINT mouse_position;
+    GetCursorPos(&mouse_position);
+    ScreenToClient(window, &mouse_position);
+
+    if (mouse_position.x < 0) mouse_position.x = 0;
+    if (mouse_position.y < 0) mouse_position.y = 0;
+    
+    Win32_Window_Size window_size = win32_get_window_size(window);
+    
+    if (mouse_position.x > window_size.x) mouse_position.x = window_size.x;
+    if (mouse_position.y > window_size.y) mouse_position.y = window_size.y;
+        
+    input->mouse.x = mouse_position.x;
+    input->mouse.y = mouse_position.y;
+    
+    input->mouse.wheel += input->mouse.delta_wheel;
+    
+    ////////////////////////////
+    // NOTE(xkazu0x): update gamepad
+                    
+    u32 max_gamepad_count = XUSER_MAX_COUNT;
+    if (max_gamepad_count > array_count(input->gamepads)) {
+        max_gamepad_count = array_count(input->gamepads);
+    }
+        
+    for (u32 gamepad_index = 0;
+         gamepad_index < max_gamepad_count;
+         gamepad_index++) {
+        XINPUT_STATE xinput_state = {};
+        DWORD xinput_result = xinput_get_state(gamepad_index, &xinput_state);
+        if (xinput_result == ERROR_SUCCESS) {
+            os_process_digital_button(&input->gamepads[gamepad_index].up, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_UP) != 0);
+            os_process_digital_button(&input->gamepads[gamepad_index].down, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN) != 0);
+            os_process_digital_button(&input->gamepads[gamepad_index].left, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT) != 0);
+            os_process_digital_button(&input->gamepads[gamepad_index].right, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) != 0);
+            os_process_digital_button(&input->gamepads[gamepad_index].start, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_START) != 0);
+            os_process_digital_button(&input->gamepads[gamepad_index].back, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_BACK) != 0);
+            os_process_digital_button(&input->gamepads[gamepad_index].left_thumb,(xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_THUMB) != 0);
+            os_process_digital_button(&input->gamepads[gamepad_index].right_thumb, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) != 0);
+            os_process_digital_button(&input->gamepads[gamepad_index].left_shoulder, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0);
+            os_process_digital_button(&input->gamepads[gamepad_index].right_shoulder, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0);
+            os_process_digital_button(&input->gamepads[gamepad_index].a, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_A) != 0);
+            os_process_digital_button(&input->gamepads[gamepad_index].b, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_B) != 0);
+            os_process_digital_button(&input->gamepads[gamepad_index].x, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_X) != 0);
+            os_process_digital_button(&input->gamepads[gamepad_index].y, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_Y) != 0);
+            os_process_analog_button(&input->gamepads[gamepad_index].left_trigger, XINPUT_GAMEPAD_TRIGGER_THRESHOLD/255.0f, xinput_state.Gamepad.bLeftTrigger/255.0f);
+            os_process_analog_button(&input->gamepads[gamepad_index].right_trigger, XINPUT_GAMEPAD_TRIGGER_THRESHOLD/255.0f, xinput_state.Gamepad.bRightTrigger/255.0f);
+#define CONVERT(x) (2.0f * (((x + 32768) / 65535.0f) - 0.5f))
+            os_process_stick(&input->gamepads[gamepad_index].left_stick, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE/32767.0f, CONVERT(xinput_state.Gamepad.sThumbLX), CONVERT(xinput_state.Gamepad.sThumbLY));
+            os_process_stick(&input->gamepads[gamepad_index].right_stick, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE/32767.0f, CONVERT(xinput_state.Gamepad.sThumbRX), CONVERT(xinput_state.Gamepad.sThumbRY));
+#undef CONVERT
+        } else {
+            break;
+        }
+    }
+}
+
 #if 0
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 #else
@@ -655,7 +822,7 @@ int main(void)
 #endif
 {
     ////////////////////////////////
-    // NOTE(xkazu0x): Context cracking
+    // NOTE(xkazu0x): context cracking
     
     String8 operating_system_string = string_from_operating_system(operating_system_from_context());
     String8 architecture_string = string_from_architecture(architecture_from_context());
@@ -666,7 +833,7 @@ int main(void)
     log_info("compiler: %s", compiler_string.str);
 
     ////////////////////////////////
-    // NOTE(xkazu0x): Init threads
+    // NOTE(xkazu0x): init threads
     
     OS_Work_Queue high_priority_queue;
     win32_init_work_queue(&high_priority_queue, 4);
@@ -675,7 +842,8 @@ int main(void)
     win32_init_work_queue(&low_priority_queue, 2);
 
     ////////////////////////////////
-    // NOTE(xkazu0x): Load game code
+    // NOTE(xkazu0x): load game code
+    
     u64 string_arena_size = MB(1);
     void *string_arena_memory = VirtualAlloc(0, string_arena_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     Arena string_arena = make_arena(string_arena_size, string_arena_memory);
@@ -689,10 +857,11 @@ int main(void)
     log_debug("src dll fullpath: %s", source_game_code_dll_fullpath);
     log_debug("tmp dll fullpath: %s", temp_game_code_dll_fullpath);
     
-    Win32_Game game = win32_load_game(source_game_code_dll_fullpath, temp_game_code_dll_fullpath);
+    Win32_Game_Code game = {};
+    win32_load_game_code(&game, source_game_code_dll_fullpath, temp_game_code_dll_fullpath);
 
     ////////////////////////////////
-    // NOTE(xkazu0x): Monitor info
+    // NOTE(xkazu0x): monitor info
     
     DEVMODE monitor_info;
     monitor_info.dmSize = sizeof(DEVMODE);
@@ -705,7 +874,7 @@ int main(void)
     log_info("monitor refresh rate: %dHz", monitor_frame_rate);
 
     ////////////////////////////////
-    // NOTE(xkazu0x): Init framebuffer
+    // NOTE(xkazu0x): init framebuffer
     
     OS_Framebuffer framebuffer = {};
     //win32_resize_framebuffer(&framebuffer, 320, 180);
@@ -715,7 +884,7 @@ int main(void)
     log_info("framebuffer size: %dx%d", framebuffer.width, framebuffer.height);
 
     ////////////////////////////////
-    // NOTE(xkazu0x): Init window
+    // NOTE(xkazu0x): init window
     
     s32 window_width = 1280;
     s32 window_height = 720;
@@ -763,7 +932,7 @@ int main(void)
             ShowWindow(window_handle, SW_SHOW);            
 
             ////////////////////////////
-            // NOTE(xkazu0x): Init input
+            // NOTE(xkazu0x): init input
             OS_Input input = {};
     
             RAWINPUTDEVICE raw_input_device = {};
@@ -778,7 +947,7 @@ int main(void)
             win32_init_xinput();
 
             ////////////////////////////
-            // NOTE(xkazu0x): Init sound
+            // NOTE(xkazu0x): init sound
             
             Win32_Sound_Output sound_output = {};
             sound_output.samples_per_second = 48000;
@@ -796,36 +965,38 @@ int main(void)
             s16 *sound_samples = (s16 *)VirtualAlloc(0, sound_output.buffer_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
             ////////////////////////////////
-            // NOTE(xkazu0x): Init memory
+            // NOTE(xkazu0x): init memory
             
             OS_Memory memory = {};
+            
+            memory.high_priority_queue = &high_priority_queue;
+            memory.low_priority_queue = &low_priority_queue;
+            
+            memory.os_work_queue_add_entry = win32_work_queue_add_entry;
+            memory.os_work_queue_complete = win32_work_queue_complete;
+            
+            memory.debug_os_free_file = debug_os_free_file;
+            memory.debug_os_read_file = debug_os_read_file;
+            memory.debug_os_write_file = debug_os_write_file;
             
 #if EXCALIBUR_INTERNAL
             LPVOID base_address = (LPVOID)TB(2);
 #else
             LPVOID base_address = 0;
 #endif
+            
             memory.permanent_storage_size = MB(64);
             memory.transient_storage_size = GB(1);
-    
-            memory.high_priority_queue = &high_priority_queue;
-            memory.low_priority_queue = &low_priority_queue;
             
-            memory.os_work_queue_add_entry = win32_work_queue_add_entry;
-            memory.os_work_queue_complete = win32_work_queue_complete;
-
-            memory.debug_os_free_file = debug_os_free_file;
-            memory.debug_os_read_file = debug_os_read_file;
-            memory.debug_os_write_file = debug_os_write_file;
-    
             win32_state.game_memory_size = memory.permanent_storage_size + memory.transient_storage_size;
             win32_state.game_memory_block = VirtualAlloc(base_address, win32_state.game_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-    
+            
             memory.permanent_storage = win32_state.game_memory_block;
             memory.transient_storage = ((u8 *)memory.permanent_storage + memory.permanent_storage_size);
-            if (memory.permanent_storage) {
+            
+            if (sound_samples && memory.permanent_storage && memory.transient_storage) {
                 ////////////////////////////
-                // NOTE(xkazu0x): Init clock
+                // NOTE(xkazu0x): init clock
                 
                 OS_Clock clock = {};
     
@@ -842,176 +1013,29 @@ int main(void)
                 UINT desired_scheduler_ms = 1;
                 b32 sleep_is_granular = (timeBeginPeriod(desired_scheduler_ms) == TIMERR_NOERROR);
     
-                LARGE_INTEGER last_counter = win32_get_time();
+                LARGE_INTEGER last_counter = win32_get_wall_clock();
                 u64 last_cycle_count = __rdtsc();
 
-                b32 quit = false;
                 b32 pause = false;
                 while (!quit) {
                     ////////////////////////////
-                    // NOTE(xkazu0x): Reload game
+                    // NOTE(xkazu0x): reload game
                     
-                    input.executable_reloaded = false;
                     FILETIME game_new_write_time = win32_get_last_write_time(source_game_code_dll_fullpath);
                     if (CompareFileTime(&game_new_write_time, &game.last_write_time) != 0) {
-                        win32_unload_game(&game);
-                        game = win32_load_game(source_game_code_dll_fullpath, temp_game_code_dll_fullpath);
-                        input.executable_reloaded = true;
+                        win32_unload_game_code(&game);
+                        win32_load_game_code(&game, source_game_code_dll_fullpath, temp_game_code_dll_fullpath);
                     }
 
                     ////////////////////////////
-                    // NOTE(xkazu0x): Input reset
+                    // NOTE(xkazu0x): update window events and input
                     
-                    for (u32 i = 0; i < Key_Count; ++i) {
-                        input.keyboard[i].pressed = false;
-                        input.keyboard[i].released = false;
-                    }
-
-                    input.mouse.left.pressed = false;
-                    input.mouse.left.released = false;
-                    input.mouse.right.pressed = false;
-                    input.mouse.right.released = false;
-                    input.mouse.middle.pressed = false;
-                    input.mouse.middle.released = false;
-                    input.mouse.x1.pressed = false;
-                    input.mouse.x1.released = false;
-                    input.mouse.x2.pressed = false;
-                    input.mouse.x2.released = false;
-                    input.mouse.delta_wheel = 0;
-                    input.mouse.dx = 0;
-                    input.mouse.dy = 0;
+                    win32_reset_input(&input);
+                    win32_update_window_events(&input);
+                    win32_update_input(&input, window_handle);
 
                     ////////////////////////////
-                    // NOTE(xkazu0x): Window message loop
-                    
-                    MSG message;
-                    while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
-                        switch (message.message) {
-                            case WM_QUIT: {
-                                quit = true;
-                            } break;
-                            case WM_SYSKEYDOWN:
-                            case WM_SYSKEYUP:
-                            case WM_KEYDOWN:
-                            case WM_KEYUP: {
-                                u32 key_code = (u32)message.wParam;
-                                b32 is_down = ((message.lParam & (1 << 31)) == 0);
-                                key_code = win32_convert_key_code(key_code);
-                                os_process_digital_button(&input.keyboard[key_code], is_down);
-                                TranslateMessage(&message);
-                                DispatchMessageA(&message);
-                            } break;
-                            case WM_INPUT: {
-                                UINT size;
-                                GetRawInputData((HRAWINPUT)message.lParam, RID_INPUT, 0, &size, sizeof(RAWINPUTHEADER));
-                                char *buffer = (char *)_malloca(size);
-                                if (GetRawInputData((HRAWINPUT)message.lParam, RID_INPUT, buffer, &size, sizeof(RAWINPUTHEADER)) == size) {
-                                    RAWINPUT *raw_input = (RAWINPUT *)buffer;
-                                    if (raw_input->header.dwType == RIM_TYPEMOUSE && raw_input->data.mouse.usFlags == MOUSE_MOVE_RELATIVE){
-                                        input.mouse.dx += raw_input->data.mouse.lLastX;
-                                        input.mouse.dy += raw_input->data.mouse.lLastY;
-
-                                        USHORT button_flags = raw_input->data.mouse.usButtonFlags;
-                                        b32 left_button_down = input.mouse.left.down;
-                                        if (button_flags & RI_MOUSE_LEFT_BUTTON_DOWN) left_button_down = true;
-                                        if (button_flags & RI_MOUSE_LEFT_BUTTON_UP) left_button_down = false;
-                                        os_process_digital_button(&input.mouse.left, left_button_down);
-
-                                        b32 right_button_down = input.mouse.right.down;
-                                        if (button_flags & RI_MOUSE_RIGHT_BUTTON_DOWN) right_button_down = true;
-                                        if (button_flags & RI_MOUSE_RIGHT_BUTTON_UP) right_button_down = false;
-                                        os_process_digital_button(&input.mouse.right, right_button_down);
-                            
-                                        b32 middle_button_down = input.mouse.middle.down;
-                                        if (button_flags & RI_MOUSE_MIDDLE_BUTTON_DOWN) middle_button_down = true;
-                                        if (button_flags & RI_MOUSE_MIDDLE_BUTTON_UP) middle_button_down = false;
-                                        os_process_digital_button(&input.mouse.middle, middle_button_down);
-
-                                        b32 x1_button_down = input.mouse.x1.down;
-                                        if (button_flags & RI_MOUSE_BUTTON_4_DOWN) x1_button_down = true;
-                                        if (button_flags & RI_MOUSE_BUTTON_4_UP) x1_button_down = false;
-                                        os_process_digital_button(&input.mouse.x1, x1_button_down);
-                            
-                                        b32 x2_button_down = input.mouse.x2.down;
-                                        if (button_flags & RI_MOUSE_BUTTON_5_DOWN) x2_button_down = true;
-                                        if (button_flags & RI_MOUSE_BUTTON_5_UP) x2_button_down = false;
-                                        os_process_digital_button(&input.mouse.x2, x2_button_down);
-                            
-                                        if (raw_input->data.mouse.usButtonFlags & RI_MOUSE_WHEEL) {
-                                            input.mouse.delta_wheel += ((SHORT)raw_input->data.mouse.usButtonData) / WHEEL_DELTA;
-                                        }
-                                    }
-                                }
-                                TranslateMessage(&message);
-                                DispatchMessageA(&message);
-                            } break;
-                            default: {
-                                TranslateMessage(&message);
-                                DispatchMessageA(&message);
-                            }
-                        }
-                    }
-
-                    ////////////////////////////
-                    // NOTE(xkazu0x): Mouse update
-                    
-                    input.mouse.wheel += input.mouse.delta_wheel;
-
-                    POINT mouse_position;
-                    GetCursorPos(&mouse_position);
-                    ScreenToClient(window_handle, &mouse_position);
-
-                    if (mouse_position.x < 0) mouse_position.x = 0;
-                    if (mouse_position.y < 0) mouse_position.y = 0;
-        
-                    // TODO(xkazu0x): Query new window size before this happens
-                    if (mouse_position.x > window_width) mouse_position.x = window_width;
-                    if (mouse_position.y > window_height) mouse_position.y = window_height;
-        
-                    input.mouse.x = mouse_position.x;
-                    input.mouse.y = mouse_position.y;
-
-                    ////////////////////////////
-                    // NOTE(xkazu0x): Gamepad update
-                    
-                    u32 max_gamepad_count = XUSER_MAX_COUNT;
-                    if (max_gamepad_count > array_count(input.gamepads)) {
-                        max_gamepad_count = array_count(input.gamepads);
-                    }
-        
-                    for (u32 gamepad_index = 0;
-                         gamepad_index < max_gamepad_count;
-                         gamepad_index++) {
-                        XINPUT_STATE xinput_state = {};
-                        DWORD xinput_result = xinput_get_state(gamepad_index, &xinput_state);
-                        if (xinput_result == ERROR_SUCCESS) {
-                            os_process_digital_button(&input.gamepads[gamepad_index].up, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_UP) != 0);
-                            os_process_digital_button(&input.gamepads[gamepad_index].down, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN) != 0);
-                            os_process_digital_button(&input.gamepads[gamepad_index].left, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT) != 0);
-                            os_process_digital_button(&input.gamepads[gamepad_index].right, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) != 0);
-                            os_process_digital_button(&input.gamepads[gamepad_index].start, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_START) != 0);
-                            os_process_digital_button(&input.gamepads[gamepad_index].back, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_BACK) != 0);
-                            os_process_digital_button(&input.gamepads[gamepad_index].left_thumb,(xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_THUMB) != 0);
-                            os_process_digital_button(&input.gamepads[gamepad_index].right_thumb, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB) != 0);
-                            os_process_digital_button(&input.gamepads[gamepad_index].left_shoulder, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0);
-                            os_process_digital_button(&input.gamepads[gamepad_index].right_shoulder, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0);
-                            os_process_digital_button(&input.gamepads[gamepad_index].a, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_A) != 0);
-                            os_process_digital_button(&input.gamepads[gamepad_index].b, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_B) != 0);
-                            os_process_digital_button(&input.gamepads[gamepad_index].x, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_X) != 0);
-                            os_process_digital_button(&input.gamepads[gamepad_index].y, (xinput_state.Gamepad.wButtons & XINPUT_GAMEPAD_Y) != 0);
-                            os_process_analog_button(&input.gamepads[gamepad_index].left_trigger, XINPUT_GAMEPAD_TRIGGER_THRESHOLD/255.0f, xinput_state.Gamepad.bLeftTrigger/255.0f);
-                            os_process_analog_button(&input.gamepads[gamepad_index].right_trigger, XINPUT_GAMEPAD_TRIGGER_THRESHOLD/255.0f, xinput_state.Gamepad.bRightTrigger/255.0f);
-#define CONVERT(x) (2.0f * (((x + 32768) / 65535.0f) - 0.5f))
-                            os_process_stick(&input.gamepads[gamepad_index].left_stick, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE/32767.0f, CONVERT(xinput_state.Gamepad.sThumbLX), CONVERT(xinput_state.Gamepad.sThumbLY));
-                            os_process_stick(&input.gamepads[gamepad_index].right_stick, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE/32767.0f, CONVERT(xinput_state.Gamepad.sThumbRX), CONVERT(xinput_state.Gamepad.sThumbRY));
-#undef CONVERT
-                        } else {
-                            break;
-                        }
-                    }
-
-                    ////////////////////////////
-                    // NOTE(xkazu0x): Update and render
+                    // NOTE(xkazu0x): game update and render
 
                     DWORD byte_to_lock = 0;
                     DWORD target_cursor = 0;
@@ -1046,80 +1070,78 @@ int main(void)
                     if (!pause) {
                         clock.dt = target_seconds_per_frame;
                         if (game.update_and_render) {
-                            game.update_and_render(&framebuffer, &input, &memory, &clock, &sound_buffer);
+                            game.update_and_render(&framebuffer, &sound_buffer, &input, &memory, &clock);
                             handle_debug_cycle_counters(&memory);
                         }
                     }
 
                     ////////////////////////////
-                    // NOTE(xkazu0x): Output sound
+                    // NOTE(xkazu0x): output sound
 
                     if (sound_is_valid) {
                         win32_fill_sound_buffer(&sound_output, byte_to_lock, bytes_to_write, &sound_buffer);
                     }
 
                     ////////////////////////////
-                    // NOTE(xkazu0x): Limit frame rate
+                    // NOTE(xkazu0x): limit frame rate
+                    //Win32_Time last_time = win32_start_time();
+                    //win32_end_time(last_time);
                     
                     u64 raw_end_cycle_count = __rdtsc();
+                    
                     u64 raw_cycles_per_frame = raw_end_cycle_count - last_cycle_count;
                     f32 raw_mega_cycles_per_frame = ((f32)raw_cycles_per_frame/(1000.0f*1000.0f));
         
-                    LARGE_INTEGER raw_end_counter = win32_get_time();
+                    LARGE_INTEGER raw_end_counter = win32_get_wall_clock();
+                    
                     f32 raw_seconds_per_frame = win32_get_delta_seconds(last_counter, raw_end_counter);
                     f32 raw_ms_per_frame = 1000.0f*raw_seconds_per_frame;
                     f32 raw_frames_per_second = (f32)win32_state.time_frequency/(f32)(raw_end_counter.QuadPart - last_counter.QuadPart);
 
-                    // TODO(xkazu0x): PROBRABLY BUGGY
                     f32 seconds_elapsed_for_frame = raw_seconds_per_frame;
                     if (seconds_elapsed_for_frame < target_seconds_per_frame) {
                         if (sleep_is_granular) {
-                            DWORD sleep_ms = (DWORD)(1000.0f * (target_seconds_per_frame - seconds_elapsed_for_frame));
+                            DWORD sleep_ms = (DWORD)(1000.0f*(target_seconds_per_frame - seconds_elapsed_for_frame));
                             if (sleep_ms > 0) {
                                 Sleep(sleep_ms);
                             }
                         }
-            
-                        // f32 test_seconds_elapsed_for_frame = win32_get_delta_seconds(last_counter, win32_get_time());
-                        // while (test_seconds_elapsed_for_frame < target_seconds_per_frame) {
-                        //     // TODO(xkazu0x): LOG MISSED SLEEP HERE
-                        //     log_debug("TEST");
-                        // }
-            
+                        
+                        f32 test_seconds_elapsed_for_frame = win32_get_delta_seconds(last_counter, win32_get_wall_clock());
+                        assert(test_seconds_elapsed_for_frame < target_seconds_per_frame);
+                        
                         while (seconds_elapsed_for_frame < target_seconds_per_frame) {
-                            seconds_elapsed_for_frame = win32_get_delta_seconds(last_counter, win32_get_time());
+                            seconds_elapsed_for_frame = win32_get_delta_seconds(last_counter, win32_get_wall_clock());
                         }
                     } else {
-                        // TODO(xkazu0x): MISSED FRAME RATE
+                        // TODO(xkazu0x): MISSED FRAME RATE!
                     }
 
                     ////////////////////////////
-                    // NOTE(xkazu0x): Compute time
+                    // NOTE(xkazu0x): compute time
                     
-                    u64 end_cycle_count = __rdtsc();
+                    u64 end_cycle_count = __rdtsc(); 
+                    
                     u64 cycles_per_frame = end_cycle_count - last_cycle_count;
                     f32 mega_cycles_per_frame = ((f32)cycles_per_frame/(1000.0f*1000.0f));
-        
-                    LARGE_INTEGER end_counter = win32_get_time();
+                    
+                    LARGE_INTEGER end_counter = win32_get_wall_clock();
+                    
                     f32 ms_per_frame = 1000.0f*win32_get_delta_seconds(last_counter, end_counter);
                     f32 frames_per_second = (f32)win32_state.time_frequency/(f32)(end_counter.QuadPart - last_counter.QuadPart);
-
+                    
                     last_counter = end_counter;
                     last_cycle_count = end_cycle_count;
 
                     ////////////////////////////
-                    // NOTE(xkazu0x): Display framebuffer
+                    // NOTE(xkazu0x): display framebuffer
                     
-                    RECT client_rectangle;
-                    GetClientRect(window_handle, &client_rectangle);
-                    window_width = client_rectangle.right - client_rectangle.left;
-                    window_height = client_rectangle.bottom - client_rectangle.top;
-                    
-                    win32_display_framebuffer(framebuffer, window_handle, window_width, window_height);
+                    Win32_Window_Size window_size = win32_get_window_size(window_handle);
+                    win32_display_framebuffer(framebuffer, window_handle, window_size.x, window_size.y);
                     
 #if 1
                     ////////////////////////////
-                    // TODO(xkazu0x): Debug time logging
+                    // TODO(xkazu0x): debug time logging
                     
                     local f64 time_ms = 0.0;
                     local f64 last_print_time = 0.0;

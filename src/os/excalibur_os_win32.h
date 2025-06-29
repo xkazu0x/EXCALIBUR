@@ -13,6 +13,20 @@
 #pragma comment(lib, "gdi32")
 #pragma comment(lib, "winmm")
 
+struct Win32_Window_Size {
+    s32 x;
+    s32 y;
+};
+
+struct Win32_Game_Code {
+    FILETIME last_write_time;
+    HMODULE library;
+
+    // NOTE(xkazu0x): the callback can be 0
+    // you must check before calling
+    Game_Update_And_Render *update_and_render;
+};
+
 struct Win32_Sound_Output {
     s32 samples_per_second;
     s32 bytes_per_sample;
@@ -21,15 +35,6 @@ struct Win32_Sound_Output {
     
     u32 running_sample_index;
     s32 latency_sample_count;
-};
-
-struct Win32_Game {
-    HMODULE library;
-    FILETIME last_write_time;
-
-    // NOTE(xkazu0x): the callback can be 0
-    // you must check before calling
-    Game_Update_And_Render *update_and_render;
 };
 
 #define WIN32_FILENAME_MAX MAX_PATH

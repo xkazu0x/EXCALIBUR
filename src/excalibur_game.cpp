@@ -622,6 +622,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     
     ////////////////////////////////
     // NOTE(xkazu0x): init game state
+    
     assert(sizeof(Game_State) <= memory->permanent_storage_size);
     Game_State *game_state = (Game_State *)memory->permanent_storage;
     if (!game_state->is_initialized) {
@@ -796,9 +797,10 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
 
     ////////////////////////////////
     // NOTE(xkazu0x): init transient state
+    
     assert(sizeof(Transient_State) <= memory->transient_storage_size);
     Transient_State *tran_state = (Transient_State *)memory->transient_storage;
-    if (!tran_state->initialized) {
+    if (!tran_state->is_initialized) {
         tran_state->arena = make_arena(memory->transient_storage_size - sizeof(Transient_State), (u8 *)memory->transient_storage + sizeof(Transient_State));
         
         tran_state->high_priority_queue = memory->high_priority_queue;
@@ -855,7 +857,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
             }
         }
                 
-        tran_state->initialized = true;
+        tran_state->is_initialized = true;
     }
 
 #if 0
