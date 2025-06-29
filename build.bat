@@ -12,10 +12,10 @@ if "%msvc%"=="1"    set clang=0 && echo [msvc compile]
 if "%clang%"=="1"   set msvc=0 && echo [clang compile]
 
 :: --- Define Compile/Link Lines -------------------------------
-set cl_common=  /I..\src\ /nologo /FC /Z7 /D_CRT_SECURE_NO_WARNINGS /W4 /wd4310 /wd4201 /wd4100 /wd4456 /wd4505
+set cl_common=  /D_CRT_SECURE_NO_WARNINGS /I..\src\ /nologo /MT /GR- /EHa- /Oi /FC /Z7 /W4 /wd4100 /wd4189 /wd4201 /wd4310 /wd4456 /wd4505
 set cl_debug=   call cl /Od /DEXCALIBUR_INTERNAL=1 /DEXCALIBUR_DEBUG=1 %cl_common%
 set cl_release= call cl /O2 /DEXCALIBUR_INTERNAL=1 /DEXCALIBUR_DEBUG=0 %cl_common%
-set cl_link=    /link
+set cl_link=    /link /opt:ref
 set cl_out=     /out:
 
 set clang_common=  -I..\src\ -gcodeview -fdiagnostics-absolute-paths -Wall -Wno-missing-braces -Wno-unused-function -Wno-unused-variable -Wno-writable-strings -Wno-format-security
