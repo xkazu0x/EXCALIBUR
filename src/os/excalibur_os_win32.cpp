@@ -436,6 +436,46 @@ win32_display_framebuffer(OS_Framebuffer framebuffer, HWND window_handle, s32 wi
 }
 
 internal void
+win32_debug_draw_vertical(OS_Framebuffer *framebuffer, s32 x, s32 top, s32 bottom, u32 color) {
+    u8 *pixel = ((u8 *)framebuffer->memory + x*BYTES_PER_PIXEL + top*framebuffer->pitch);
+    for (s32 y = top;
+         y < bottom;
+         ++y) {
+        *(u32 *)pixel = color;
+        pixel += framebuffer->pitch;
+    }
+}
+
+struct Win32_Sound_Marker {
+    DWORD play_cursor;
+    DWORD write_cursor;
+};
+
+internal void
+win32_debug_draw_sound_markers(OS_Framebuffer *framebuffer, u32 marker_count, Win32_Sound_Marker *markers, Win32_Sound_Output sound_output, f32 target_seconds_per_frame) {
+    s32 pad = 16;
+
+    s32 top = pad;
+    s32 bottom = framebuffer->height - pad;
+    
+    f32 buffer_width = (f32)(framebuffer->width - 2*pad)/(f32)sound_output.buffer_size;
+    
+    for (u32 marker_index = 0;
+         marker_index < marker_count;
+         ++marker_index) {
+        Win32_Sound_Marker *marker = markers + marker_index;
+        
+        assert(marker->play_cursor < (u32)sound_output.buffer_size);
+        s32 x = pad + (s32)(buffer_width*(f32)marker->play_cursor);
+        win32_debug_draw_vertical(framebuffer, x, top, bottom, 0xFFFFFFFF);
+
+        assert(marker->write_cursor < (u32)sound_output.buffer_size);
+        x = pad + (s32)(buffer_width*(f32)marker->write_cursor);
+        win32_debug_draw_vertical(framebuffer, x, top, bottom, 0xFFFF0000);
+    }
+}
+
+internal void
 win32_window_toggle_fullscreen(HWND window, WINDOWPLACEMENT *placement) {
     DWORD window_style = GetWindowLong(window, GWL_STYLE);
     if (window_style & WS_OVERLAPPEDWINDOW) {
@@ -957,13 +997,21 @@ int main(void)
             win32_init_dsound(window_handle, sound_output.samples_per_second, sound_output.buffer_size, &sound_output.buffer);
             
             sound_output.running_sample_index = 0;
-            sound_output.latency_sample_count = sound_output.samples_per_second/10;
+            sound_output.latency_sample_count = 3*(sound_output.samples_per_second/30);
             
             win32_clear_sound_buffer(&sound_output);
             sound_output.buffer->Play(0, 0, DSBPLAY_LOOPING);
             
             s16 *sound_samples = (s16 *)VirtualAlloc(0, sound_output.buffer_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
+            DWORD last_play_cursor = 0;
+            b32 sound_is_valid = false;
+            
+#if EXCALIBUR_INTERNAL
+            u32 debug_sound_marker_index = 0;
+            Win32_Sound_Marker debug_sound_markers[16] = {};
+#endif
+            
             ////////////////////////////////
             // NOTE(xkazu0x): init memory
             
@@ -1035,18 +1083,15 @@ int main(void)
                     win32_update_input(&input, window_handle);
 
                     ////////////////////////////
-                    // NOTE(xkazu0x): game update and render
-
+                    // NOTE(xkazu0x): compute how much sound to write and where
+                    
                     DWORD byte_to_lock = 0;
                     DWORD target_cursor = 0;
                     DWORD bytes_to_write = 0;
-                    DWORD play_cursor = 0;
-                    DWORD write_cursor = 0;
                     
-                    b32 sound_is_valid = false;
-                    if (SUCCEEDED(sound_output.buffer->GetCurrentPosition(&play_cursor, &write_cursor))) {
+                    if (sound_is_valid) {
                         byte_to_lock = ((sound_output.running_sample_index*sound_output.bytes_per_sample) % sound_output.buffer_size);
-                        target_cursor = ((play_cursor + (sound_output.latency_sample_count*sound_output.bytes_per_sample)) % sound_output.buffer_size);
+                        target_cursor = ((last_play_cursor + (sound_output.latency_sample_count*sound_output.bytes_per_sample)) % sound_output.buffer_size);
                         
                         if (byte_to_lock > target_cursor) {
                             bytes_to_write = sound_output.buffer_size - byte_to_lock;
@@ -1054,14 +1099,15 @@ int main(void)
                         } else {
                             bytes_to_write = target_cursor - byte_to_lock;
                         }
-                        
-                        sound_is_valid = true;
                     }
 
                     OS_Sound_Buffer sound_buffer = {};
                     sound_buffer.samples_per_second = sound_output.samples_per_second;
                     sound_buffer.sample_count = bytes_to_write/sound_output.bytes_per_sample;
                     sound_buffer.samples = sound_samples;
+                    
+                    ////////////////////////////
+                    // NOTE(xkazu0x): game update and render
 
                     if (input.keyboard[Key_Escape].pressed) quit = true;
                     if (input.keyboard[Key_F1].pressed) pause = !pause;
@@ -1075,6 +1121,12 @@ int main(void)
                         }
                     }
 
+#if EXCALIBUR_INTERNAL
+                    if (!pause) {
+                        win32_debug_draw_sound_markers(&framebuffer, array_count(debug_sound_markers), debug_sound_markers, sound_output, target_seconds_per_frame);
+                    }
+#endif
+
                     ////////////////////////////
                     // NOTE(xkazu0x): output sound
 
@@ -1083,9 +1135,7 @@ int main(void)
                     }
 
                     ////////////////////////////
-                    // NOTE(xkazu0x): limit frame rate
-                    //Win32_Time last_time = win32_start_time();
-                    //win32_end_time(last_time);
+                    // NOTE(xkazu0x): limit video frame rate
                     
                     u64 raw_end_cycle_count = __rdtsc();
                     
@@ -1138,6 +1188,33 @@ int main(void)
                     
                     Win32_Window_Size window_size = win32_get_window_size(window_handle);
                     win32_display_framebuffer(framebuffer, window_handle, window_size.x, window_size.y);
+
+                    ////////////////////////////
+                    // NOTE(xkazu0x): update sound cursors
+                    
+                    DWORD play_cursor;
+                    DWORD write_cursor;
+                    if (sound_output.buffer->GetCurrentPosition(&play_cursor, &write_cursor) == DS_OK) {
+                        last_play_cursor = play_cursor;
+                        if (!sound_is_valid) {
+                            sound_output.running_sample_index = write_cursor/sound_output.bytes_per_sample;
+                            sound_is_valid = true;
+                        }
+                    } else {
+                        sound_is_valid = false;
+                    }
+                    
+#if EXCALIBUR_INTERNAL
+                    {
+                        Win32_Sound_Marker *marker = debug_sound_markers + debug_sound_marker_index++;
+                        if (debug_sound_marker_index > array_count(debug_sound_markers)) {
+                            debug_sound_marker_index = 0;
+                        }
+                        
+                        marker->play_cursor = play_cursor;
+                        marker->write_cursor = write_cursor;
+                    }
+#endif
                     
 #if 1
                     ////////////////////////////
