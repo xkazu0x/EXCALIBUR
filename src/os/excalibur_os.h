@@ -220,8 +220,8 @@ struct OS_Input {
 };
 
 #define BYTES_PER_PIXEL 4
-typedef struct OS_Framebuffer OS_Framebuffer;
-struct OS_Framebuffer {
+typedef struct OS_Back_Buffer OS_Back_Buffer;
+struct OS_Back_Buffer {
     s32 width;
     s32 height;
     s32 pitch;
@@ -272,7 +272,10 @@ struct OS_Clock {
     f32 dt;
 };
 
-#define GAME_UPDATE_AND_RENDER(x) void x(OS_Framebuffer *framebuffer, OS_Sound_Buffer *sound_buffer, OS_Input *input, OS_Memory *memory, OS_Clock *clock)
+#define GAME_UPDATE_AND_RENDER(x) void x(OS_Memory *memory, OS_Back_Buffer *back_buffer, OS_Input *input, OS_Clock *clock)
 typedef GAME_UPDATE_AND_RENDER(Game_Update_And_Render);
+
+#define GAME_GET_SOUND_SAMPLES(x) void x(OS_Memory *memory, OS_Sound_Buffer *sound_buffer)
+typedef GAME_GET_SOUND_SAMPLES(Game_Get_Sound_Samples);
 
 #endif // EXCALIBUR_OS_H

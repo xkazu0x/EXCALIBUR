@@ -25,16 +25,29 @@ struct Win32_Game_Code {
     // NOTE(xkazu0x): the callback can be 0
     // you must check before calling
     Game_Update_And_Render *update_and_render;
+    Game_Get_Sound_Samples *get_sound_samples;
+};
+
+struct Win32_Sound_Marker {
+    DWORD output_play_cursor;
+    DWORD output_write_cursor;
+    DWORD output_location;
+    DWORD output_byte_count;
+    DWORD expected_flip_play_cursor;
+    
+    DWORD flip_play_cursor;
+    DWORD flip_write_cursor;
 };
 
 struct Win32_Sound_Output {
     s32 samples_per_second;
     s32 bytes_per_sample;
-    s32 buffer_size;
+    DWORD buffer_size;
     LPDIRECTSOUNDBUFFER buffer;
     
     u32 running_sample_index;
     s32 latency_sample_count;
+    DWORD safety_bytes;
 };
 
 #define WIN32_FILENAME_MAX MAX_PATH

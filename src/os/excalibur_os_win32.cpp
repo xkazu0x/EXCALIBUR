@@ -7,6 +7,7 @@
 #include "os/excalibur_os_helper.cpp"
 
 global b32 quit;
+global b32 pause;
 
 global Win32_State win32_state;
 
@@ -332,6 +333,7 @@ win32_load_game_code(Win32_Game_Code *game, char *source_dll_name, char *temp_dl
     
     if (game->library) {
         WIN32_GET_PROC_ADDR(game->update_and_render, game->library, "game_update_and_render");
+        WIN32_GET_PROC_ADDR(game->get_sound_samples, game->library, "game_get_sound_samples");
     } else {
         log_error("failed to load game code");
     }
@@ -396,30 +398,30 @@ win32_get_window_size(HWND window) {
 
 #define align16(x) ((x + 15) & ~15)
 internal void
-win32_resize_framebuffer(OS_Framebuffer *framebuffer, s32 width, s32 height) {
-    if (framebuffer->memory) {
-        VirtualFree(framebuffer->memory, 0, MEM_RELEASE);
+win32_resize_back_buffer(OS_Back_Buffer *back_buffer, s32 width, s32 height) {
+    if (back_buffer->memory) {
+        VirtualFree(back_buffer->memory, 0, MEM_RELEASE);
     }
 
-    framebuffer->width = width;
-    framebuffer->height = height;
-    framebuffer->pitch = align16(framebuffer->width*BYTES_PER_PIXEL);
+    back_buffer->width = width;
+    back_buffer->height = height;
+    back_buffer->pitch = align16(back_buffer->width*BYTES_PER_PIXEL);
     
     win32_state.bitmap_info.bmiHeader.biSize = sizeof(win32_state.bitmap_info.bmiHeader);
-    win32_state.bitmap_info.bmiHeader.biWidth = framebuffer->width;
-    win32_state.bitmap_info.bmiHeader.biHeight = framebuffer->height;
+    win32_state.bitmap_info.bmiHeader.biWidth = back_buffer->width;
+    win32_state.bitmap_info.bmiHeader.biHeight = back_buffer->height;
     win32_state.bitmap_info.bmiHeader.biPlanes = 1;
     win32_state.bitmap_info.bmiHeader.biBitCount = 8*BYTES_PER_PIXEL;
     win32_state.bitmap_info.bmiHeader.biCompression = BI_RGB;
 
-    s32 framebuffer_memory_size = (framebuffer->pitch*framebuffer->height);
-    framebuffer->memory = VirtualAlloc(0, framebuffer_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    s32 back_buffer_memory_size = (back_buffer->pitch*back_buffer->height);
+    back_buffer->memory = VirtualAlloc(0, back_buffer_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 }
 
 internal void
-win32_display_framebuffer(OS_Framebuffer framebuffer, HWND window_handle, s32 window_width, s32 window_height) {
-    s32 display_width = framebuffer.width;
-    s32 display_height = framebuffer.height;
+win32_display_back_buffer(OS_Back_Buffer back_buffer, HWND window_handle, s32 window_width, s32 window_height) {
+    s32 display_width = back_buffer.width;
+    s32 display_height = back_buffer.height;
 
     s32 offset = 16;
     s32 display_x = offset;
@@ -428,50 +430,83 @@ win32_display_framebuffer(OS_Framebuffer framebuffer, HWND window_handle, s32 wi
     HDC window_device = GetDC(window_handle);
     StretchDIBits(window_device,
                   display_x, display_y, display_width, display_height,
-                  0, 0, framebuffer.width, framebuffer.height,
-                  framebuffer.memory,
+                  0, 0, back_buffer.width, back_buffer.height,
+                  back_buffer.memory,
                   &win32_state.bitmap_info,
                   DIB_RGB_COLORS, SRCCOPY);
     ReleaseDC(window_handle, window_device);
 }
 
 internal void
-win32_debug_draw_vertical(OS_Framebuffer *framebuffer, s32 x, s32 top, s32 bottom, u32 color) {
-    u8 *pixel = ((u8 *)framebuffer->memory + x*BYTES_PER_PIXEL + top*framebuffer->pitch);
-    for (s32 y = top;
-         y < bottom;
-         ++y) {
-        *(u32 *)pixel = color;
-        pixel += framebuffer->pitch;
+win32_debug_draw_vertical(OS_Back_Buffer *back_buffer, s32 x, s32 top, s32 bottom, u32 color) {
+    if (top <= 0) top = 0;
+    if (bottom > back_buffer->height) bottom = back_buffer->height;
+    
+    if ((x >= 0) && (x < back_buffer->width)) {
+        u8 *pixel = ((u8 *)back_buffer->memory + x*BYTES_PER_PIXEL + top*back_buffer->pitch);
+        for (s32 y = top;
+             y < bottom;
+             ++y) {
+            *(u32 *)pixel = color;
+            pixel += back_buffer->pitch;
+        }
     }
 }
 
-struct Win32_Sound_Marker {
-    DWORD play_cursor;
-    DWORD write_cursor;
-};
+internal void
+win32_draw_sound_marker(OS_Back_Buffer *back_buffer, Win32_Sound_Output sound_output, f32 buffer_width, s32 pad, s32 top, s32 bottom, DWORD value, u32 color) {
+    s32 x = pad + (s32)(buffer_width*(f32)value);
+    win32_debug_draw_vertical(back_buffer, x, top, bottom, color);
+}
 
 internal void
-win32_debug_draw_sound_markers(OS_Framebuffer *framebuffer, u32 marker_count, Win32_Sound_Marker *markers, Win32_Sound_Output sound_output, f32 target_seconds_per_frame) {
+win32_debug_draw_sound_markers(OS_Back_Buffer *back_buffer, u32 marker_count, Win32_Sound_Marker *markers, u32 current_marker_index, Win32_Sound_Output sound_output, f32 target_seconds_per_frame) {
     s32 pad = 16;
-
-    s32 top = pad;
-    s32 bottom = framebuffer->height - pad;
-    
-    f32 buffer_width = (f32)(framebuffer->width - 2*pad)/(f32)sound_output.buffer_size;
+    s32 line_height = 64;
+        
+    f32 buffer_width = (f32)(back_buffer->width - 2*pad)/(f32)sound_output.buffer_size;
     
     for (u32 marker_index = 0;
          marker_index < marker_count;
          ++marker_index) {
         Win32_Sound_Marker *marker = markers + marker_index;
+        assert(marker->output_play_cursor < sound_output.buffer_size);
+        assert(marker->output_write_cursor < sound_output.buffer_size);
+        assert(marker->output_location < sound_output.buffer_size);
+        assert(marker->output_byte_count < sound_output.buffer_size);
+        assert(marker->flip_play_cursor < sound_output.buffer_size);
+        assert(marker->flip_write_cursor < sound_output.buffer_size);
         
-        assert(marker->play_cursor < (u32)sound_output.buffer_size);
-        s32 x = pad + (s32)(buffer_width*(f32)marker->play_cursor);
-        win32_debug_draw_vertical(framebuffer, x, top, bottom, 0xFFFFFFFF);
+        u32 play_color = 0xFFFFFFFF;
+        u32 write_color = 0xFFFF0000;
+        u32 expected_flip_color = 0xFFFFFF00;
 
-        assert(marker->write_cursor < (u32)sound_output.buffer_size);
-        x = pad + (s32)(buffer_width*(f32)marker->write_cursor);
-        win32_debug_draw_vertical(framebuffer, x, top, bottom, 0xFFFF0000);
+        s32 top = pad;
+        s32 bottom = pad + line_height;
+
+        if (marker_index == current_marker_index) {
+            top += line_height + pad;
+            bottom += line_height + pad;
+
+            int first_top = top;
+            
+            win32_draw_sound_marker(back_buffer, sound_output, buffer_width, pad, top, bottom, marker->output_play_cursor, play_color);
+            win32_draw_sound_marker(back_buffer, sound_output, buffer_width, pad, top, bottom, marker->output_write_cursor, write_color);
+            
+            top += line_height + pad;
+            bottom += line_height + pad;
+            
+            win32_draw_sound_marker(back_buffer, sound_output, buffer_width, pad, top, bottom, marker->output_location, play_color);
+            win32_draw_sound_marker(back_buffer, sound_output, buffer_width, pad, top, bottom, marker->output_location + marker->output_byte_count, write_color);
+
+            top += line_height + pad;
+            bottom += line_height + pad;
+
+            win32_draw_sound_marker(back_buffer, sound_output, buffer_width, pad, first_top, bottom, marker->expected_flip_play_cursor, expected_flip_color);
+        }
+        
+        win32_draw_sound_marker(back_buffer, sound_output, buffer_width, pad, top, bottom, marker->flip_play_cursor, play_color);
+        win32_draw_sound_marker(back_buffer, sound_output, buffer_width, pad, top, bottom, marker->flip_write_cursor, write_color);
     }
 }
 
@@ -912,16 +947,21 @@ int main(void)
     s32 monitor_frame_rate = monitor_info.dmDisplayFrequency;
     log_info("monitor size: %dx%d", monitor_width, monitor_height);
     log_info("monitor refresh rate: %dHz", monitor_frame_rate);
+    
+    s32 game_update_hz = 30;
+    //s32 game_update_hz = 60;
+    //s32 game_update_hz = monitor_frame_rate;
+    f32 target_seconds_per_frame = 1.0f / (f32)game_update_hz;
 
     ////////////////////////////////
-    // NOTE(xkazu0x): init framebuffer
+    // NOTE(xkazu0x): init back buffer
     
-    OS_Framebuffer framebuffer = {};
-    //win32_resize_framebuffer(&framebuffer, 320, 180);
-    win32_resize_framebuffer(&framebuffer, 960, 540);
-    //win32_resize_framebuffer(&framebuffer, 1920, 1080);
-    //win32_resize_framebuffer(&framebuffer, 1279, 719);
-    log_info("framebuffer size: %dx%d", framebuffer.width, framebuffer.height);
+    OS_Back_Buffer back_buffer = {};
+    //win32_resize_back_buffer(&back_buffer, 320, 180);
+    win32_resize_back_buffer(&back_buffer, 960, 540);
+    //win32_resize_back_buffer(&back_buffer, 1920, 1080);
+    //win32_resize_back_buffer(&back_buffer, 1279, 719);
+    log_info("back buffer size: %dx%d", back_buffer.width, back_buffer.height);
 
     ////////////////////////////////
     // NOTE(xkazu0x): init window
@@ -997,15 +1037,18 @@ int main(void)
             win32_init_dsound(window_handle, sound_output.samples_per_second, sound_output.buffer_size, &sound_output.buffer);
             
             sound_output.running_sample_index = 0;
-            sound_output.latency_sample_count = 3*(sound_output.samples_per_second/30);
+            sound_output.latency_sample_count = 3*(sound_output.samples_per_second/game_update_hz);
+            // TODO(xkazu0x): actually compute this variable and see what the lowest reasonable value is.
+            sound_output.safety_bytes = (sound_output.samples_per_second*sound_output.bytes_per_sample/game_update_hz)/3;
             
             win32_clear_sound_buffer(&sound_output);
             sound_output.buffer->Play(0, 0, DSBPLAY_LOOPING);
             
             s16 *sound_samples = (s16 *)VirtualAlloc(0, sound_output.buffer_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-
-            DWORD last_play_cursor = 0;
+            
             b32 sound_is_valid = false;
+            DWORD audio_latency_bytes = 0;
+            f32 audio_latency_seconds = 0.0f;
             
 #if EXCALIBUR_INTERNAL
             u32 debug_sound_marker_index = 0;
@@ -1048,11 +1091,6 @@ int main(void)
                 
                 OS_Clock clock = {};
     
-                f32 game_update_hz = 30.0f;
-                //f32 game_update_hz = 60.0f;
-                //f32 game_update_hz = (f32)monitor_frame_rate;
-                f32 target_seconds_per_frame = 1.0f / game_update_hz;
-
                 LARGE_INTEGER large_integer;
                 QueryPerformanceFrequency(&large_integer);
                 win32_state.time_frequency = large_integer.QuadPart;
@@ -1060,11 +1098,11 @@ int main(void)
                 // NOTE(xkazu0x): Set the windows scheduler granularity to 1ms so that our Sleep() can be more granular.
                 UINT desired_scheduler_ms = 1;
                 b32 sleep_is_granular = (timeBeginPeriod(desired_scheduler_ms) == TIMERR_NOERROR);
-    
+                
                 LARGE_INTEGER last_counter = win32_get_wall_clock();
+                LARGE_INTEGER flip_wall_clock = win32_get_wall_clock();
                 u64 last_cycle_count = __rdtsc();
 
-                b32 pause = false;
                 while (!quit) {
                     ////////////////////////////
                     // NOTE(xkazu0x): reload game
@@ -1081,158 +1119,229 @@ int main(void)
                     win32_reset_input(&input);
                     win32_update_window_events(&input);
                     win32_update_input(&input, window_handle);
-
-                    ////////////////////////////
-                    // NOTE(xkazu0x): compute how much sound to write and where
-                    
-                    DWORD byte_to_lock = 0;
-                    DWORD target_cursor = 0;
-                    DWORD bytes_to_write = 0;
-                    
-                    if (sound_is_valid) {
-                        byte_to_lock = ((sound_output.running_sample_index*sound_output.bytes_per_sample) % sound_output.buffer_size);
-                        target_cursor = ((last_play_cursor + (sound_output.latency_sample_count*sound_output.bytes_per_sample)) % sound_output.buffer_size);
-                        
-                        if (byte_to_lock > target_cursor) {
-                            bytes_to_write = sound_output.buffer_size - byte_to_lock;
-                            bytes_to_write += target_cursor;
-                        } else {
-                            bytes_to_write = target_cursor - byte_to_lock;
-                        }
-                    }
-
-                    OS_Sound_Buffer sound_buffer = {};
-                    sound_buffer.samples_per_second = sound_output.samples_per_second;
-                    sound_buffer.sample_count = bytes_to_write/sound_output.bytes_per_sample;
-                    sound_buffer.samples = sound_samples;
                     
                     ////////////////////////////
                     // NOTE(xkazu0x): game update and render
 
                     if (input.keyboard[Key_Escape].pressed) quit = true;
-                    if (input.keyboard[Key_F1].pressed) pause = !pause;
                     if (input.keyboard[Key_F11].pressed) win32_window_toggle_fullscreen(window_handle, &win32_state.window_placement);
-                    
+
+#if EXCALIBUR_INTERNAL
+                    if (input.keyboard[Key_F1].pressed) pause = !pause;
+#endif
+
                     if (!pause) {
                         clock.dt = target_seconds_per_frame;
                         if (game.update_and_render) {
-                            game.update_and_render(&framebuffer, &sound_buffer, &input, &memory, &clock);
+                            game.update_and_render(&memory, &back_buffer, &input, &clock);
                             handle_debug_cycle_counters(&memory);
                         }
-                    }
+
+                        ////////////////////////////
+                        // NOTE(xkazu0x): compute and output sound
+
+                        LARGE_INTEGER audio_wall_clock = win32_get_wall_clock();
+                        f32 from_begin_to_audio_seconds = win32_get_delta_seconds(flip_wall_clock, audio_wall_clock);
+                        
+                        DWORD play_cursor;
+                        DWORD write_cursor;
+                        if (sound_output.buffer->GetCurrentPosition(&play_cursor, &write_cursor) == DS_OK) {
+                            // NOTE(xkauz0x):
+                        
+                            // Here is how sound output computation works.
+
+                            // We define a safety value that is a number
+                            // of samples we think our game update loop
+                            // may very by (let's say up to 2ms).
+                    
+                            // When we wake up to write audio, we will look
+                            // and see what the play cursor position is and we
+                            // will forecast ahead where we think the play
+                            // cursor will be on the next frame boundary.
+
+                            // We will then look to see if the write cursor is
+                            // before that by at least our safety value. If it is, the target
+                            // fill position is that frame boundary plus one frame.
+                            // This giving us perfect audio sync in the case of
+                            // a card that has low enough latency.
+
+                            // If the write cursor if _after_ that safety
+                            // margin, then we assume we can never sync the
+                            // audio perfectly, so we will write one frame's
+                            // worth of audio plus the safety margin's worth
+                            // of guard samples.
+
+                            if (!sound_is_valid) {
+                                sound_output.running_sample_index = write_cursor/sound_output.bytes_per_sample;
+                                sound_is_valid = true;
+                            }
+
+                            DWORD byte_to_lock = ((sound_output.running_sample_index*sound_output.bytes_per_sample) % sound_output.buffer_size);
+
+                            DWORD expected_sound_bytes_per_frame = (sound_output.samples_per_second*sound_output.bytes_per_sample)/game_update_hz;
+
+                            f32 seconds_left_until_flip = (target_seconds_per_frame - from_begin_to_audio_seconds);
+                            DWORD expected_bytes_until_flip = (DWORD)((seconds_left_until_flip/target_seconds_per_frame)*(f32)expected_sound_bytes_per_frame);
+                            
+                            DWORD expected_frame_boundary_byte = play_cursor + expected_sound_bytes_per_frame;
+                            //DWORD expected_frame_boundary_byte = play_cursor + expected_bytes_until_flip;
+
+                            DWORD safe_write_cursor = write_cursor;
+                            if (safe_write_cursor < play_cursor) {
+                                safe_write_cursor += sound_output.buffer_size;
+                            }
+                            assert(safe_write_cursor >= play_cursor);
+                            safe_write_cursor += sound_output.safety_bytes;
+                        
+                            b32 audio_card_is_low_latency = (safe_write_cursor < expected_frame_boundary_byte);
+                        
+                            DWORD target_cursor = 0;
+                            if (audio_card_is_low_latency) {
+                                target_cursor = expected_frame_boundary_byte + expected_sound_bytes_per_frame;
+                            } else {
+                                target_cursor = write_cursor + expected_sound_bytes_per_frame + sound_output.safety_bytes;
+                            }
+                            target_cursor = target_cursor % sound_output.buffer_size;
+                        
+                            DWORD bytes_to_write = 0;                            
+                            if (byte_to_lock > target_cursor) {
+                                bytes_to_write = sound_output.buffer_size - byte_to_lock;
+                                bytes_to_write += target_cursor;
+                            } else {
+                                bytes_to_write = target_cursor - byte_to_lock;
+                            }
+                    
+                            OS_Sound_Buffer sound_buffer = {};
+                            sound_buffer.samples_per_second = sound_output.samples_per_second;
+                            sound_buffer.sample_count = bytes_to_write/sound_output.bytes_per_sample;
+                            sound_buffer.samples = sound_samples;
+
+                            if (game.get_sound_samples) {
+                                game.get_sound_samples(&memory, &sound_buffer);
+                            }
+                        
+                            win32_fill_sound_buffer(&sound_output, byte_to_lock, bytes_to_write, &sound_buffer);
 
 #if EXCALIBUR_INTERNAL
-                    if (!pause) {
-                        win32_debug_draw_sound_markers(&framebuffer, array_count(debug_sound_markers), debug_sound_markers, sound_output, target_seconds_per_frame);
-                    }
+                            Win32_Sound_Marker *marker = debug_sound_markers + debug_sound_marker_index;
+                            marker->output_play_cursor = play_cursor;
+                            marker->output_write_cursor = write_cursor;
+                            marker->output_location = byte_to_lock;
+                            marker->output_byte_count = bytes_to_write;
+                            marker->expected_flip_play_cursor = expected_frame_boundary_byte;
+                        
+                            DWORD unwrapped_write_cursor = write_cursor;
+                            if (unwrapped_write_cursor < play_cursor) {
+                                unwrapped_write_cursor += sound_output.buffer_size;
+                            }
+                            audio_latency_bytes = unwrapped_write_cursor - play_cursor;
+                            audio_latency_seconds = ((f32)audio_latency_bytes/(f32)sound_output.bytes_per_sample)/(f32)sound_output.samples_per_second;
 #endif
+                        } else {
+                            sound_is_valid = false;
+                        }
 
-                    ////////////////////////////
-                    // NOTE(xkazu0x): output sound
-
-                    if (sound_is_valid) {
-                        win32_fill_sound_buffer(&sound_output, byte_to_lock, bytes_to_write, &sound_buffer);
-                    }
-
-                    ////////////////////////////
-                    // NOTE(xkazu0x): limit video frame rate
+                        ////////////////////////////
+                        // NOTE(xkazu0x): limit video frame rate
                     
-                    u64 raw_end_cycle_count = __rdtsc();
+                        u64 raw_end_cycle_count = __rdtsc();
                     
-                    u64 raw_cycles_per_frame = raw_end_cycle_count - last_cycle_count;
-                    f32 raw_mega_cycles_per_frame = ((f32)raw_cycles_per_frame/(1000.0f*1000.0f));
+                        u64 raw_cycles_per_frame = raw_end_cycle_count - last_cycle_count;
+                        f32 raw_mega_cycles_per_frame = ((f32)raw_cycles_per_frame/(1000.0f*1000.0f));
         
-                    LARGE_INTEGER raw_end_counter = win32_get_wall_clock();
+                        LARGE_INTEGER raw_end_counter = win32_get_wall_clock();
                     
-                    f32 raw_seconds_per_frame = win32_get_delta_seconds(last_counter, raw_end_counter);
-                    f32 raw_ms_per_frame = 1000.0f*raw_seconds_per_frame;
-                    f32 raw_frames_per_second = (f32)win32_state.time_frequency/(f32)(raw_end_counter.QuadPart - last_counter.QuadPart);
+                        f32 raw_seconds_per_frame = win32_get_delta_seconds(last_counter, raw_end_counter);
+                        f32 raw_ms_per_frame = 1000.0f*raw_seconds_per_frame;
+                        f32 raw_frames_per_second = (f32)win32_state.time_frequency/(f32)(raw_end_counter.QuadPart - last_counter.QuadPart);
 
-                    f32 seconds_elapsed_for_frame = raw_seconds_per_frame;
-                    if (seconds_elapsed_for_frame < target_seconds_per_frame) {
-                        if (sleep_is_granular) {
-                            DWORD sleep_ms = (DWORD)(1000.0f*(target_seconds_per_frame - seconds_elapsed_for_frame));
-                            if (sleep_ms > 0) {
-                                Sleep(sleep_ms);
+                        f32 seconds_elapsed_for_frame = raw_seconds_per_frame;
+                        if (seconds_elapsed_for_frame < target_seconds_per_frame) {
+                            if (sleep_is_granular) {
+                                DWORD sleep_ms = (DWORD)(1000.0f*(target_seconds_per_frame - seconds_elapsed_for_frame));
+                                if (sleep_ms > 0) {
+                                    Sleep(sleep_ms);
+                                }
+                            }
+                        
+                            f32 test_seconds_elapsed_for_frame = win32_get_delta_seconds(last_counter, win32_get_wall_clock());
+                            if (test_seconds_elapsed_for_frame < target_seconds_per_frame) {
+                                // TODO(xkazu0x): LOG MISSED SLEEP HERE!
+                            }
+                        
+                            while (seconds_elapsed_for_frame < target_seconds_per_frame) {
+                                seconds_elapsed_for_frame = win32_get_delta_seconds(last_counter, win32_get_wall_clock());
+                            }
+                        } else {
+                            // TODO(xkazu0x): MISSED FRAME RATE!
+                        }
+
+                        ////////////////////////////
+                        // NOTE(xkazu0x): compute time
+                    
+                        u64 end_cycle_count = __rdtsc(); 
+                    
+                        u64 cycles_per_frame = end_cycle_count - last_cycle_count;
+                        f32 mega_cycles_per_frame = ((f32)cycles_per_frame/(1000.0f*1000.0f));
+                    
+                        LARGE_INTEGER end_counter = win32_get_wall_clock();
+                    
+                        f32 ms_per_frame = 1000.0f*win32_get_delta_seconds(last_counter, end_counter);
+                        f32 frames_per_second = (f32)win32_state.time_frequency/(f32)(end_counter.QuadPart - last_counter.QuadPart);
+                    
+                        last_counter = end_counter;
+                        last_cycle_count = end_cycle_count;
+
+                        ////////////////////////////
+                        // NOTE(xkazu0x): display back buffer
+                    
+#if EXCALIBUR_INTERNAL 
+                        if (!pause) {
+                            win32_debug_draw_sound_markers(&back_buffer, array_count(debug_sound_markers), debug_sound_markers, debug_sound_marker_index - 1, sound_output, target_seconds_per_frame);
+                        }
+#endif
+                    
+                        Win32_Window_Size window_size = win32_get_window_size(window_handle);
+                        win32_display_back_buffer(back_buffer, window_handle, window_size.x, window_size.y);
+
+                        flip_wall_clock = win32_get_wall_clock();
+#if EXCALIBUR_INTERNAL
+                        {
+                            DWORD play_cursor;
+                            DWORD write_cursor;
+                            if (sound_output.buffer->GetCurrentPosition(&play_cursor, &write_cursor) == DS_OK) {
+                                assert(debug_sound_marker_index < array_count(debug_sound_markers));
+                                Win32_Sound_Marker *marker = debug_sound_markers + debug_sound_marker_index;
+                                marker->flip_play_cursor = play_cursor;
+                                marker->flip_write_cursor = write_cursor;
                             }
                         }
-                        
-                        f32 test_seconds_elapsed_for_frame = win32_get_delta_seconds(last_counter, win32_get_wall_clock());
-                        assert(test_seconds_elapsed_for_frame < target_seconds_per_frame);
-                        
-                        while (seconds_elapsed_for_frame < target_seconds_per_frame) {
-                            seconds_elapsed_for_frame = win32_get_delta_seconds(last_counter, win32_get_wall_clock());
-                        }
-                    } else {
-                        // TODO(xkazu0x): MISSED FRAME RATE!
-                    }
-
-                    ////////////////////////////
-                    // NOTE(xkazu0x): compute time
-                    
-                    u64 end_cycle_count = __rdtsc(); 
-                    
-                    u64 cycles_per_frame = end_cycle_count - last_cycle_count;
-                    f32 mega_cycles_per_frame = ((f32)cycles_per_frame/(1000.0f*1000.0f));
-                    
-                    LARGE_INTEGER end_counter = win32_get_wall_clock();
-                    
-                    f32 ms_per_frame = 1000.0f*win32_get_delta_seconds(last_counter, end_counter);
-                    f32 frames_per_second = (f32)win32_state.time_frequency/(f32)(end_counter.QuadPart - last_counter.QuadPart);
-                    
-                    last_counter = end_counter;
-                    last_cycle_count = end_cycle_count;
-
-                    ////////////////////////////
-                    // NOTE(xkazu0x): display framebuffer
-                    
-                    Win32_Window_Size window_size = win32_get_window_size(window_handle);
-                    win32_display_framebuffer(framebuffer, window_handle, window_size.x, window_size.y);
-
-                    ////////////////////////////
-                    // NOTE(xkazu0x): update sound cursors
-                    
-                    DWORD play_cursor;
-                    DWORD write_cursor;
-                    if (sound_output.buffer->GetCurrentPosition(&play_cursor, &write_cursor) == DS_OK) {
-                        last_play_cursor = play_cursor;
-                        if (!sound_is_valid) {
-                            sound_output.running_sample_index = write_cursor/sound_output.bytes_per_sample;
-                            sound_is_valid = true;
-                        }
-                    } else {
-                        sound_is_valid = false;
-                    }
-                    
-#if EXCALIBUR_INTERNAL
-                    {
-                        Win32_Sound_Marker *marker = debug_sound_markers + debug_sound_marker_index++;
-                        if (debug_sound_marker_index > array_count(debug_sound_markers)) {
-                            debug_sound_marker_index = 0;
-                        }
-                        
-                        marker->play_cursor = play_cursor;
-                        marker->write_cursor = write_cursor;
-                    }
 #endif
                     
-#if 1
-                    ////////////////////////////
-                    // TODO(xkazu0x): debug time logging
+#if 1 // NOTE(xkazu0x): debug loggin time measurements
+                        {
+                            local f64 time_ms = 0.0;
+                            local f64 last_print_time = 0.0;
+                            time_ms += ms_per_frame;
+                            if (time_ms - last_print_time > 500.0f) {
+                                char new_window_title[512];
+                                sprintf(new_window_title, "%s [fixed: %.02ffps, %.02fms, %.02fmc] [raw: %.02ffps, %.02fms, %.02fmc]",
+                                        window_title,
+                                        frames_per_second, ms_per_frame, mega_cycles_per_frame,
+                                        raw_frames_per_second, raw_ms_per_frame, raw_mega_cycles_per_frame);
+                                SetWindowTextA(window_handle, new_window_title);
+                                last_print_time = time_ms;
+                            }
+                        }
+#endif
                     
-                    local f64 time_ms = 0.0;
-                    local f64 last_print_time = 0.0;
-                    time_ms += ms_per_frame;
-                    if (time_ms - last_print_time > 500.0f) {
-                        char new_window_title[512];
-                        sprintf(new_window_title, "%s [fixed: %.02ffps, %.02fms, %.02fmc] [raw: %.02ffps, %.02fms, %.02fmc]",
-                                window_title,
-                                frames_per_second, ms_per_frame, mega_cycles_per_frame,
-                                raw_frames_per_second, raw_ms_per_frame, raw_mega_cycles_per_frame);
-                        SetWindowTextA(window_handle, new_window_title);
-                        last_print_time = time_ms;
+#if EXCALIBUR_INTERNAL                    
+                        ++debug_sound_marker_index;
+                        if (debug_sound_marker_index == array_count(debug_sound_markers)) {
+                            debug_sound_marker_index = 0;
+                        }
+#endif
                     }
-#endif        
                 }
             }
         }
