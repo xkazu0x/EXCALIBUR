@@ -1356,11 +1356,3 @@ GAME_GET_SOUND_SAMPLES(game_get_sound_samples) {
         }
     }
 }
-
-#if OS_WINDOWS
-#include <windows.h>
-int WINAPI
-WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
-    return(0);
-}
-#endif
