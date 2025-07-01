@@ -379,7 +379,7 @@ win32_get_wall_clock(void) {
 }
 
 internal f32
-win32_get_delta_seconds(LARGE_INTEGER start, LARGE_INTEGER end) {
+win32_get_seconds_elapsed(LARGE_INTEGER start, LARGE_INTEGER end) {
     f32 result = ((f32)(end.QuadPart - start.QuadPart)) / ((f32)(win32_state.time_frequency));
     return(result);
 }
@@ -419,7 +419,7 @@ win32_resize_back_buffer(OS_Back_Buffer *back_buffer, s32 width, s32 height) {
 }
 
 internal void
-win32_display_back_buffer(OS_Back_Buffer back_buffer, HWND window_handle, s32 window_width, s32 window_height) {
+win32_display_back_buffer(OS_Back_Buffer back_buffer, HWND window, s32 window_width, s32 window_height) {
     s32 display_width = back_buffer.width;
     s32 display_height = back_buffer.height;
 
@@ -427,14 +427,14 @@ win32_display_back_buffer(OS_Back_Buffer back_buffer, HWND window_handle, s32 wi
     s32 display_x = offset;
     s32 display_y = offset;
         
-    HDC window_device = GetDC(window_handle);
+    HDC window_device = GetDC(window);
     StretchDIBits(window_device,
                   display_x, display_y, display_width, display_height,
                   0, 0, back_buffer.width, back_buffer.height,
                   back_buffer.memory,
                   &win32_state.bitmap_info,
                   DIB_RGB_COLORS, SRCCOPY);
-    ReleaseDC(window_handle, window_device);
+    ReleaseDC(window, window_device);
 }
 
 internal void
@@ -655,7 +655,7 @@ win32_init_work_queue(OS_Work_Queue *queue, u32 thread_count) {
 }
 
 internal u32
-win32_convert_key_code(u32 key_code) {
+win32_process_key_code(u32 key_code) {
     switch (key_code) {
         case VK_ESCAPE: key_code = Key_Escape; break;
         case VK_RETURN: key_code = Key_Enter; break;
@@ -749,7 +749,7 @@ win32_update_window_events(OS_Input *input) {
             case WM_KEYUP: {
                 u32 key_code = (u32)message.wParam;
                 b32 is_down = ((message.lParam & (1 << 31)) == 0);
-                key_code = win32_convert_key_code(key_code);
+                key_code = win32_process_key_code(key_code);
                 os_process_digital_button(&input->keyboard[key_code], is_down);
                 TranslateMessage(&message);
                 DispatchMessageA(&message);
@@ -890,6 +890,66 @@ win32_update_input(OS_Input *input, HWND window) {
     }
 }
 
+internal void
+win32_begin_input_recording(Win32_State *state, u32 input_recording_index) {
+    state->input_recording_index = input_recording_index;
+
+    // TODO(xkazu0x): these files must go in the build directory!!!
+    char *filename = "input_recording.excalibur";
+    state->recording_handle = CreateFileA(filename, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
+
+    DWORD bytes_to_write = (DWORD)state->game_memory_size;
+    assert(state->game_memory_size == bytes_to_write);
+    DWORD bytes_written;
+    WriteFile(state->recording_handle, state->game_memory, bytes_to_write, &bytes_written, 0);
+}
+
+internal void
+win32_end_input_recording(Win32_State *state) {
+    CloseHandle(state->recording_handle);
+    state->input_recording_index = 0;
+}
+
+internal void
+win32_begin_input_playback(Win32_State *state, u32 input_playback_index) {
+    state->input_playback_index = input_playback_index;
+    
+    // TODO(xkazu0x): these files must go in the build directory!!!
+    char *filename = "input_recording.excalibur";
+    state->playback_handle = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+
+    DWORD bytes_to_read = (DWORD)state->game_memory_size;
+    assert(state->game_memory_size == bytes_to_read);
+    
+    DWORD bytes_read;
+    ReadFile(state->playback_handle, state->game_memory, bytes_to_read, &bytes_read, 0);
+}
+
+internal void
+win32_end_input_playback(Win32_State *state) {
+    CloseHandle(state->playback_handle);
+    state->input_playback_index = 0;
+}
+
+internal void
+win32_record_input(Win32_State *state, OS_Input *input) {
+    DWORD bytes_written;
+    WriteFile(state->recording_handle, input, sizeof(*input), &bytes_written, 0);
+}
+
+internal void
+win32_playback_input(Win32_State *state, OS_Input *input) {
+    DWORD bytes_read = 0;
+    if (ReadFile(state->playback_handle, input, sizeof(*input), &bytes_read, 0)) {
+        if (bytes_read == 0) {
+            u32 playback_index = state->input_playback_index;
+            win32_end_input_playback(state);
+            win32_begin_input_playback(state, playback_index);
+            ReadFile(state->playback_handle, input, sizeof(*input), &bytes_read, 0);
+        }
+    }
+}
+
 #if 0
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 #else
@@ -1003,13 +1063,13 @@ int main(void)
     window_class.lpszClassName = "excalibur_window_class";
     ATOM window_atom = RegisterClassA(&window_class);
     if (window_atom) {
-        HWND window_handle = CreateWindowExA(window_style_ex, MAKEINTATOM(window_atom),
+        HWND window = CreateWindowExA(window_style_ex, MAKEINTATOM(window_atom),
                                              window_title, window_style,
                                              window_x, window_y,
                                              fixed_window_width, fixed_window_height,
                                              0, 0, window_instance, 0);
-        if (window_handle) {
-            ShowWindow(window_handle, SW_SHOW);            
+        if (window) {
+            ShowWindow(window, SW_SHOW);            
 
             ////////////////////////////
             // NOTE(xkazu0x): init input
@@ -1018,7 +1078,7 @@ int main(void)
             RAWINPUTDEVICE raw_input_device = {};
             raw_input_device.usUsagePage = 0x01;
             raw_input_device.usUsage = 0x02;
-            raw_input_device.hwndTarget = window_handle;
+            raw_input_device.hwndTarget = window;
             if (!RegisterRawInputDevices(&raw_input_device, 1, sizeof(raw_input_device))) {
                 log_error("failed to register mouse as raw input device");
             }
@@ -1034,7 +1094,7 @@ int main(void)
             sound_output.bytes_per_sample = sizeof(s16)*2;
             sound_output.buffer_size = sound_output.samples_per_second*sound_output.bytes_per_sample;
 
-            win32_init_dsound(window_handle, sound_output.samples_per_second, sound_output.buffer_size, &sound_output.buffer);
+            win32_init_dsound(window, sound_output.samples_per_second, sound_output.buffer_size, &sound_output.buffer);
             
             sound_output.running_sample_index = 0;
             sound_output.latency_sample_count = 3*(sound_output.samples_per_second/game_update_hz);
@@ -1080,9 +1140,9 @@ int main(void)
             memory.transient_storage_size = GB(1);
             
             win32_state.game_memory_size = memory.permanent_storage_size + memory.transient_storage_size;
-            win32_state.game_memory_block = VirtualAlloc(base_address, win32_state.game_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+            win32_state.game_memory = VirtualAlloc(base_address, win32_state.game_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
             
-            memory.permanent_storage = win32_state.game_memory_block;
+            memory.permanent_storage = win32_state.game_memory;
             memory.transient_storage = ((u8 *)memory.permanent_storage + memory.permanent_storage_size);
             
             if (sound_samples && memory.permanent_storage && memory.transient_storage) {
@@ -1102,7 +1162,7 @@ int main(void)
                 LARGE_INTEGER last_counter = win32_get_wall_clock();
                 LARGE_INTEGER flip_wall_clock = win32_get_wall_clock();
                 u64 last_cycle_count = __rdtsc();
-
+                
                 while (!quit) {
                     ////////////////////////////
                     // NOTE(xkazu0x): reload game
@@ -1118,20 +1178,38 @@ int main(void)
                     
                     win32_reset_input(&input);
                     win32_update_window_events(&input);
-                    win32_update_input(&input, window_handle);
+                    win32_update_input(&input, window);
                     
                     ////////////////////////////
                     // NOTE(xkazu0x): game update and render
 
                     if (input.keyboard[Key_Escape].pressed) quit = true;
-                    if (input.keyboard[Key_F11].pressed) win32_window_toggle_fullscreen(window_handle, &win32_state.window_placement);
+                    if (input.keyboard[Key_F11].pressed) win32_window_toggle_fullscreen(window, &win32_state.window_placement);
 
 #if EXCALIBUR_INTERNAL
                     if (input.keyboard[Key_F1].pressed) pause = !pause;
 #endif
 
+                    if (input.keyboard[Key_L].pressed) {
+                        if (win32_state.input_recording_index == 0) {
+                            win32_begin_input_recording(&win32_state, 1);
+                        } else {
+                            win32_end_input_recording(&win32_state);
+                            win32_begin_input_playback(&win32_state, 1);
+                        }
+                    }
+                    
                     if (!pause) {
                         clock.dt = target_seconds_per_frame;
+
+                        if (win32_state.input_recording_index) {
+                            win32_record_input(&win32_state, &input);
+                        }
+
+                        if (win32_state.input_playback_index) {
+                            win32_playback_input(&win32_state, &input);
+                        }
+                        
                         if (game.update_and_render) {
                             game.update_and_render(&memory, &back_buffer, &input, &clock);
                             handle_debug_cycle_counters(&memory);
@@ -1141,7 +1219,7 @@ int main(void)
                         // NOTE(xkazu0x): compute and output sound
 
                         LARGE_INTEGER audio_wall_clock = win32_get_wall_clock();
-                        f32 from_begin_to_audio_seconds = win32_get_delta_seconds(flip_wall_clock, audio_wall_clock);
+                        f32 from_begin_to_audio_seconds = win32_get_seconds_elapsed(flip_wall_clock, audio_wall_clock);
                         
                         DWORD play_cursor;
                         DWORD write_cursor;
@@ -1251,7 +1329,7 @@ int main(void)
         
                         LARGE_INTEGER raw_end_counter = win32_get_wall_clock();
                     
-                        f32 raw_seconds_per_frame = win32_get_delta_seconds(last_counter, raw_end_counter);
+                        f32 raw_seconds_per_frame = win32_get_seconds_elapsed(last_counter, raw_end_counter);
                         f32 raw_ms_per_frame = 1000.0f*raw_seconds_per_frame;
                         f32 raw_frames_per_second = (f32)win32_state.time_frequency/(f32)(raw_end_counter.QuadPart - last_counter.QuadPart);
 
@@ -1264,13 +1342,13 @@ int main(void)
                                 }
                             }
                         
-                            f32 test_seconds_elapsed_for_frame = win32_get_delta_seconds(last_counter, win32_get_wall_clock());
+                            f32 test_seconds_elapsed_for_frame = win32_get_seconds_elapsed(last_counter, win32_get_wall_clock());
                             if (test_seconds_elapsed_for_frame < target_seconds_per_frame) {
                                 // TODO(xkazu0x): LOG MISSED SLEEP HERE!
                             }
                         
                             while (seconds_elapsed_for_frame < target_seconds_per_frame) {
-                                seconds_elapsed_for_frame = win32_get_delta_seconds(last_counter, win32_get_wall_clock());
+                                seconds_elapsed_for_frame = win32_get_seconds_elapsed(last_counter, win32_get_wall_clock());
                             }
                         } else {
                             // TODO(xkazu0x): MISSED FRAME RATE!
@@ -1286,7 +1364,7 @@ int main(void)
                     
                         LARGE_INTEGER end_counter = win32_get_wall_clock();
                     
-                        f32 ms_per_frame = 1000.0f*win32_get_delta_seconds(last_counter, end_counter);
+                        f32 ms_per_frame = 1000.0f*win32_get_seconds_elapsed(last_counter, end_counter);
                         f32 frames_per_second = (f32)win32_state.time_frequency/(f32)(end_counter.QuadPart - last_counter.QuadPart);
                     
                         last_counter = end_counter;
@@ -1301,8 +1379,8 @@ int main(void)
                         }
 #endif
                     
-                        Win32_Window_Size window_size = win32_get_window_size(window_handle);
-                        win32_display_back_buffer(back_buffer, window_handle, window_size.x, window_size.y);
+                        Win32_Window_Size window_size = win32_get_window_size(window);
+                        win32_display_back_buffer(back_buffer, window, window_size.x, window_size.y);
 
                         flip_wall_clock = win32_get_wall_clock();
 #if EXCALIBUR_INTERNAL
@@ -1329,7 +1407,7 @@ int main(void)
                                         window_title,
                                         frames_per_second, ms_per_frame, mega_cycles_per_frame,
                                         raw_frames_per_second, raw_ms_per_frame, raw_mega_cycles_per_frame);
-                                SetWindowTextA(window_handle, new_window_title);
+                                SetWindowTextA(window, new_window_title);
                                 last_print_time = time_ms;
                             }
                         }

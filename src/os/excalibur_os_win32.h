@@ -57,10 +57,16 @@ struct Win32_State {
     s64 time_frequency;
 
     u64 game_memory_size;
-    void *game_memory_block;
+    void *game_memory;
     
     char *exe_fullpath;
     char *exe_filename;
+
+    HANDLE recording_handle;
+    u32 input_recording_index = 0;
+
+    HANDLE playback_handle;
+    u32 input_playback_index = 0;
 };
 
 #define WIN32_GET_PROC_ADDR(v, m, s) (*(PROC*)(&(v))) = GetProcAddress((m), (s))
