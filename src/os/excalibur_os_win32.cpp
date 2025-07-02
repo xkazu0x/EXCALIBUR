@@ -1,4 +1,64 @@
 #include "base/excalibur_base.h"
+
+////////////////////////////////
+// TODO(xkazu0x): move this to excalibur_arena.h
+struct Arena {
+    u64 size;
+    u64 used;
+    u8 *memory;
+};
+
+internal Arena
+make_arena(u64 size, void *memory) {
+    Arena result;
+    result.size = size;
+    result.used = 0;
+    result.memory = (u8 *)memory;
+    return(result);
+}
+
+#define push_array(arena, count, type) (type *)arena_push(arena, (count)*sizeof(type));
+internal void *
+arena_push(Arena *arena, u64 size) {
+    assert((arena->used + size) <= arena->size);
+    void *result = (void *)(arena->memory + arena->used);
+    arena->used += size;
+    return(result);
+}
+// {
+
+////////////////////////////////
+// TODO(xkazu0x): move this to excalibur_string.h
+// {
+#include <string.h>
+
+internal u64
+cstring8_length(u8 *cstr) {
+    u8 *ptr = cstr;
+    for (; *ptr != 0; ++ptr);
+    return(ptr - cstr);
+}
+
+internal String8
+string8_cstring(char *cstr) {
+    String8 result;
+    result.size = cstring8_length((u8 *)cstr);
+    result.str = (u8 *)cstr;
+    return(result);
+}
+
+internal String8
+string8_cat(Arena *arena, String8 a, String8 b) {
+    String8 result;
+    result.size = a.size + b.size;
+    result.str = push_array(arena, result.size + 1, u8);
+    memmove(result.str, a.str, a.size);
+    memmove(result.str + a.size, b.str, b.size);
+    result.str[result.size] = 0;
+    return(result);
+}
+// }
+
 #include "os/excalibur_os.h"
 #include "os/excalibur_os_helper.h"
 #include "os/excalibur_os_win32.h"
@@ -6,10 +66,7 @@
 #include "base/excalibur_base.cpp"
 #include "os/excalibur_os_helper.cpp"
 
-global b32 quit;
-global b32 pause;
-
-global Win32_State win32_state;
+global s64 global_performance_frequency;
 
 global XInput_Get_State *xinput_get_state;
 global XInput_Set_State *xinput_set_state;
@@ -175,144 +232,28 @@ win32_fill_sound_buffer(Win32_Sound_Output *sound_output, DWORD byte_to_lock, DW
     }
 }
 
-////////////////////////////////
-// TODO(xkazu0x): move this to excalibur_arena.h
-struct Arena {
-    u64 size;
-    u64 used;
-    u8 *memory;
-};
-
-internal Arena
-make_arena(u64 size, void *memory) {
-    Arena result;
-    result.size = size;
-    result.used = 0;
-    result.memory = (u8 *)memory;
-    return(result);
-}
-
-#define push_array(arena, count, type) (type *)arena_push(arena, (count)*sizeof(type));
-internal void *
-arena_push(Arena *arena, u64 size) {
-    assert((arena->used + size) <= arena->size);
-    void *result = (void *)(arena->memory + arena->used);
-    arena->used += size;
-    return(result);
-}
-// {
-
-////////////////////////////////
-// TODO(xkazu0x): move this to excalibur_string.h
-// {
-internal u64
-cstring8_length(u8 *cstr) {
-    u8 *ptr = cstr;
-    for (; *ptr != 0; ++ptr);
-    return(ptr - cstr);
-}
-
-internal String8
-string8_cstring(char *cstr) {
-    String8 result;
-    result.size = cstring8_length((u8 *)cstr);
-    result.str = (u8 *)cstr;
-    return(result);
-}
-
-internal String8
-string8_cat(Arena *arena, String8 a, String8 b) {
-    String8 result;
-    result.size = a.size + b.size;
-    result.str = push_array(arena, result.size + 1, u8);
-    memmove(result.str, a.str, a.size);
-    memmove(result.str + a.size, b.str, b.size);
-    result.str[result.size] = 0;
-    return(result);
-}
-// }
-
-////////////////////////////////
-// NOTE(xkazu0x): debug code only
-// {
 internal void
-handle_debug_cycle_counters(OS_Memory *memory) {
-#if EXCALIBUR_INTERNAL
-    log_info("DEBUG CYCLE COUNTS:");
-    for (u32 counter_index = 0;
-         counter_index < array_count(memory->counters);
-         ++counter_index) {
-        Debug_Cycle_Counter *counter = memory->counters + counter_index;
-        if (counter->hit_count > 0) {
-            log_info("index %d: %I64ucy, %uh, %I64ucy/h",
-                     counter_index,
-                     counter->cycle_count,
-                     counter->hit_count,
-                     counter->cycle_count / counter->hit_count);
-            counter->cycle_count = 0;
-            counter->hit_count = 0;
-        }
-    }
-#endif
-}
+win32_get_exe_filename(Win32_State *state) {
+    state->exe_fullpath = push_array(&state->string_arena, WIN32_FILENAME_MAX, char);
+    GetModuleFileName(0, state->exe_fullpath, WIN32_FILENAME_MAX);
 
-DEBUG_OS_FREE_FILE(debug_os_free_file) {
-    if (memory) {
-        VirtualFree(memory, 0, MEM_RELEASE);
+    state->exe_filename = state->exe_fullpath;
+    for (char *scan = state->exe_fullpath;
+         *scan;
+         ++scan) {
+        if (*scan == '\\') {
+            state->exe_filename = scan + 1;
+        }
     }
 }
 
-DEBUG_OS_READ_FILE(debug_os_read_file) {
-    Debug_OS_File result = {};
-    
-    HANDLE file_handle = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
-    if (file_handle != INVALID_HANDLE_VALUE) {
-        LARGE_INTEGER file_size;
-        if (GetFileSizeEx(file_handle, &file_size)) {
-            u32 file_size32 = safe_cast_u32(file_size.QuadPart);
-            void *file_memory = VirtualAlloc(0, file_size32, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-            if (file_memory) {
-                DWORD bytes_read;
-                if (ReadFile(file_handle, file_memory, file_size32, &bytes_read, 0) &&
-                    (file_size32 == bytes_read)) {
-                    result.size = file_size32;
-                    result.data = file_memory;
-                } else {
-                    // TODO(xkazu0x): logging
-                    debug_os_free_file(file_memory);
-                    file_memory = 0;
-                }
-            } else {
-                // TODO(xkazu0x): logging
-            }
-        } else {
-            // TODO(xkazu0x): logging
-        }
-        CloseHandle(file_handle);
-    } else {
-        // TODO(xkazu0x): logging
-    }
-    
+internal char *
+win32_build_exe_path_filename(Win32_State *state, char *filename) {
+    String8 str0 = make_string8((u64)(state->exe_filename - state->exe_fullpath), (u8 *)state->exe_fullpath);
+    String8 str1 = string8_cstring(filename);
+    char *result = (char *)string8_cat(&state->string_arena, str0, str1).str;
     return(result);
 }
-
-DEBUG_OS_WRITE_FILE(debug_os_write_file) {
-    b32 result = false;
-    HANDLE file_handle = CreateFileA(filename, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
-    if (file_handle != INVALID_HANDLE_VALUE) {
-        DWORD bytes_written;
-        if (WriteFile(file_handle, memory, size, &bytes_written, 0)) {
-            result = (bytes_written == size);
-        } else {
-            // TODO(xkazu0x): logging
-        }
-        CloseHandle(file_handle);
-    } else {
-        // TODO(xkazu0x): logging
-    }
-    return(result);
-}
-// }
 
 internal FILETIME
 win32_get_last_write_time(char *filename) {
@@ -348,93 +289,143 @@ win32_unload_game_code(Win32_Game_Code *game) {
     game->update_and_render = 0;
 }
 
-internal void
-win32_get_exe_filename(Arena *arena, Win32_State *state) {
-    state->exe_fullpath = push_array(arena, WIN32_FILENAME_MAX, char);
-    GetModuleFileName(0, state->exe_fullpath, WIN32_FILENAME_MAX);
+////////////////////////////////
+// IMPORTANT(xkazu0x): internal code only
+// {
+DEBUG_OS_FREE_FILE(debug_os_free_file) {
+    if (memory) {
+        VirtualFree(memory, 0, MEM_RELEASE);
+    }
+}
 
-    state->exe_filename = state->exe_fullpath;
-    for (char *scan = state->exe_fullpath;
-         *scan;
-         ++scan) {
-        if (*scan == '\\') {
-            state->exe_filename = scan + 1;
+DEBUG_OS_READ_FILE(debug_os_read_file) {
+    Debug_OS_File result = {};
+    
+    HANDLE file_handle = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+    if (file_handle != INVALID_HANDLE_VALUE) {
+        LARGE_INTEGER file_size;
+        if (GetFileSizeEx(file_handle, &file_size)) {
+            u32 file_size32 = safe_cast_u32(file_size.QuadPart);
+            void *file_memory = VirtualAlloc(0, file_size32, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+            if (file_memory) {
+                DWORD bytes_read;
+                if (ReadFile(file_handle, file_memory, file_size32, &bytes_read, 0) &&
+                    (file_size32 == bytes_read)) {
+                    result.size = file_size32;
+                    result.data = file_memory;
+                } else {
+                    log_error("win32: failed to read file for \"%s\"", filename);
+                    debug_os_free_file(file_memory);
+                    file_memory = 0;
+                }
+            } else {
+                log_error("win32: failed to alloc file memory for \"%s\"", filename);
+            }
+        } else {
+            log_error("win32: failed to get file size for \"%s\"", filename);
+        }
+        CloseHandle(file_handle);
+    } else {
+        log_error("win32: failed to create file handle for \"%s\"", filename);
+    }
+    
+    return(result);
+}
+
+DEBUG_OS_WRITE_FILE(debug_os_write_file) {
+    b32 result = false;
+    HANDLE file_handle = CreateFileA(filename, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
+    if (file_handle != INVALID_HANDLE_VALUE) {
+        DWORD bytes_written;
+        if (WriteFile(file_handle, memory, size, &bytes_written, 0)) {
+            result = (bytes_written == size);
+        } else {
+            log_error("win32: failed to write file for \"%s\"", filename);
+        }
+        CloseHandle(file_handle);
+    } else {
+        log_error("win32: failed to create file handle for \"%s\"", filename);
+    }
+    return(result);
+}
+
+internal void
+win32_begin_input_recording(Win32_State *state, u32 input_recording_index) {
+    state->input_recording_index = input_recording_index;
+
+    char *filename = win32_build_exe_path_filename(state, "loop.excalibur");
+    state->recording_handle = CreateFileA(filename, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
+
+    DWORD bytes_to_write = (DWORD)state->game_memory_size;
+    assert(state->game_memory_size == bytes_to_write);
+    DWORD bytes_written;
+    WriteFile(state->recording_handle, state->game_memory, bytes_to_write, &bytes_written, 0);
+}
+
+internal void
+win32_end_input_recording(Win32_State *state) {
+    CloseHandle(state->recording_handle);
+    state->input_recording_index = 0;
+}
+
+internal void
+win32_begin_input_playback(Win32_State *state, u32 input_playback_index) {
+    state->input_playback_index = input_playback_index;
+    
+    char *filename = win32_build_exe_path_filename(state, "loop.excalibur");
+    state->playback_handle = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+
+    DWORD bytes_to_read = (DWORD)state->game_memory_size;
+    assert(state->game_memory_size == bytes_to_read);
+    
+    DWORD bytes_read;
+    ReadFile(state->playback_handle, state->game_memory, bytes_to_read, &bytes_read, 0);
+}
+
+internal void
+win32_end_input_playback(Win32_State *state) {
+    CloseHandle(state->playback_handle);
+    state->input_playback_index = 0;
+}
+
+internal void
+win32_record_input(Win32_State *state, OS_Input *input) {
+    DWORD bytes_written;
+    WriteFile(state->recording_handle, input, sizeof(*input), &bytes_written, 0);
+}
+
+internal void
+win32_playback_input(Win32_State *state, OS_Input *input) {
+    DWORD bytes_read = 0;
+    if (ReadFile(state->playback_handle, input, sizeof(*input), &bytes_read, 0)) {
+        if (bytes_read == 0) {
+            u32 playback_index = state->input_playback_index;
+            win32_end_input_playback(state);
+            win32_begin_input_playback(state, playback_index);
+            ReadFile(state->playback_handle, input, sizeof(*input), &bytes_read, 0);
         }
     }
 }
 
-internal char *
-win32_build_exe_path_filename(Arena *arena, Win32_State *state, char *filename) {
-    String8 str0 = make_string8((u64)(win32_state.exe_filename - win32_state.exe_fullpath), (u8 *)win32_state.exe_fullpath);
-    String8 str1 = string8_cstring(filename);
-    char *result = (char *)string8_cat(arena, str0, str1).str;
-    return(result);
-}
-
-internal LARGE_INTEGER
-win32_get_wall_clock(void) {
-    LARGE_INTEGER result;
-    QueryPerformanceCounter(&result);
-    return(result);
-}
-
-internal f32
-win32_get_seconds_elapsed(LARGE_INTEGER start, LARGE_INTEGER end) {
-    f32 result = ((f32)(end.QuadPart - start.QuadPart)) / ((f32)(win32_state.time_frequency));
-    return(result);
-}
-
-internal Win32_Window_Size
-win32_get_window_size(HWND window) {
-    Win32_Window_Size result;
-    
-    RECT client_rectangle;
-    GetClientRect(window, &client_rectangle);
-    result.x = client_rectangle.right - client_rectangle.left;
-    result.y = client_rectangle.bottom - client_rectangle.top;
-
-    return(result);
-}
-
-#define align16(x) ((x + 15) & ~15)
 internal void
-win32_resize_back_buffer(OS_Back_Buffer *back_buffer, s32 width, s32 height) {
-    if (back_buffer->memory) {
-        VirtualFree(back_buffer->memory, 0, MEM_RELEASE);
+win32_handle_debug_cycle_counters(OS_Memory *memory) {
+#if EXCALIBUR_INTERNAL
+    log_info("DEBUG CYCLE COUNTS:");
+    for (u32 counter_index = 0;
+         counter_index < array_count(memory->counters);
+         ++counter_index) {
+        Debug_Cycle_Counter *counter = memory->counters + counter_index;
+        if (counter->hit_count > 0) {
+            log_info("index %d: %I64ucy, %uh, %I64ucy/h",
+                     counter_index,
+                     counter->cycle_count,
+                     counter->hit_count,
+                     counter->cycle_count / counter->hit_count);
+            counter->cycle_count = 0;
+            counter->hit_count = 0;
+        }
     }
-
-    back_buffer->width = width;
-    back_buffer->height = height;
-    back_buffer->pitch = align16(back_buffer->width*BYTES_PER_PIXEL);
-    
-    win32_state.bitmap_info.bmiHeader.biSize = sizeof(win32_state.bitmap_info.bmiHeader);
-    win32_state.bitmap_info.bmiHeader.biWidth = back_buffer->width;
-    win32_state.bitmap_info.bmiHeader.biHeight = back_buffer->height;
-    win32_state.bitmap_info.bmiHeader.biPlanes = 1;
-    win32_state.bitmap_info.bmiHeader.biBitCount = 8*BYTES_PER_PIXEL;
-    win32_state.bitmap_info.bmiHeader.biCompression = BI_RGB;
-
-    s32 back_buffer_memory_size = (back_buffer->pitch*back_buffer->height);
-    back_buffer->memory = VirtualAlloc(0, back_buffer_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-}
-
-internal void
-win32_display_back_buffer(OS_Back_Buffer back_buffer, HWND window, s32 window_width, s32 window_height) {
-    s32 display_width = back_buffer.width;
-    s32 display_height = back_buffer.height;
-
-    s32 offset = 16;
-    s32 display_x = offset;
-    s32 display_y = offset;
-        
-    HDC window_device = GetDC(window);
-    StretchDIBits(window_device,
-                  display_x, display_y, display_width, display_height,
-                  0, 0, back_buffer.width, back_buffer.height,
-                  back_buffer.memory,
-                  &win32_state.bitmap_info,
-                  DIB_RGB_COLORS, SRCCOPY);
-    ReleaseDC(window, window_device);
+#endif
 }
 
 internal void
@@ -508,6 +499,75 @@ win32_debug_draw_sound_markers(OS_Back_Buffer *back_buffer, u32 marker_count, Wi
         win32_draw_sound_marker(back_buffer, sound_output, buffer_width, pad, top, bottom, marker->flip_play_cursor, play_color);
         win32_draw_sound_marker(back_buffer, sound_output, buffer_width, pad, top, bottom, marker->flip_write_cursor, write_color);
     }
+}
+// }
+// IMPORTANT(xkazu0x): internal code only
+////////////////////////////////
+
+internal LARGE_INTEGER
+win32_get_wall_clock(void) {
+    LARGE_INTEGER result;
+    QueryPerformanceCounter(&result);
+    return(result);
+}
+
+internal f32
+win32_get_seconds_elapsed(LARGE_INTEGER start, LARGE_INTEGER end) {
+    f32 result = ((f32)(end.QuadPart - start.QuadPart)) / ((f32)(global_performance_frequency));
+    return(result);
+}
+
+internal Win32_Window_Size
+win32_get_window_size(HWND window) {
+    Win32_Window_Size result;
+    
+    RECT client_rectangle;
+    GetClientRect(window, &client_rectangle);
+    result.x = client_rectangle.right - client_rectangle.left;
+    result.y = client_rectangle.bottom - client_rectangle.top;
+
+    return(result);
+}
+
+#define align16(x) ((x + 15) & ~15)
+internal void
+win32_resize_back_buffer(OS_Back_Buffer *back_buffer, s32 width, s32 height, BITMAPINFO *bitmap_info) {
+    if (back_buffer->memory) {
+        VirtualFree(back_buffer->memory, 0, MEM_RELEASE);
+    }
+
+    back_buffer->width = width;
+    back_buffer->height = height;
+    back_buffer->pitch = align16(back_buffer->width*BYTES_PER_PIXEL);
+    
+    bitmap_info->bmiHeader.biSize = sizeof(bitmap_info->bmiHeader);
+    bitmap_info->bmiHeader.biWidth = back_buffer->width;
+    bitmap_info->bmiHeader.biHeight = back_buffer->height;
+    bitmap_info->bmiHeader.biPlanes = 1;
+    bitmap_info->bmiHeader.biBitCount = 8*BYTES_PER_PIXEL;
+    bitmap_info->bmiHeader.biCompression = BI_RGB;
+
+    s32 back_buffer_memory_size = (back_buffer->pitch*back_buffer->height);
+    back_buffer->memory = VirtualAlloc(0, back_buffer_memory_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+}
+
+internal void
+win32_display_back_buffer(OS_Back_Buffer back_buffer, HWND window, s32 window_width, s32 window_height, BITMAPINFO *bitmap_info) {
+    s32 display_width = back_buffer.width;
+    s32 display_height = back_buffer.height;
+
+    s32 offset = 16;
+    s32 display_x = offset;
+    s32 display_y = offset;
+        
+    HDC window_device = GetDC(window);
+    StretchDIBits(window_device,
+                  display_x, display_y, display_width, display_height,
+                  0, 0, back_buffer.width, back_buffer.height,
+                  back_buffer.memory,
+                  bitmap_info,
+                  DIB_RGB_COLORS, SRCCOPY);
+    ReleaseDC(window, window_device);
 }
 
 internal void
@@ -736,12 +796,12 @@ win32_process_key_code(u32 key_code) {
 }
 
 internal void
-win32_update_window_events(OS_Input *input) {
+win32_update_window_events(Win32_State *state, OS_Input *input) {
     MSG message;
     while (PeekMessageA(&message, 0, 0, 0, PM_REMOVE)) {
         switch (message.message) {
             case WM_QUIT: {
-                quit = true;
+                state->quit = true;
             } break;
             case WM_SYSKEYDOWN:
             case WM_SYSKEYUP:
@@ -890,64 +950,11 @@ win32_update_input(OS_Input *input, HWND window) {
     }
 }
 
-internal void
-win32_begin_input_recording(Win32_State *state, u32 input_recording_index) {
-    state->input_recording_index = input_recording_index;
-
-    // TODO(xkazu0x): these files must go in the build directory!!!
-    char *filename = "input_recording.excalibur";
-    state->recording_handle = CreateFileA(filename, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
-
-    DWORD bytes_to_write = (DWORD)state->game_memory_size;
-    assert(state->game_memory_size == bytes_to_write);
-    DWORD bytes_written;
-    WriteFile(state->recording_handle, state->game_memory, bytes_to_write, &bytes_written, 0);
-}
-
-internal void
-win32_end_input_recording(Win32_State *state) {
-    CloseHandle(state->recording_handle);
-    state->input_recording_index = 0;
-}
-
-internal void
-win32_begin_input_playback(Win32_State *state, u32 input_playback_index) {
-    state->input_playback_index = input_playback_index;
-    
-    // TODO(xkazu0x): these files must go in the build directory!!!
-    char *filename = "input_recording.excalibur";
-    state->playback_handle = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
-
-    DWORD bytes_to_read = (DWORD)state->game_memory_size;
-    assert(state->game_memory_size == bytes_to_read);
-    
-    DWORD bytes_read;
-    ReadFile(state->playback_handle, state->game_memory, bytes_to_read, &bytes_read, 0);
-}
-
-internal void
-win32_end_input_playback(Win32_State *state) {
-    CloseHandle(state->playback_handle);
-    state->input_playback_index = 0;
-}
-
-internal void
-win32_record_input(Win32_State *state, OS_Input *input) {
-    DWORD bytes_written;
-    WriteFile(state->recording_handle, input, sizeof(*input), &bytes_written, 0);
-}
-
-internal void
-win32_playback_input(Win32_State *state, OS_Input *input) {
-    DWORD bytes_read = 0;
-    if (ReadFile(state->playback_handle, input, sizeof(*input), &bytes_read, 0)) {
-        if (bytes_read == 0) {
-            u32 playback_index = state->input_playback_index;
-            win32_end_input_playback(state);
-            win32_begin_input_playback(state, playback_index);
-            ReadFile(state->playback_handle, input, sizeof(*input), &bytes_read, 0);
-        }
-    }
+internal Arena
+win32_arena_alloc(u64 size) {
+    void *memory = VirtualAlloc(0, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    Arena result = make_arena(size, memory);
+    return(result);
 }
 
 #if 0
@@ -968,6 +975,27 @@ int main(void)
     log_info("compiler: %s", compiler_string.str);
 
     ////////////////////////////////
+    // NOTE(xkazu0x): init win32 state
+
+    Win32_State win32_state = {};
+    win32_state.string_arena = win32_arena_alloc(MB(1));
+
+    ////////////////////////////////
+    // NOTE(xkazu0x): load game code
+    
+    win32_get_exe_filename(&win32_state);
+    log_debug("exec filename: %s", win32_state.exe_filename);
+    log_debug("exec fullpath: %s", win32_state.exe_fullpath);
+    
+    char *source_game_code_dll_fullpath = win32_build_exe_path_filename(&win32_state, "excalibur_game.dll");
+    char *temp_game_code_dll_fullpath = win32_build_exe_path_filename(&win32_state, "excalibur_game_temp.dll");
+    log_debug("src dll fullpath: %s", source_game_code_dll_fullpath);
+    log_debug("tmp dll fullpath: %s", temp_game_code_dll_fullpath);
+
+    Win32_Game_Code game = {};
+    win32_load_game_code(&game, source_game_code_dll_fullpath, temp_game_code_dll_fullpath);
+
+    ////////////////////////////////
     // NOTE(xkazu0x): init threads
     
     OS_Work_Queue high_priority_queue;
@@ -975,25 +1003,6 @@ int main(void)
     
     OS_Work_Queue low_priority_queue;
     win32_init_work_queue(&low_priority_queue, 2);
-
-    ////////////////////////////////
-    // NOTE(xkazu0x): load game code
-    
-    u64 string_arena_size = MB(1);
-    void *string_arena_memory = VirtualAlloc(0, string_arena_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-    Arena string_arena = make_arena(string_arena_size, string_arena_memory);
-
-    win32_get_exe_filename(&string_arena, &win32_state);
-    log_debug("exec filename: %s", win32_state.exe_filename);
-    log_debug("exec fullpath: %s", win32_state.exe_fullpath);
-    
-    char *source_game_code_dll_fullpath = win32_build_exe_path_filename(&string_arena, &win32_state, "excalibur_game.dll");
-    char *temp_game_code_dll_fullpath = win32_build_exe_path_filename(&string_arena, &win32_state, "excalibur_game_temp.dll");
-    log_debug("src dll fullpath: %s", source_game_code_dll_fullpath);
-    log_debug("tmp dll fullpath: %s", temp_game_code_dll_fullpath);
-    
-    Win32_Game_Code game = {};
-    win32_load_game_code(&game, source_game_code_dll_fullpath, temp_game_code_dll_fullpath);
 
     ////////////////////////////////
     // NOTE(xkazu0x): monitor info
@@ -1017,10 +1026,7 @@ int main(void)
     // NOTE(xkazu0x): init back buffer
     
     OS_Back_Buffer back_buffer = {};
-    //win32_resize_back_buffer(&back_buffer, 320, 180);
-    win32_resize_back_buffer(&back_buffer, 960, 540);
-    //win32_resize_back_buffer(&back_buffer, 1920, 1080);
-    //win32_resize_back_buffer(&back_buffer, 1279, 719);
+    win32_resize_back_buffer(&back_buffer, 960, 540, &win32_state.bitmap_info);
     log_info("back buffer size: %dx%d", back_buffer.width, back_buffer.height);
 
     ////////////////////////////////
@@ -1153,7 +1159,7 @@ int main(void)
     
                 LARGE_INTEGER large_integer;
                 QueryPerformanceFrequency(&large_integer);
-                win32_state.time_frequency = large_integer.QuadPart;
+                global_performance_frequency = large_integer.QuadPart;
 
                 // NOTE(xkazu0x): Set the windows scheduler granularity to 1ms so that our Sleep() can be more granular.
                 UINT desired_scheduler_ms = 1;
@@ -1163,7 +1169,7 @@ int main(void)
                 LARGE_INTEGER flip_wall_clock = win32_get_wall_clock();
                 u64 last_cycle_count = __rdtsc();
                 
-                while (!quit) {
+                while (!win32_state.quit) {
                     ////////////////////////////
                     // NOTE(xkazu0x): reload game
                     
@@ -1177,19 +1183,18 @@ int main(void)
                     // NOTE(xkazu0x): update window events and input
                     
                     win32_reset_input(&input);
-                    win32_update_window_events(&input);
+                    win32_update_window_events(&win32_state, &input);
                     win32_update_input(&input, window);
                     
                     ////////////////////////////
                     // NOTE(xkazu0x): game update and render
 
-                    if (input.keyboard[Key_Escape].pressed) quit = true;
+                    if (input.keyboard[Key_Escape].pressed) win32_state.quit = true;
                     if (input.keyboard[Key_F11].pressed) win32_window_toggle_fullscreen(window, &win32_state.window_placement);
 
 #if EXCALIBUR_INTERNAL
-                    if (input.keyboard[Key_F1].pressed) pause = !pause;
+                    if (input.keyboard[Key_P].pressed) win32_state.pause = !win32_state.pause;
 #endif
-
                     if (input.keyboard[Key_L].pressed) {
                         if (win32_state.input_recording_index == 0) {
                             win32_begin_input_recording(&win32_state, 1);
@@ -1199,7 +1204,7 @@ int main(void)
                         }
                     }
                     
-                    if (!pause) {
+                    if (!win32_state.pause) {
                         clock.dt = target_seconds_per_frame;
 
                         if (win32_state.input_recording_index) {
@@ -1212,7 +1217,7 @@ int main(void)
                         
                         if (game.update_and_render) {
                             game.update_and_render(&memory, &back_buffer, &input, &clock);
-                            handle_debug_cycle_counters(&memory);
+                            win32_handle_debug_cycle_counters(&memory);
                         }
 
                         ////////////////////////////
@@ -1261,8 +1266,7 @@ int main(void)
                             f32 seconds_left_until_flip = (target_seconds_per_frame - from_begin_to_audio_seconds);
                             DWORD expected_bytes_until_flip = (DWORD)((seconds_left_until_flip/target_seconds_per_frame)*(f32)expected_sound_bytes_per_frame);
                             
-                            DWORD expected_frame_boundary_byte = play_cursor + expected_sound_bytes_per_frame;
-                            //DWORD expected_frame_boundary_byte = play_cursor + expected_bytes_until_flip;
+                            DWORD expected_frame_boundary_byte = play_cursor + expected_bytes_until_flip;
 
                             DWORD safe_write_cursor = write_cursor;
                             if (safe_write_cursor < play_cursor) {
@@ -1331,7 +1335,7 @@ int main(void)
                     
                         f32 raw_seconds_per_frame = win32_get_seconds_elapsed(last_counter, raw_end_counter);
                         f32 raw_ms_per_frame = 1000.0f*raw_seconds_per_frame;
-                        f32 raw_frames_per_second = (f32)win32_state.time_frequency/(f32)(raw_end_counter.QuadPart - last_counter.QuadPart);
+                        f32 raw_frames_per_second = (f32)global_performance_frequency/(f32)(raw_end_counter.QuadPart - last_counter.QuadPart);
 
                         f32 seconds_elapsed_for_frame = raw_seconds_per_frame;
                         if (seconds_elapsed_for_frame < target_seconds_per_frame) {
@@ -1365,7 +1369,7 @@ int main(void)
                         LARGE_INTEGER end_counter = win32_get_wall_clock();
                     
                         f32 ms_per_frame = 1000.0f*win32_get_seconds_elapsed(last_counter, end_counter);
-                        f32 frames_per_second = (f32)win32_state.time_frequency/(f32)(end_counter.QuadPart - last_counter.QuadPart);
+                        f32 frames_per_second = (f32)global_performance_frequency/(f32)(end_counter.QuadPart - last_counter.QuadPart);
                     
                         last_counter = end_counter;
                         last_cycle_count = end_cycle_count;
@@ -1374,13 +1378,13 @@ int main(void)
                         // NOTE(xkazu0x): display back buffer
                     
 #if EXCALIBUR_INTERNAL 
-                        if (!pause) {
+                        if (!win32_state.pause) {
                             win32_debug_draw_sound_markers(&back_buffer, array_count(debug_sound_markers), debug_sound_markers, debug_sound_marker_index - 1, sound_output, target_seconds_per_frame);
                         }
 #endif
                     
                         Win32_Window_Size window_size = win32_get_window_size(window);
-                        win32_display_back_buffer(back_buffer, window, window_size.x, window_size.y);
+                        win32_display_back_buffer(back_buffer, window, window_size.x, window_size.y, &win32_state.bitmap_info);
 
                         flip_wall_clock = win32_get_wall_clock();
 #if EXCALIBUR_INTERNAL

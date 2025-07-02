@@ -22,8 +22,7 @@ struct Win32_Game_Code {
     FILETIME last_write_time;
     HMODULE library;
 
-    // NOTE(xkazu0x): the callback can be 0
-    // you must check before calling
+    // IMPORTANT(xkazu0x): either of the callbacks can be 0! you must check before calling.
     Game_Update_And_Render *update_and_render;
     Game_Get_Sound_Samples *get_sound_samples;
 };
@@ -52,9 +51,13 @@ struct Win32_Sound_Output {
 
 #define WIN32_FILENAME_MAX MAX_PATH
 struct Win32_State {
+    b32 quit;
+    b32 pause;
+
+    Arena string_arena;
+    
     BITMAPINFO bitmap_info;
     WINDOWPLACEMENT window_placement;
-    s64 time_frequency;
 
     u64 game_memory_size;
     void *game_memory;
