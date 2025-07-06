@@ -27,7 +27,9 @@ enum Asset_Tag_ID {
 
 enum Asset_Type_ID {
     AssetType_Null,
+    ////////////
     
+    // NOTE(xkazu0x): bitmaps!
     AssetType_Wall,
     AssetType_Stairwell,
     AssetType_Shadow,
@@ -39,6 +41,11 @@ enum Asset_Type_ID {
     
     AssetType_Skull,
     
+    // NOTE(xkazu0x): sounds!
+    AssetType_Music,
+    AssetType_Hit,
+    
+    ////////////
     AssetType_Count,
 };
 
@@ -94,6 +101,7 @@ struct Asset_Manager {
     
     // TODO(xkazu0x): these should go away once we actually load a asset pack file
     u32 debug_used_bitmap_count;
+    u32 debug_used_sound_count;
     u32 debug_used_asset_count;
     u32 debug_used_tag_count;
     Asset_Type *debug_asset_type;

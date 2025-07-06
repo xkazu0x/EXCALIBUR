@@ -44,6 +44,13 @@ struct Ground_Buffer {
     Bitmap bitmap;
 };
 
+struct Playing_Sound_List {
+    Sound_ID id;
+    f32 volume[2];
+    s32 samples_played;
+    Playing_Sound_List *next;
+};
+
 struct Game_State {
     b32 is_initialized;
     
@@ -79,7 +86,8 @@ struct Game_State {
     Bitmap test_diffuse;
     Bitmap test_normal;
 
-    Sound test_sound;
+    Playing_Sound_List *first_playing_sound;
+    Playing_Sound_List *first_free_playing_sound;
 };
 
 struct Memory_Task {
@@ -137,7 +145,7 @@ begin_memory_task(Transient_State *tran_state) {
 
 inline void
 end_memory_task(Memory_Task *task) {
-    end_temp_memory(&task->memory_flush);
+    end_temp_memory(task->memory_flush);
     complete_previous_write_before_future_write;
     task->is_being_used = false;
 }

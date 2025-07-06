@@ -1,3 +1,6 @@
+////////////////////////////////
+// NOTE(xkazu0x): asset manager
+
 internal Vec2
 top_down_align(Bitmap *bitmap, Vec2 align) {
     //align.y = (f32)(bitmap->height - 1) - align.y;
@@ -10,7 +13,7 @@ top_down_align(Bitmap *bitmap, Vec2 align) {
 }
 
 internal Bitmap_ID
-debug_asset_add_bitmap_info(Asset_Manager *manager, char *filename, Vec2 align_percentage)  {
+asset_add_bitmap_info(Asset_Manager *manager, char *filename, Vec2 align_percentage)  {
     assert(manager->debug_used_bitmap_count < manager->bitmap_count);
     
     Bitmap_ID id = {manager->debug_used_bitmap_count++};
@@ -18,6 +21,18 @@ debug_asset_add_bitmap_info(Asset_Manager *manager, char *filename, Vec2 align_p
     Asset_Bitmap_Info *info = manager->bitmap_infos + id.value;
     info->filename = filename;
     info->align_percentage = align_percentage;
+    
+    return(id);
+}
+
+internal Sound_ID
+asset_add_sound_info(Asset_Manager *manager, char *filename)  {
+    assert(manager->debug_used_sound_count < manager->sound_count);
+    
+    Sound_ID id = {manager->debug_used_sound_count++};
+    
+    Asset_Sound_Info *info = manager->sound_infos + id.value;
+    info->filename = filename;
     
     return(id);
 }
@@ -39,7 +54,20 @@ asset_add_bitmap(Asset_Manager *manager, char *filename, Vec2 align_percentage =
     Asset *asset = manager->assets + manager->debug_asset_type->one_past_last_asset_index++;
     asset->first_tag_index = manager->debug_used_tag_count;
     asset->one_past_last_tag_index = asset->first_tag_index;
-    asset->slot_id = debug_asset_add_bitmap_info(manager, filename, align_percentage).value;
+    asset->slot_id = asset_add_bitmap_info(manager, filename, align_percentage).value;
+    
+    manager->debug_asset = asset;
+}
+
+internal void
+asset_add_sound(Asset_Manager *manager, char *filename) {
+    assert(manager->debug_asset_type);
+    assert(manager->debug_asset_type->one_past_last_asset_index < manager->asset_count);
+    
+    Asset *asset = manager->assets + manager->debug_asset_type->one_past_last_asset_index++;
+    asset->first_tag_index = manager->debug_used_tag_count;
+    asset->one_past_last_tag_index = asset->first_tag_index;
+    asset->slot_id = asset_add_sound_info(manager, filename).value;
     
     manager->debug_asset = asset;
 }
@@ -80,7 +108,7 @@ asset_manager_alloc(Arena *arena, memi size, Transient_State *tran_state) {
     manager->bitmap_infos = push_array(arena, Asset_Bitmap_Info, manager->bitmap_count);
     manager->bitmaps = push_array(arena, Asset_Slot, manager->bitmap_count);
     
-    manager->sound_count = 1;
+    manager->sound_count = 256*AssetType_Count;
     manager->sound_infos = push_array(arena, Asset_Sound_Info, manager->sound_count);
     manager->sounds = push_array(arena, Asset_Slot, manager->sound_count);
     
@@ -132,26 +160,64 @@ asset_manager_alloc(Arena *arena, memi size, Transient_State *tran_state) {
     begin_asset_type(manager, AssetType_Skull);
     asset_add_bitmap(manager, "../res/skull_right.bmp");
     asset_add_tag(manager, AssetTag_FacingDirection, angle_right);
-    
     asset_add_bitmap(manager, "../res/skull_back.bmp");
     asset_add_tag(manager, AssetTag_FacingDirection, angle_back);
-    
     asset_add_bitmap(manager, "../res/skull_left.bmp");
     asset_add_tag(manager, AssetTag_FacingDirection, angle_left);
-    
     asset_add_bitmap(manager, "../res/skull_front.bmp");
     asset_add_tag(manager, AssetTag_FacingDirection, angle_front);
+    end_asset_type(manager);
+    
+    //
+    //
+    //
+    
+    begin_asset_type(manager, AssetType_Music);
+    asset_add_sound(manager, "../res/natsu_no_hana.wav");
+    end_asset_type(manager);
+    
+    begin_asset_type(manager, AssetType_Hit);
+    asset_add_sound(manager, "../res/hit0.wav");
     end_asset_type(manager);
     
     return(manager);
 }
 
-//
-//
-//
-internal Bitmap_ID
-asset_best_match(Asset_Manager *manager, Asset_Type_ID type_id, Asset_Vector *match_vector, Asset_Vector *weight_vector) {
-    Bitmap_ID result = {};
+////////////////////////////////
+// NOTE(xkazu0x): generic asset slot
+
+internal u32
+asset_get_first_slot(Asset_Manager *manager, Asset_Type_ID type_id) {
+    u32 result = 0;
+    
+    Asset_Type *type = manager->asset_types + type_id;
+    if (type->first_asset_index != type->one_past_last_asset_index) {
+        Asset *asset = manager->assets + type->first_asset_index;
+        result = asset->slot_id;
+    }
+    
+    return(result);
+}
+
+internal u32
+asset_get_random_slot(Asset_Manager *manager, Asset_Type_ID type_id, Random_Series *series) {
+    u32 result = 0;
+    
+    Asset_Type *type = manager->asset_types + type_id;
+    if (type->first_asset_index != type->one_past_last_asset_index) {
+        u32 count = type->one_past_last_asset_index - type->first_asset_index;
+        u32 choice = random_choice(series, count);
+        
+        Asset *asset = manager->assets + type->first_asset_index + choice;
+        result = asset->slot_id;
+    }
+    
+    return(result);
+}
+
+internal u32
+asset_get_best_match_slot(Asset_Manager *manager, Asset_Type_ID type_id, Asset_Vector *match_vector, Asset_Vector *weight_vector) {
+    u32 result = 0;
 
     f32 best_diff = f32_max;
     
@@ -180,7 +246,7 @@ asset_best_match(Asset_Manager *manager, Asset_Type_ID type_id, Asset_Vector *ma
 
             if (best_diff > total_weighted_diff) {
                 best_diff = total_weighted_diff;
-                result.value = asset->slot_id;
+                result = asset->slot_id;
             }
         }
     }
@@ -188,32 +254,24 @@ asset_best_match(Asset_Manager *manager, Asset_Type_ID type_id, Asset_Vector *ma
     return(result);
 }
 
+////////////////////////////////
+// NOTE(xkazu0x): bitmap asset
+
 internal Bitmap_ID
-random_asset_from(Asset_Manager *manager, Asset_Type_ID type_id, Random_Series *series) {
-    Bitmap_ID result = {};
-    
-    Asset_Type *type = manager->asset_types + type_id;
-    if (type->first_asset_index != type->one_past_last_asset_index) {
-        u32 count = type->one_past_last_asset_index - type->first_asset_index;
-        u32 choice = random_choice(series, count);
-        
-        Asset *asset = manager->assets + type->first_asset_index + choice;
-        result.value = asset->slot_id;
-    }
-    
+asset_get_first_bitmap(Asset_Manager *manager, Asset_Type_ID type_id) {
+    Bitmap_ID result = {asset_get_first_slot(manager, type_id)};
     return(result);
 }
 
 internal Bitmap_ID
-first_asset_from(Asset_Manager *manager, Asset_Type_ID type_id) {
-    Bitmap_ID result = {};
-    
-    Asset_Type *type = manager->asset_types + type_id;
-    if (type->first_asset_index != type->one_past_last_asset_index) {
-        Asset *asset = manager->assets + type->first_asset_index;
-        result.value = asset->slot_id;
-    }
-    
+asset_get_random_bitmap(Asset_Manager *manager, Asset_Type_ID type_id, Random_Series *series) {
+    Bitmap_ID result = {asset_get_random_slot(manager, type_id, series)};
+    return(result);
+}
+
+internal Bitmap_ID
+asset_get_best_match_bitmap(Asset_Manager *manager, Asset_Type_ID type_id, Asset_Vector *match_vector, Asset_Vector *weight_vector) {
+    Bitmap_ID result = {asset_get_best_match_slot(manager, type_id, match_vector, weight_vector)};
     return(result);
 }
 
@@ -248,7 +306,7 @@ OS_WORK_QUEUE_CALLBACK(load_bitmap_work) {
 
 internal void
 asset_load_bitmap(Asset_Manager *manager, Bitmap_ID id) {
-    if (id.value && (atomic_compare_exchange_u32((u32 *)&manager->bitmaps[id.value].state, AssetState_Unloaded, AssetState_Queued) == AssetState_Unloaded)) {
+    if (id.value && (atomic_compare_exchange_u32((u32 *)&manager->bitmaps[id.value].state, AssetState_Queued, AssetState_Unloaded) == AssetState_Unloaded)) {
         Memory_Task *memory_task = begin_memory_task(manager->tran_state);
         if (memory_task) {
             Load_Bitmap_Work *work = push_struct(&memory_task->arena, Load_Bitmap_Work);
@@ -260,8 +318,25 @@ asset_load_bitmap(Asset_Manager *manager, Bitmap_ID id) {
             work->final_state = AssetState_Loaded;
 
             os_work_queue_add_entry(manager->tran_state->low_priority_queue, load_bitmap_work, work);
+        } else {
+            manager->bitmaps[id.value].state = AssetState_Unloaded;
         }
     }
+}
+
+////////////////////////////////
+// NOTE(xkazu0x): sound asset
+
+internal Sound_ID
+asset_get_first_sound(Asset_Manager *manager, Asset_Type_ID type_id) {
+    Sound_ID result = {asset_get_first_slot(manager, type_id)};
+    return(result);
+}
+
+internal Sound *
+asset_get_sound(Asset_Manager *manager, Sound_ID id) {
+    Sound *result = manager->sounds[id.value].sound;
+    return(result);
 }
 
 struct Load_Sound_Work {
@@ -289,7 +364,7 @@ OS_WORK_QUEUE_CALLBACK(load_sound_work) {
 
 internal void
 asset_load_sound(Asset_Manager *manager, Sound_ID id) {
-    if (id.value && (atomic_compare_exchange_u32((u32 *)&manager->sounds[id.value].state, AssetState_Unloaded, AssetState_Queued) == AssetState_Unloaded)) {
+    if (id.value && (atomic_compare_exchange_u32((u32 *)&manager->sounds[id.value].state, AssetState_Queued, AssetState_Unloaded) == AssetState_Unloaded)) {
         Memory_Task *memory_task = begin_memory_task(manager->tran_state);
         if (memory_task) {
             Load_Sound_Work *work = push_struct(&memory_task->arena, Load_Sound_Work);
@@ -301,6 +376,8 @@ asset_load_sound(Asset_Manager *manager, Sound_ID id) {
             work->final_state = AssetState_Loaded;
 
             os_work_queue_add_entry(manager->tran_state->low_priority_queue, load_sound_work, work);
+        } else {
+            manager->sounds[id.value].state = AssetState_Unloaded;
         }
     }
 }

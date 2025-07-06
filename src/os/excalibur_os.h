@@ -57,13 +57,13 @@ extern struct OS_Memory *debug_global_memory;
 
 #if COMPILER_MSVC
 # define complete_previous_write_before_future_write _WriteBarrier()
-inline u32 atomic_compare_exchange_u32(u32 volatile *test_value, u32 expected_value, u32 new_value) {
-    u32 result = _InterlockedCompareExchange((long *)test_value, expected_value, new_value);
+inline u32
+atomic_compare_exchange_u32(u32 volatile *test_value, u32 new_value, u32 expected_value) {
+    u32 result = _InterlockedCompareExchange((long *)test_value, new_value, expected_value);
     return(result);
 }
 #else
 // TODO(xkazu0x): need GCC/LLVM equivalents!
-# define complete_previous_write_before_future_write
 #endif
 // }
 

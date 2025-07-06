@@ -1013,14 +1013,9 @@ int main(void)
     
     s32 monitor_width = monitor_info.dmPelsWidth;
     s32 monitor_height = monitor_info.dmPelsHeight;
-    s32 monitor_frame_rate = monitor_info.dmDisplayFrequency;
+    //s32 monitor_frame_rate = monitor_info.dmDisplayFrequency;
     log_info("monitor size: %dx%d", monitor_width, monitor_height);
-    log_info("monitor refresh rate: %dHz", monitor_frame_rate);
-    
-    s32 game_update_hz = 30;
-    //s32 game_update_hz = 60;
-    //s32 game_update_hz = monitor_frame_rate;
-    f32 target_seconds_per_frame = 1.0f / (f32)game_update_hz;
+    //log_info("monitor refresh rate: %dHz", monitor_frame_rate);
 
     ////////////////////////////////
     // NOTE(xkazu0x): init back buffer
@@ -1078,6 +1073,20 @@ int main(void)
             ShowWindow(window, SW_SHOW);            
 
             ////////////////////////////
+            // NOTE(xkazu0x): refresh rate
+            
+            s32 monitor_refresh_hz = 60;
+            
+            HDC refresh_device = GetDC(window);
+            s32 win32_refresh_rate = GetDeviceCaps(refresh_device, VREFRESH);
+            if (win32_refresh_rate > 1) {
+                monitor_refresh_hz = win32_refresh_rate;
+            }
+
+            f32 game_update_hz = monitor_refresh_hz/2.0f;
+            f32 target_seconds_per_frame = 1.0f / (f32)game_update_hz;
+            
+            ////////////////////////////
             // NOTE(xkazu0x): init input
             OS_Input input = {};
     
@@ -1099,13 +1108,13 @@ int main(void)
             sound_output.samples_per_second = 48000;
             sound_output.bytes_per_sample = sizeof(s16)*2;
             sound_output.buffer_size = sound_output.samples_per_second*sound_output.bytes_per_sample;
-
+            
             win32_init_dsound(window, sound_output.samples_per_second, sound_output.buffer_size, &sound_output.buffer);
             
             sound_output.running_sample_index = 0;
-            sound_output.latency_sample_count = 3*(sound_output.samples_per_second/game_update_hz);
+            sound_output.latency_sample_count = (s32)(3.0f*((f32)sound_output.samples_per_second/game_update_hz));
             // TODO(xkazu0x): actually compute this variable and see what the lowest reasonable value is.
-            sound_output.safety_bytes = (sound_output.samples_per_second*sound_output.bytes_per_sample/game_update_hz)/3;
+            sound_output.safety_bytes = (s32)(((f32)sound_output.samples_per_second*(f32)sound_output.bytes_per_sample/game_update_hz)/3.0f);
             
             win32_clear_sound_buffer(&sound_output);
             sound_output.buffer->Play(0, 0, DSBPLAY_LOOPING);
@@ -1261,7 +1270,7 @@ int main(void)
 
                             DWORD byte_to_lock = ((sound_output.running_sample_index*sound_output.bytes_per_sample) % sound_output.buffer_size);
 
-                            DWORD expected_sound_bytes_per_frame = (sound_output.samples_per_second*sound_output.bytes_per_sample)/game_update_hz;
+                            DWORD expected_sound_bytes_per_frame = (s32)(((f32)sound_output.samples_per_second*(f32)sound_output.bytes_per_sample)/game_update_hz);
 
                             f32 seconds_left_until_flip = (target_seconds_per_frame - from_begin_to_audio_seconds);
                             DWORD expected_bytes_until_flip = (DWORD)((seconds_left_until_flip/target_seconds_per_frame)*(f32)expected_sound_bytes_per_frame);
@@ -1377,10 +1386,12 @@ int main(void)
                         ////////////////////////////
                         // NOTE(xkazu0x): display back buffer
                     
-#if EXCALIBUR_INTERNAL 
+#if EXCALIBUR_INTERNAL
+# if 0
                         if (!win32_state.pause) {
                             win32_debug_draw_sound_markers(&back_buffer, array_count(debug_sound_markers), debug_sound_markers, debug_sound_marker_index - 1, sound_output, target_seconds_per_frame);
                         }
+# endif
 #endif
                     
                         Win32_Window_Size window_size = win32_get_window_size(window);

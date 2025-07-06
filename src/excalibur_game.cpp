@@ -1,10 +1,10 @@
 #include "base/excalibur_base.h"
 #include "os/excalibur_os.h"
 #include "excalibur_random.h" // TODO(xkazu0x): temporary!
+#include "excalibur_memory.h" // TODO(xkazu0x): temporary!
 #include "excalibur_world.h"
 #include "excalibur_simulation.h"
 #include "excalibur_entity.h"
-#include "excalibur_memory.h" // TODO(xkazu0x): temporary!
 #include "excalibur_multimedia.h"
 #include "excalibur_asset.h"
 #include "excalibur_render.h"
@@ -367,7 +367,7 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
                 for (u32 ground_index = 0;
                      ground_index < 100;
                      ++ground_index) {
-                    Bitmap_ID sprite = random_asset_from(tran_state->asset_manager, random_choice(&series, 2) ? AssetType_Grass : AssetType_Stone, &series);
+                    Bitmap_ID sprite = asset_get_random_bitmap(tran_state->asset_manager, random_choice(&series, 2) ? AssetType_Grass : AssetType_Stone, &series);
                     
                     Vec2 random_offset = hadamard_product(half_dim, make_vec2(random_bilateral(&series), random_bilateral(&series)));
                     Vec2 sprite_offset = chunk_center + random_offset;
@@ -402,7 +402,7 @@ fill_ground_chunk(Transient_State *tran_state, Game_State *game_state, Ground_Bu
                         sprite = tran_state->assets->tuft + random_choice(&series, array_count(tran_state->assets->tuft));
                     }
 #else
-                    Bitmap_ID sprite = random_asset_from(tran_state->asset_manager, AssetType_Flower, &series);
+                    Bitmap_ID sprite = asset_get_random_bitmap(tran_state->asset_manager, AssetType_Flower, &series);
 #endif
                     Vec2 random_offset = hadamard_product(half_dim, make_vec2(random_bilateral(&series), random_bilateral(&series)));
                     Vec2 sprite_offset = chunk_center + random_offset;
@@ -574,6 +574,27 @@ make_pyramid_normal_map(Bitmap *bitmap, f32 roughness) {
     }
 }
 
+internal Playing_Sound_List *
+play_sound(Game_State *game_state, Sound_ID id) {
+    if (!game_state->first_free_playing_sound) {
+        game_state->first_free_playing_sound = push_struct(&game_state->world_arena, Playing_Sound_List);
+        game_state->first_free_playing_sound->next = 0;
+    }
+    
+    Playing_Sound_List *playing_sound = game_state->first_free_playing_sound;
+    game_state->first_free_playing_sound = playing_sound->next;
+    
+    playing_sound->id = id;
+    playing_sound->volume[0] = 1.0f;
+    playing_sound->volume[1] = 1.0f;
+    playing_sound->samples_played = 0;
+    
+    playing_sound->next = game_state->first_playing_sound;
+    game_state->first_playing_sound = playing_sound;
+
+    return(playing_sound);
+}
+
 shared_function
 GAME_UPDATE_AND_RENDER(game_update_and_render) {
 #if EXCALIBUR_INTERNAL
@@ -604,8 +625,6 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     Game_State *game_state = (Game_State *)memory->permanent_storage;
     if (!game_state->is_initialized) {
         game_state->typical_floor_height = 3.0f;
-        
-        game_state->test_sound = load_wav("../res/hit0.wav");
 
         // TODO(xkazu0x): Remove this!
         //f32 pixels_to_meters = 1.0f / 11.4285714286f; // tile_size_in_pixels/1.4f (tile_size_in_meters);
@@ -614,9 +633,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                                                    pixels_to_meters*(f32)ground_buffer_height,
                                                    game_state->typical_floor_height);
             
-        // TODO(xkazu0x): start partioning memory space
-        game_state->world_arena = make_arena(memory->permanent_storage_size - sizeof(Game_State),
-                                        (u8 *)memory->permanent_storage + sizeof(Game_State));
+        game_state->world_arena = make_arena(memory->permanent_storage_size - sizeof(Game_State), (u8 *)memory->permanent_storage + sizeof(Game_State));
         game_state->world = push_struct(&game_state->world_arena, World);
         
         World *world = game_state->world;
@@ -630,7 +647,8 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
         game_state->player_collision        = make_simple_grounded_collision(game_state, 1.0f, 0.5f, 1.0f);
         game_state->monster_collision       = make_simple_grounded_collision(game_state, 0.8f*tile_side_in_meters, 0.5f*tile_side_in_meters, tile_side_in_meters);
         game_state->familiar_collision      = make_simple_grounded_collision(game_state, 0.5f*tile_side_in_meters, 0.5f*tile_side_in_meters, 0.5f*tile_side_in_meters);
-        
+
+        // NOTE(xkazu0x): reserve entity slot 0 for null entity
         add_low_entity(game_state, EntityType_Null, null_position());
 
         Random_Series series = random_seed(0);
@@ -792,6 +810,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
         }
 
         tran_state->asset_manager = asset_manager_alloc(&tran_state->arena, MB(64), tran_state);
+        play_sound(game_state, asset_get_first_sound(tran_state->asset_manager, AssetType_Music));
         
         tran_state->ground_buffer_count = 256;
         tran_state->ground_buffers = push_array(&tran_state->arena,
@@ -1073,6 +1092,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                                     sword->distance_limit = 3.0f;
                                     make_entity_spatial(sword, entity->pos, 10.0f*make_vec3(controlled_player->d_sword, 0.0f));
                                     add_collision_rule(game_state, sword->storage_index, entity->storage_index, false);
+                                    play_sound(game_state, asset_get_first_sound(tran_state->asset_manager, AssetType_Hit));
                                 }
                             }
                         }
@@ -1159,14 +1179,14 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     Vec2 dim = entity->collision->total_volume.dim.xy;
                     render_rect(render_group, make_vec3(0.0f), dim, make_vec4(1.0f, 0.5f, 0.2f, 1.0f));
                     
-                    render_bitmap(render_group, first_asset_from(tran_state->asset_manager, AssetType_Wall), make_vec3(0.0f), dim.y);
+                    render_bitmap(render_group, asset_get_first_bitmap(tran_state->asset_manager, AssetType_Wall), make_vec3(0.0f), dim.y);
                 } break;
                     
                 case EntityType_Stairwell: {
                     render_rect(render_group, make_vec3(0.0f), entity->walkable_dim, make_vec4(1.0f, 0.0f, 1.0f, 1.0f));
                     //render_rect(render_group, make_vec3(0.0f, entity->walkable_height, 0.0f), entity->walkable_dim, make_vec4(0.0f, 1.0f, 1.0f, 1.0f));
                     
-                    render_bitmap(render_group, first_asset_from(tran_state->asset_manager, AssetType_Stairwell), make_vec3(0.0f), 3.0f);
+                    render_bitmap(render_group, asset_get_first_bitmap(tran_state->asset_manager, AssetType_Stairwell), make_vec3(0.0f), 3.0f);
                     //render_bitmap(render_group, AssetType_Stairwell, make_vec3(0.0f, 0.0f, entity->walkable_height));
                 } break;
 
@@ -1177,11 +1197,11 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     Asset_Vector weight_vector = {};
                     weight_vector.e[AssetTag_FacingDirection] = 1.0f;
                     
-                    Bitmap_ID player_sprite = asset_best_match(tran_state->asset_manager, AssetType_Skull, &match_vector, &weight_vector);
+                    Bitmap_ID player_sprite = asset_get_best_match_bitmap(tran_state->asset_manager, AssetType_Skull, &match_vector, &weight_vector);
                     
                     render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.5f, 0.2f, 1.0f));
                     
-                    render_bitmap(render_group, first_asset_from(tran_state->asset_manager, AssetType_Shadow), make_vec3(0.0f), 1.0f, make_vec4(1.0f, 1.0f, 1.0f, shadow_alpha));
+                    render_bitmap(render_group, asset_get_first_bitmap(tran_state->asset_manager, AssetType_Shadow), make_vec3(0.0f), 1.0f, make_vec4(1.0f, 1.0f, 1.0f, shadow_alpha));
                     render_bitmap(render_group, player_sprite, make_vec3(0.0f), 1.0f);
                     
                     draw_hit_points(render_group, entity);
@@ -1190,7 +1210,7 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                 case EntityType_Sword: {
                     render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(0.0f, 1.0f, 0.0f, 1.0f));
                     
-                    render_bitmap(render_group, first_asset_from(tran_state->asset_manager, AssetType_Shadow), make_vec3(0.0f), 1.0f);
+                    render_bitmap(render_group, asset_get_first_bitmap(tran_state->asset_manager, AssetType_Shadow), make_vec3(0.0f), 1.0f);
                 } break;
                     
                 case EntityType_Familiar: {
@@ -1203,8 +1223,8 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     
                     render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(0.0f, 1.0f, 0.0f, 1.0f));
 
-                    render_bitmap(render_group, first_asset_from(tran_state->asset_manager, AssetType_Shadow), make_vec3(0.0f), 1.0f, make_vec4(1.0f, 1.0f, 1.0f, (0.5f*shadow_alpha) - bob_sin));
-                    render_bitmap(render_group, first_asset_from(tran_state->asset_manager, AssetType_Bat), make_vec3(0.0f, 0.0f, bob_sin + 0.4f), 1.0f);
+                    render_bitmap(render_group, asset_get_first_bitmap(tran_state->asset_manager, AssetType_Shadow), make_vec3(0.0f), 1.0f, make_vec4(1.0f, 1.0f, 1.0f, (0.5f*shadow_alpha) - bob_sin));
+                    render_bitmap(render_group, asset_get_first_bitmap(tran_state->asset_manager, AssetType_Bat), make_vec3(0.0f, 0.0f, bob_sin + 0.4f), 1.0f);
                 } break;
                     
                 case EntityType_Monster: {
@@ -1214,11 +1234,11 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
                     Asset_Vector weight_vector = {};
                     weight_vector.e[AssetTag_FacingDirection] = 1.0f;
                     
-                    Bitmap_ID monster_sprite = asset_best_match(tran_state->asset_manager, AssetType_Skull, &match_vector, &weight_vector);
+                    Bitmap_ID monster_sprite = asset_get_best_match_bitmap(tran_state->asset_manager, AssetType_Skull, &match_vector, &weight_vector);
 
                     render_rect(render_group, make_vec3(0.0f), entity->collision->total_volume.dim.xy, make_vec4(1.0f, 0.0f, 0.0f, 1.0f));
 
-                    render_bitmap(render_group, first_asset_from(tran_state->asset_manager, AssetType_Shadow), make_vec3(0.0f), 1.0f, make_vec4(1.0f, 1.0f, 1.0f, shadow_alpha));
+                    render_bitmap(render_group, asset_get_first_bitmap(tran_state->asset_manager, AssetType_Shadow), make_vec3(0.0f), 1.0f, make_vec4(1.0f, 1.0f, 1.0f, shadow_alpha));
                     render_bitmap(render_group, monster_sprite, make_vec3(0.0f), 1.0f);
                     
                     draw_hit_points(render_group, entity);
@@ -1324,8 +1344,8 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     end_sim(sim_region, game_state);
     
     // NOTE(xkazu0x): reset and check renderer and simulation memory
-    end_temp_memory(&sim_memory);
-    end_temp_memory(&render_memory);
+    end_temp_memory(sim_memory);
+    end_temp_memory(render_memory);
     
     check_arena(&game_state->world_arena);
     check_arena(&tran_state->arena);
@@ -1333,8 +1353,8 @@ GAME_UPDATE_AND_RENDER(game_update_and_render) {
     END_TIMED_BLOCK(game_update_and_render);
 }
 
-shared_function
-GAME_GET_SOUND_SAMPLES(game_get_sound_samples) {
+internal void
+output_sine_wave(OS_Sound_Buffer *sound_buffer) {
     local f32 t;
     s16 wave_tone_volume = 2000;
     s32 wave_tone_hz = 256;
@@ -1355,4 +1375,92 @@ GAME_GET_SOUND_SAMPLES(game_get_sound_samples) {
             t -= tau32;
         }
     }
+}
+
+shared_function
+GAME_GET_SOUND_SAMPLES(game_get_sound_samples) {
+    // output_sine_wave(sound_buffer);
+    
+    Game_State *game_state = (Game_State *)memory->permanent_storage;
+    Transient_State *tran_state = (Transient_State *)memory->transient_storage;
+
+    Temp_Memory mixer_memory = begin_temp_memory(&tran_state->arena);
+    
+    f32 *channel0 = push_array(&tran_state->arena, f32, sound_buffer->sample_count);
+    f32 *channel1 = push_array(&tran_state->arena, f32, sound_buffer->sample_count);
+
+    // NOTE(xkazu0x): clear out the mixer channels
+    {
+        f32 *dest0 = channel0;
+        f32 *dest1 = channel1;
+        for (s32 sample_index = 0;
+             sample_index < sound_buffer->sample_count;
+             ++sample_index) {
+            *dest0++ = 0.0f;
+            *dest1++ = 0.0f;
+        }
+    }
+
+    // NOTE(xkazu0x): sum all sounds
+    for (Playing_Sound_List **playing_sound_ptr = &game_state->first_playing_sound;
+         *playing_sound_ptr;
+         ) {
+        Playing_Sound_List *playing_sound = *playing_sound_ptr;
+        b32 sound_finished = false;
+        
+        Sound *sound = asset_get_sound(tran_state->asset_manager, playing_sound->id);
+        if (sound) {
+            f32 volume0 = playing_sound->volume[0];
+            f32 volume1 = playing_sound->volume[1];
+
+            f32 *dest0 = channel0;
+            f32 *dest1 = channel1;
+
+            assert(playing_sound->samples_played >= 0);
+            
+            u32 samples_to_mix = sound_buffer->sample_count;
+            u32 samples_remaining_in_sound = sound->sample_count - playing_sound->samples_played;
+            if (samples_to_mix > samples_remaining_in_sound) {
+                samples_to_mix = samples_remaining_in_sound;
+            }
+            
+            for (u32 sample_index = playing_sound->samples_played;
+                 sample_index < (playing_sound->samples_played + samples_to_mix);
+                 ++sample_index) {
+                f32 sample_value = sound->samples[0][sample_index];
+                *dest0++ += volume0*sample_value;
+                *dest1++ += volume1*sample_value;
+            }
+
+            sound_finished = ((u32)playing_sound->samples_played == sound->sample_count);
+            
+            playing_sound->samples_played += samples_to_mix;
+        } else {
+            asset_load_sound(tran_state->asset_manager, playing_sound->id);
+        }
+
+        if (sound_finished) {
+            *playing_sound_ptr = playing_sound->next;
+            playing_sound->next = game_state->first_free_playing_sound;
+            game_state->first_free_playing_sound = playing_sound;
+        } else {
+            playing_sound_ptr = &playing_sound->next;
+        }
+    }
+
+    // NOTE(xkazu0x): convert to 16-bit
+    {
+        f32 *source0 = channel0;
+        f32 *source1 = channel1;
+    
+        s16 *sample_out = sound_buffer->samples;
+        for (s32 sample_index = 0;
+             sample_index < sound_buffer->sample_count;
+             ++sample_index) {
+            *sample_out++ = (s16)(*source0++ + 0.5f);
+            *sample_out++ = (s16)(*source1++ + 0.5f);
+        }
+    }
+
+    end_temp_memory(mixer_memory);
 }

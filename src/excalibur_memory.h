@@ -84,11 +84,11 @@ begin_temp_memory(Arena *arena) {
 }
 
 internal void
-end_temp_memory(Temp_Memory *temp) {
-    Arena *arena = temp->arena;
+end_temp_memory(Temp_Memory temp) {
+    Arena *arena = temp.arena;
     
-    assert(arena->used >= temp->used);
-    arena->used = temp->used;
+    assert(arena->used >= temp.used);
+    arena->used = temp.used;
 
     assert(arena->temp_count > 0);
     --arena->temp_count;
